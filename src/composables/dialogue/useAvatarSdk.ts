@@ -3,8 +3,8 @@ import { ref, shallowRef } from 'vue'
 const API_INFO = {
   serverUrl: 'wss://avatar.cn-huadong-1.xf-yun.com/v1/interact',
   appId: 'ce39128c',
-  apiKey: '46d88496fc86492253ba9355584dde23',
-  apiSecret: 'OTMwYTQ3ZjQ5ZTI5ODdhZGNjNjIwOTA2',
+  apiKey: 'YOUR-XFYUN-API-KEY',
+  apiSecret: 'YOUR-XFYUN-API-SECRET',
   sceneId: '331730107897090048',
 }
 
