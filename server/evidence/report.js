@@ -45,6 +45,6 @@ export function generateDemoTraceJson() {
     competitionTrack: 'A3 - 基于大模型的个性化资源生成与学习多智能体系统',
     summary,
     sampleTraces: traces,
-    description: '本报告展示 EduMind 系统中多智能体协作的完整证据链，包括画像分析、资源生成、路径规划、辅导回答、效果评估和反思反馈六个 Agent 的协作过程。',
+      description: '本报告展示智学星枢系统中多智能体协作的完整证据链，包括画像分析、资源生成、路径规划、辅导回答、效果评估和反思反馈六个 Agent 的协作过程。',
   }
 }

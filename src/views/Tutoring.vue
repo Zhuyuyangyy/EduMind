@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Target,
 } from 'lucide-vue-next'
+import { agentTutoring, submitLearningCycleUpdate } from '../lib/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,6 +25,12 @@ const mastery = computed(() => {
   return Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.round(raw))) : 0
 })
 const activeStage = ref(0)
+const learnerAnswer = ref('')
+const hintLevel = ref(1)
+const tutorReply = ref('')
+const updateSummary = ref('')
+const isSubmitting = ref(false)
+const errorMessage = ref('')
 
 const masteryTone = computed(() => {
   if (mastery.value < 30) return 'foundation'
@@ -65,6 +72,70 @@ const sampleQuestions = computed(() => [
   `给出一个容易混淆的反例，并说明为什么不适用。`,
   `完成一道 ${moduleName.value} 场景下的应用题。`,
 ])
+
+const demoProfile = computed(() => ({
+  totalScore: mastery.value || 52,
+  dimensions: [
+    { key: 'data-structure', label: '数据结构', value: mastery.value || 52 },
+    { key: 'algorithm', label: '算法思维', value: 47 },
+  ],
+  radarPoints: [
+    { dimension: '数据结构', score: mastery.value || 52 },
+    { dimension: '算法思维', score: 47 },
+  ],
+  weaknesses: ['BFS visited 标记时机'],
+}))
+
+async function requestScaffold() {
+  isSubmitting.value = true
+  errorMessage.value = ''
+  try {
+    const result = await agentTutoring({
+      question: learnerAnswer.value || `我在「${topic.value}」这道题卡住了，请先给提示。`,
+      mode: 'step-solve',
+      profile: demoProfile.value,
+      hintLevel: hintLevel.value,
+      attempts: Math.max(0, hintLevel.value - 1),
+    })
+    tutorReply.value = result.answer
+    if (hintLevel.value < 5) hintLevel.value += 1
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : 'Tutor Agent 暂时无法响应'
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+async function submitAndUpdate() {
+  if (activeStage.value < 2) {
+    await requestScaffold()
+    return
+  }
+  isSubmitting.value = true
+  errorMessage.value = ''
+  try {
+    const result = await submitLearningCycleUpdate({
+      profile: demoProfile.value,
+      currentPath: { phases: [{ title: 'BFS 基础' }, { title: 'DFS 入门' }] },
+      learningData: { topic: topic.value, learnerAnswer: learnerAnswer.value },
+      exerciseResults: {
+        correctRate: learnerAnswer.value.trim().length >= 80 ? 0.75 : 0.4,
+        attempted: 3,
+        completed: 3,
+        dimension: '数据结构',
+        knowledgePoint: topic.value,
+      },
+    })
+    const change = result.profileChanges[0]
+    updateSummary.value = change
+      ? `Reflection 已将${change.dimension}从 ${change.before} 更新为 ${change.after}；Planner 已重规划后续路径。`
+      : '本轮证据不足，系统保留原画像并记录学习周期。'
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '画像更新暂时失败'
+  } finally {
+    isSubmitting.value = false
+  }
+}
 </script>
 
 <template>
@@ -142,16 +213,24 @@ const sampleQuestions = computed(() => [
             <MessageSquareText :size="18" />
             <span>练习作答区</span>
           </div>
-          <textarea placeholder="在这里输入你的思路，系统会根据本知识点给出提示与追问。" />
+          <textarea v-model="learnerAnswer" placeholder="在这里输入你的思路，Tutor Agent 会按 Level 1–5 逐级提示，不直接给答案。" />
+        </div>
+
+        <div v-if="tutorReply || updateSummary || errorMessage" class="agent-feedback" aria-live="polite">
+          <strong v-if="tutorReply">Tutor Agent · 脚手架提示</strong>
+          <p v-if="tutorReply">{{ tutorReply }}</p>
+          <strong v-if="updateSummary">Reflection · 画像与路径更新</strong>
+          <p v-if="updateSummary">{{ updateSummary }}</p>
+          <p v-if="errorMessage" class="feedback-error">{{ errorMessage }}</p>
         </div>
 
         <div class="practice-actions">
-          <button class="ghost-btn" type="button">
+          <button class="ghost-btn" type="button" :disabled="isSubmitting" @click="requestScaffold">
             <RotateCcw :size="17" />
-            换一组题
+            {{ hintLevel === 1 ? '获取一级提示' : `继续提示 · Level ${Math.min(hintLevel, 5)}` }}
           </button>
-          <button class="primary-btn" type="button">
-            提交并更新画像
+          <button class="primary-btn" type="button" :disabled="isSubmitting" @click="submitAndUpdate">
+            {{ isSubmitting ? 'Agent 处理中…' : activeStage === 2 ? '提交并更新画像' : '提交思路并获取提示' }}
             <ChevronRight :size="18" />
           </button>
         </div>
@@ -496,6 +575,34 @@ const sampleQuestions = computed(() => [
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.agent-feedback {
+  padding: 15px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 8%, rgba(2, 6, 23, 0.72));
+}
+
+.agent-feedback strong {
+  display: block;
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.agent-feedback p {
+  margin: 8px 0 12px;
+  color: rgba(226, 232, 240, 0.88);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.agent-feedback p:last-child {
+  margin-bottom: 0;
+}
+
+.agent-feedback .feedback-error {
+  color: #fda4af;
 }
 
 .ghost-btn,

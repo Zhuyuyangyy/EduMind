@@ -186,6 +186,29 @@ export interface GeneratedResource {
     pathStage: string
     formatReason: string
   }
+  audioText?: string
+}
+
+export interface GeneratedResourceItem {
+  type: 'video' | 'doc' | 'mindmap' | 'exercise' | 'code' | 'audio'
+  title: string
+  description: string
+  difficulty: string
+  estimatedMinutes: number
+  tags: string[]
+  formatReason: string
+  sourceResourceId?: number
+  source?: 'local-resource-library'
+  assetKind?: 'interactive-slides' | 'catalog-item' | 'browser-speech' | 'unavailable'
+  speechText?: string
+  slides?: Array<{
+    title: string
+    subtitle?: string
+    content: string
+    keyPoints?: string[]
+    example?: string
+    tip?: string
+  }>
 }
 
 export interface EvidenceTrace {
@@ -271,26 +294,6 @@ export interface ResourcePackage {
   errorTip: string
   recommendReason: string
   profileEvidence: string
-  generatedResources?: Array<{
-    id: string
-    type: 'mindmap' | 'document' | 'video' | 'exercise' | 'code' | string
-    title: string
-    format: string
-    content: unknown
-    profileEvidence: string
-    qualityScore: number
-    qualityReason: string
-  }>
-  qualityEvaluation?: {
-    averageScore: number
-    dimensions: Array<{ key: string; label: string; score: number }>
-    cases: Array<{ id: string; type: string; title: string; score: number; reason: string }>
-  }
-  antiHallucination?: {
-    strategy: string
-    checks: string[]
-    evidence: string[]
-  }
 }
 
 export interface ResourceGenerateResponse {
@@ -325,6 +328,12 @@ export interface PathReplanResponse {
 
 export interface TutorAgentResponse {
   answer: string
+  scaffolding?: {
+    level: number
+    attempts: number
+    revealsCompleteAnswer: boolean
+    nextLevelAvailable: boolean
+  }
   agentResults: AgentResult[]
   trace: TraceRecord
 }
@@ -338,40 +347,24 @@ export interface FullEvaluationResponse {
 
 export interface KnowledgeHit {
   id: string
-  docId?: string
-  source?: string
+  source: 'local' | 'vector'
   title: string
-  domain?: string
   type: string
   tags: string[]
   summary: string
   agentHint: string
-  text?: string
-  snippet?: string
   score: number
-  scoreBreakdown?: {
-    vector: number
-    tag: number
-    keyword: number
-  }
-  matchedQueryTokens?: string[]
-  matchedProfileTags?: string[]
 }
 
 export interface KnowledgeContextResponse {
   query: string
-  detectedDomain?: string | null
   matches: KnowledgeHit[]
   embedding: {
     model: string
     dimensions: number
     indexSize: number
-    candidatesScanned?: number
     generatedAt: string
   }
-  weights?: { vector: number; tag: number; keyword: number }
-  durationMs?: number
-  agentName?: string
 }
 
 export interface KnowledgeStatusResponse {
@@ -379,98 +372,8 @@ export interface KnowledgeStatusResponse {
   dimensions: number
   localDocuments: number
   vectorDocuments: number
-  totalChunks?: number
-  domainCounts?: Record<string, number>
   syncedAgents: string[]
   updatedAt: string
-}
-
-export interface RetrievalMetricsResponse {
-  totalSearches: number
-  totalHits: number
-  avgHitsPerSearch: number
-  byAgent: Record<string, {
-    searches: number
-    hits: number
-    totalScore: number
-    avgScore: number
-    durationMs: number
-    hitRate: number
-  }>
-  domainCounts: Record<string, number>
-  topDocs: Array<{ docId: string; hits: number }>
-  recent: Array<{
-    at: string
-    agentName: string
-    queryPreview: string
-    matchCount: number
-    topScore: number
-  }>
-  startedAt: string
-  snapshotAt: string
-}
-
-export interface ReviewQuestion {
-  questionId: string
-  sessionId: string
-  accountId: string
-  knowledgePointId: string | null
-  knowledgePointName: string | null
-  questionType: 'single-choice' | string
-  difficulty: string
-  prompt: string
-  options: string[]
-  answer?: unknown
-  explanation?: string
-  mistakeTags?: string[]
-  status: 'generated' | 'answered' | string
-  userAnswer?: unknown
-  isCorrect?: boolean | null
-  createdAt?: string
-  answeredAt?: string
-}
-
-export interface ReviewSession {
-  sessionId: string
-  accountId: string
-  source: string
-  status: string
-  knowledgePointId: string | null
-  knowledgePointName: string | null
-  createdAt: string
-}
-
-export interface ReviewGenerateRequest {
-  knowledgePoint?: { id?: string; name?: string; reason?: string }
-  count?: number
-  source?: string
-  profile?: ProfileResult
-}
-
-export interface ReviewGenerateResponse {
-  session: ReviewSession
-  questions: ReviewQuestion[]
-}
-
-export interface ReviewSubmitRequest {
-  sessionId: string
-  answers: Array<{ questionId: string; answer: unknown }>
-}
-
-export interface ReviewSubmitResponse {
-  evaluatedQuestions: ReviewQuestion[]
-  mistakes: ReviewQuestion[]
-  correctCount: number
-  totalQuestions: number
-  correctRate: number
-  weakTags: string[]
-  profilePatch: unknown
-  updatedProfile: ProfileResult | null
-  shouldReplanPath: boolean
-}
-
-export interface ReviewMistakesResponse {
-  items: ReviewQuestion[]
 }
 
 export interface FullRunRequest {

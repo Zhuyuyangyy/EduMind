@@ -1,6 +1,5 @@
 import { callLlm, safeParseJson } from '../llm/provider.js'
 import { createAgentResult, AGENT_NAMES } from '../schemas.js'
-import { retrieveKnowledgeContext, buildKnowledgeEvidence, summarizeKnowledgeForPrompt } from '../knowledge-base/retrieval.js'
 
 const SYSTEM_PROMPT = `你是一个学习画像分析专家。根据用户的问卷回答，分析其学习能力、薄弱点和学习偏好。
 
@@ -31,41 +30,12 @@ const SYSTEM_PROMPT = `你是一个学习画像分析专家。根据用户的问
   ]
 }`
 
-export async function runProfileAgent(answers, { knowledgeContext } = {}) {
+export async function runProfileAgent(answers) {
   const start = Date.now()
   const input = { answers }
 
-  const queryText = [
-    answers?.level || '',
-    answers?.knowledgeBase ? `knowledgeBase ${answers.knowledgeBase}` : '',
-    answers?.learningSpeed ? `learningSpeed ${answers.learningSpeed}` : '',
-    answers?.logicalThinking ? `logic ${answers.logicalThinking}` : '',
-  ].filter(Boolean).join(' ')
-
-  const syntheticProfile = {
-    dimensions: [
-      { label: '知识基础', value: answers?.knowledgeBase || 50 },
-      { label: '学习速度', value: answers?.learningSpeed || 50 },
-      { label: '逻辑思维', value: answers?.logicalThinking || 50 },
-    ],
-    weaknesses: [],
-    totalScore: answers?.knowledgeBase || 50,
-  }
-
-  const resolvedKb = knowledgeContext || retrieveKnowledgeContext({
-    agentName: AGENT_NAMES.PROFILE,
-    query: queryText,
-    profile: syntheticProfile,
-    domain: 'pedagogy',
-    limit: 2,
-  })
-
-  const userPrompt = `分析以下学习画像问卷回答：${JSON.stringify(answers)}
-知识参考（用于生成"建议"字段）:
-${summarizeKnowledgeForPrompt(resolvedKb.matches)}
-
-请生成画像分析。如果知识参考里有"主动回忆补救"或"心流状态调节"策略，请体现在 suggestions 中。`
-  const llmResult = await callLlm(SYSTEM_PROMPT, userPrompt)
+  const userPrompt = `分析以下学习画像问卷回答：${JSON.stringify(answers)}`
+  const llmResult = await callLlm(SYSTEM_PROMPT, userPrompt, { jsonMode: true })
   let output
   let fallbackUsed = false
   const evidence = []
@@ -87,24 +57,11 @@ ${summarizeKnowledgeForPrompt(resolvedKb.matches)}
     evidence.push('本地规则 fallback 生成画像分析')
   }
 
-  evidence.push(...buildKnowledgeEvidence(resolvedKb, { summary: '画像生成知识库' }))
-
   const durationMs = Date.now() - start
   return createAgentResult({
     agentName: AGENT_NAMES.PROFILE,
     input,
-    output: {
-      ...output,
-      knowledgeContext: {
-        detectedDomain: resolvedKb.detectedDomain,
-        matches: resolvedKb.matches.map(m => ({
-          id: m.id,
-          title: m.title,
-          score: m.score,
-          agentHint: m.agentHint,
-        })),
-      },
-    },
+    output,
     confidence: fallbackUsed ? 0.7 : 0.9,
     evidence,
     durationMs,

@@ -14,7 +14,7 @@ const emit = defineEmits<{
 }>()
 
 /* ── State ── */
-const code = ref(props.initialCode ?? '# 在这里输入你的代码\nprint("Hello EduMind!")')
+const code = ref(props.initialCode ?? '# 在这里输入你的代码\nprint("Hello 智学星枢!")')
 const output = ref('')
 const isRunning = ref(false)
 const activeTab = ref<'editor' | 'preview'>('editor')
@@ -173,7 +173,7 @@ function resetCode() {
   } else if (props.initialCode) {
     code.value = props.initialCode
   } else {
-    code.value = '# 在这里输入你的代码\nprint("Hello EduMind!")'
+  code.value = '# 在这里输入你的代码\nprint("Hello 智学星枢!")'
   }
   output.value = ''
   activeTab.value = 'editor'

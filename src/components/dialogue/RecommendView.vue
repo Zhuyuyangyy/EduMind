@@ -7,7 +7,7 @@
         <div>
           <h1 class="font-extrabold text-white text-xl tracking-tight font-display flex items-center gap-2">
             <GraduationCap class="w-6 h-6 text-blue-300" />
-            <span>EduMind 课程体系</span>
+        <span>智学星枢课程体系</span>
           </h1>
           <p class="text-sm text-slate-400 mt-1">涵盖 <strong class="text-blue-300">5 大方向、24 门课程</strong>，从基础到前沿逐步深入</p>
         </div>

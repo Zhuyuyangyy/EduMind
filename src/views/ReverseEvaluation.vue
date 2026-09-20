@@ -15,7 +15,7 @@ import {
   Zap,
 } from 'lucide-vue-next'
 import MultiAgentReverseUpdateMap from '@/components/evaluation/MultiAgentReverseUpdateMap.vue'
-import { saveProfile, triggerKnowledgePath } from '@/lib/api'
+import { saveProfile } from '@/lib/api'
 import { useLearningProgressSync, type LearningProgressEvent } from '@/composables/useLearningProgressSync'
 import type { ProfileResult } from '@/composables/useProfileSurvey'
 import {
@@ -322,11 +322,6 @@ function buildReverseProfilePayload(focus: LearningProgressEvent | null): Profil
 async function persistReverseProfileUpdate(focus: LearningProgressEvent | null) {
   const payload = buildReverseProfilePayload(focus)
   await saveProfile(payload)
-  try {
-    await triggerKnowledgePath(payload)
-  } catch (err) {
-    console.warn('Failed to regenerate knowledge path after reverse profile update:', err)
-  }
 }
 
 function completeRun() {

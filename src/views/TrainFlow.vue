@@ -316,7 +316,7 @@ const contrib = [
           </div>
           <h1 class="tf-title">六个模块协同,化解一次学习卡顿</h1>
           <p class="tf-subtitle">
-            任务搭上协同列车,逐站停靠 — 12 个智能体在 6 个模块里<span class="tf-highlight">思考 → 产出 → 把上下文交给下一个</span>,最后闭环回写画像。
+    任务搭上协同列车,逐站停靠 — 7 个核心智能体在 6 个模块里<span class="tf-highlight">思考 → 产出 → 把上下文交给下一个</span>,最后闭环回写画像。
           </p>
         </div>
       </header>
@@ -487,7 +487,7 @@ const contrib = [
             </div>
           </div>
           <div class="stage-right">
-            <div class="standby-label">6 个模块、12 个智能体已就绪</div>
+              <div class="standby-label">6 个模块、7 个核心智能体已就绪</div>
             <div class="standby-track">
               <div class="standby-rail" />
               <div class="standby-rail-dash" />
@@ -522,7 +522,7 @@ const contrib = [
             </div>
             <div class="stage-agent-name">评估反馈已回写画像</div>
             <div class="loop-desc">
-              6 个模块、12 个智能体一次接力,把<span style="color: #fff">「拉格朗日基础」</span>从薄弱拉到可用,明日学习路径已自动优化。
+              6 个模块、7 个核心智能体一次接力,把<span style="color: #fff">「拉格朗日基础」</span>从薄弱拉到可用,明日学习路径已自动优化。
             </div>
             <div class="loop-leap" :style="{ background: `linear-gradient(135deg, ${tfHexA(TF.emerald, 0.12)}, ${tfHexA(TF.cyan, 0.06)})`, borderColor: tfHexA(TF.emerald, 0.3) }">
               <div class="leap-label">知识点掌握度 · 全程跃迁</div>

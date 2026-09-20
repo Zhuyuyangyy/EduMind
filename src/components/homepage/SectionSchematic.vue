@@ -16,13 +16,13 @@ interface Module {
 const modules: Module[] = [
   { id: 'profile', name: '画像智能体', role: 'PROFILE', color: T.purple,
     inputs: ['学习行为', '题目记录', '测评结果'], outputs: ['画像向量', '薄弱标签'],
-    specs: ['24 维', '置信 92%', '更新 5x/天'] },
+    specs: ['六维画像', '置信度可追溯', '按学习周期更新'] },
   { id: 'path', name: '路径规划智能体', role: 'PATH', color: T.cyan,
     inputs: ['画像向量', '课程图谱'], outputs: ['学习序列', '优先级'],
     specs: ['6 阶段', '约束: 时长 + 难度'] },
   { id: 'resource', name: '资源推荐智能体', role: 'RESOURCE', color: T.emerald,
     inputs: ['路径节点', '资源池'], outputs: ['资源 ID 集', '难度分布'],
-    specs: ['资源池 1.2k+', '匹配 47 已完成'] },
+    specs: ['本地知识索引', 'Evidence Trace'] },
   { id: 'tutor', name: 'AI 辅导智能体', role: 'TUTOR', color: T.amber,
     inputs: ['提问', '上下文'], outputs: ['回答', '后续提示'],
     specs: ['10 种模式', '准确 94%'] },
@@ -84,7 +84,7 @@ const specs = [
 
       <!-- Schematic SVG -->
       <div class="sch-canvas">
-        <div class="sch-corner sch-corner-tl">◇ EduMind · v2.1 · 闭环架构 · REV 26052026</div>
+        <div class="sch-corner sch-corner-tl">◇ 智学星枢 · v2.1 · 闭环架构 · REV 26052026</div>
         <div class="sch-corner sch-corner-tr">SCALE 1:1 · {{ SCH_W }}mm × {{ SCH_H }}mm</div>
 
         <svg :viewBox="`0 0 ${SCH_W} ${SCH_H}`" class="sch-svg">

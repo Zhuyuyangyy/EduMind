@@ -1,0 +1,74 @@
+services:
+  db:
+    image: mysql:8.4.7
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-edumind}
+      MYSQL_USER: ${MYSQL_USER:-edumind_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+      - edumind_mysql_data:/var/lib/mysql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  api:
+    build:
+      context: .
+      target: api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8788
+      LLM_API_URL: ${LLM_API_URL:?set LLM_API_URL in .env}
+      LLM_API_KEY: ${LLM_API_KEY:?set LLM_API_KEY in .env}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-edumind}
+      MYSQL_USER: ${MYSQL_USER:-edumind_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      MYSQL_POOL_SIZE: ${MYSQL_POOL_SIZE:-10}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8788/api/health > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  web:
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8255}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  edumind_mysql_data:

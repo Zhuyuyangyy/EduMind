@@ -428,6 +428,7 @@ const CSS_CENTER_Y = 410
 const GRAPH_GROUP_Y_OFFSET = 1.1
 
 const loader = new GLTFLoader()
+let planetLoadOrder = 0
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
 const sceneNodes: SceneNode[] = []
@@ -622,6 +623,8 @@ async function addPlanetModel(root: THREE.Group, url: string, radius: number, co
   root.add(placeholder)
 
   try {
+    const loadOrder = planetLoadOrder++
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 7000 + loadOrder * 1000))
     const gltf = await loader.loadAsync(url)
     if (disposed) return
 

@@ -217,19 +217,19 @@ const CONCEPTS_PRACTICE_DATA: ConceptItem[] = [
     difficulty: '简单',
     description: '欢迎进入编程学习平台。在这个任务中，你只需向控制台输出一条经典欢迎信息。它也是几乎所有语言的核心运行出口。',
     inputFormat: '本题没有特定输入。',
-    outputFormat: '输出一行字符串: "Welcome, EduMind Programming Sandbox!"',
+    outputFormat: '输出一行字符串: "Welcome, 智学星枢 Programming Sandbox!"',
     samples: [
-      { input: '(无输入)', output: 'Welcome, EduMind Programming Sandbox!' }
+      { input: '(无输入)', output: 'Welcome, 智学星枢 Programming Sandbox!' }
     ],
     starterTemplates: {
-      Python3: `# 欢迎打印练习\nprint("Welcome, EduMind Programming Sandbox!")`,
-      'C++': `#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Welcome, EduMind Programming Sandbox!" << endl;\n    return 0;\n}`,
-      Java: `public class Main {\n    public static void main(String[] args) {\n        System.out.println("Welcome, EduMind Programming Sandbox!");\n    }\n}`
+      Python3: `# 欢迎打印练习\nprint("Welcome, 智学星枢 Programming Sandbox!")`,
+      'C++': `#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Welcome, 智学星枢 Programming Sandbox!" << endl;\n    return 0;\n}`,
+      Java: `public class Main {\n    public static void main(String[] args) {\n        System.out.println("Welcome, 智学星枢 Programming Sandbox!");\n    }\n}`
     },
     testCases: [
-      { id: 1, input: '', output: 'Welcome, EduMind Programming Sandbox!', expected: 'Welcome, EduMind Programming Sandbox!', passed: true }
+      { id: 1, input: '', output: 'Welcome, 智学星枢 Programming Sandbox!', expected: 'Welcome, 智学星枢 Programming Sandbox!', passed: true }
     ],
-    tutorialAnswer: '在Python3中，单行打印可直接使用内置 print() 函数:\n```python\nprint("Welcome, EduMind Programming Sandbox!")\n```\n通过此操作你开启了编译沙盒。'
+    tutorialAnswer: '在Python3中，单行打印可直接使用内置 print() 函数:\n```python\nprint("Welcome, 智学星枢 Programming Sandbox!")\n```\n通过此操作你开启了编译沙盒。'
   },
   {
     id: 'concept-2',

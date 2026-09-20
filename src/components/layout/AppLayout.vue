@@ -37,7 +37,7 @@ watch(
   () => route.fullPath,
   (nextPath, previousPath) => {
     if (!previousPath || nextPath === previousPath) return
-    appStore.triggerPageLoading()
+    // appStore.triggerPageLoading()
   },
 )
 </script>
@@ -47,7 +47,7 @@ watch(
     <!-- Top Navigation Bar -->
     <header v-if="!isShellFreePage" class="topbar" role="banner">
       <div class="topbar-inner">
-        <router-link to="/home" class="topbar-brand" aria-label="EduMind 首页">
+      <router-link to="/home" class="topbar-brand" aria-label="智学星枢首页">
           <span class="brand-icon">
             <Sparkles :size="18" stroke-width="1.5" />
           </span>
@@ -273,4 +273,3 @@ watch(
   min-height: inherit;
 }
 </style>
-

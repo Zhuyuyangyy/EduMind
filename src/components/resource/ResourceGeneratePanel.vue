@@ -8,6 +8,7 @@ import {
   HelpCircle,
   BookOpen,
   AlertTriangle,
+  Volume2,
   ChevronRight,
   X
 } from 'lucide-vue-next'
@@ -70,43 +71,42 @@ async function handleGenerate() {
   error.value = null
   try {
     const result = await generateResources() as any
-    if (result.items && Array.isArray(result.items)) {
+    if (result.resources && Array.isArray(result.resources)) {
+      resources.value = result.resources.map((resource: any, index: number) => ({
+        id: String(index + 1),
+        concept: resource.title || '个性化学习资源',
+        example: resource.description || '',
+        exercise: `资源形式：${resource.type || 'doc'}；预计用时 ${resource.estimatedMinutes || 10} 分钟`,
+        mistakeReminder: resource.sourceResourceId !== undefined
+          ? `已绑定本地资源库 #${resource.sourceResourceId}，含 ${resource.slides?.length || 0} 页可展开学习内容`
+          : (resource.tags?.length ? `聚焦标签：${resource.tags.join('、')}` : ''),
+        recommendReason: resource.formatReason || '根据当前学习画像生成',
+        evidence: {
+          profileSource: '画像中的薄弱点与学习偏好',
+          evaluationReason: resource.formatReason || '按当前掌握度补强',
+          pathStage: '当前学习阶段',
+          formatReason: resource.type || 'doc',
+        },
+        audioText: resource.speechText,
+      }))
+    } else if (result.items && Array.isArray(result.items)) {
       resources.value = result.items
-    } else if (Array.isArray(result.resources) && result.resources.length) {
-      resources.value = result.resources.map((item: any) => mapGeneratedResource(item, result))
     } else if (result.resourcePackage) {
       const rp = result.resourcePackage
-      if (Array.isArray(rp.generatedResources) && rp.generatedResources.length) {
-        resources.value = rp.generatedResources.map((item: any) => ({
-          id: item.id,
-          concept: item.title || item.type,
-          example: item.format || '',
-          exercise: item.type === 'exercise' ? JSON.stringify(item.content?.questions || []) : item.qualityReason || '',
-          mistakeReminder: item.type === 'exercise' ? rp.errorTip || '' : item.profileEvidence || '',
-          recommendReason: item.qualityReason || rp.recommendReason || '',
-          evidence: {
-            profileSource: item.profileEvidence || rp.profileEvidence || '',
-            evaluationReason: `质量评分 ${item.qualityScore ?? rp.qualityEvaluation?.averageScore ?? 0}`,
-            pathStage: rp.antiHallucination?.strategy || '',
-            formatReason: `${item.type} / ${item.format}`,
-          },
-        }))
-      } else {
-        resources.value = [{
-          id: '1',
-          concept: rp.concept || '',
-          example: rp.example?.title ? `${rp.example.title}: ${rp.example.description}` : '',
-          exercise: rp.exercise?.title || '',
-          mistakeReminder: rp.errorTip || '',
-          recommendReason: rp.recommendReason || '',
-          evidence: {
-            profileSource: rp.profileEvidence || '',
-            evaluationReason: rp.recommendReason || '',
-            pathStage: '',
-            formatReason: '',
-          },
-        }]
-      }
+      resources.value = [{
+        id: '1',
+        concept: rp.concept || '',
+        example: rp.example?.title ? `${rp.example.title}: ${rp.example.description}` : '',
+        exercise: rp.exercise?.title || '',
+        mistakeReminder: rp.errorTip || '',
+        recommendReason: rp.recommendReason || '',
+        evidence: {
+          profileSource: rp.profileEvidence || '',
+          evaluationReason: rp.recommendReason || '',
+          pathStage: '',
+          formatReason: '',
+        },
+      }]
     } else {
       resources.value = FALLBACK_DATA
     }
@@ -120,31 +120,20 @@ async function handleGenerate() {
   }
 }
 
-function mapGeneratedResource(item: any, source: any): GeneratedResource {
-  return {
-    id: item.id || `${item.type || 'resource'}-${item.title || Math.random().toString(36).slice(2)}`,
-    concept: item.title || item.concept || item.type || '',
-    example: item.description || item.format || item.example || '',
-    exercise: item.type === 'exercise'
-      ? JSON.stringify(item.content?.questions || item.questions || item.description || [])
-      : item.qualityReason || item.description || '',
-    mistakeReminder: item.mistakeReminder || item.errorTip || source.errorTip || item.profileEvidence || '',
-    recommendReason: item.qualityReason || item.recommendReason || source.recommendReason || item.description || '',
-    evidence: {
-      profileSource: item.profileEvidence || source.profileEvidence || '',
-      evaluationReason: `质量评分 ${item.qualityScore ?? source.qualityEvaluation?.averageScore ?? 0}`,
-      pathStage: source.antiHallucination?.strategy || source.antiHallucination?.controls?.[0] || '',
-      formatReason: `${item.type || 'resource'} / ${item.format || item.difficulty || ''}`,
-    },
-  }
-}
-
 function openEvidence(resource: GeneratedResource) {
   evidenceModalResource.value = resource
 }
 
 function closeEvidence() {
   evidenceModalResource.value = null
+}
+
+function playAudio(item: GeneratedResource) {
+  if (!item.audioText || !('speechSynthesis' in window)) return
+  window.speechSynthesis.cancel()
+  const utterance = new SpeechSynthesisUtterance(item.audioText)
+  utterance.lang = 'zh-CN'
+  window.speechSynthesis.speak(utterance)
 }
 
 const EVIDENCE_FIELDS: { key: keyof GeneratedResource['evidence']; label: string }[] = [
@@ -224,6 +213,10 @@ const EVIDENCE_FIELDS: { key: keyof GeneratedResource['evidence']; label: string
             <HelpCircle :size="14" />
             <span>为什么推荐我？</span>
             <ChevronRight :size="14" />
+          </button>
+          <button v-if="item.audioText" class="rgp-evidence-btn" @click="playAudio(item)">
+            <Volume2 :size="14" />
+            <span>播放听读稿</span>
           </button>
         </div>
       </div>

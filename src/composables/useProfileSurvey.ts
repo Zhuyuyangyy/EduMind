@@ -312,6 +312,40 @@ export function generateResult(answers: SurveyAnswers): ProfileResult {
   }
 }
 
+function normalizeProfileResult(raw: Partial<ProfileResult> & Record<string, any>): ProfileResult {
+  const dimensions = (raw.dimensions?.length ? raw.dimensions : raw.radarPoints || []).map((item: any, index: number) => ({
+    label: item.label || item.dimension || `维度 ${index + 1}`,
+    value: Number(item.value ?? item.score ?? 0),
+    color: item.color || DIMENSION_COLORS[index % DIMENSION_COLORS.length],
+  }))
+  const totalScore = Number(raw.totalScore ?? raw.score ?? 0)
+  const weaknesses = (raw.weaknesses || []).map((item: any) =>
+    typeof item === 'string' ? { tag: item, count: 1 } : item,
+  )
+  const skillGroups = raw.skillTree || Object.entries(raw.skills || {}).map(([category, skills]: [string, any]) => ({
+    category,
+    color: DIMENSION_COLORS[0],
+    skills: (skills || []).map((name: string) => ({ name, level: totalScore })),
+  }))
+
+  return {
+    ...raw,
+    dimensions,
+    totalScore,
+    stats: raw.stats || [
+      { label: '综合评分', value: `${totalScore}`, icon: '◈', color: '#00d4ff' },
+      { label: '最强维度', value: `${dimensions[0]?.label || '暂无'}`, icon: '↗', color: '#06d6a0' },
+      { label: '待提升', value: `${weaknesses.length}`, icon: '△', color: '#f59e0b' },
+      { label: '学习阶段', value: raw.evaluation || '待评估', icon: '◎', color: '#7c3aed' },
+    ],
+    weaknesses,
+    skillTree: skillGroups,
+    preferences: raw.preferences || [],
+    timeline: raw.timeline || [],
+    recommendations: raw.recommendations || raw.suggestions || [],
+  }
+}
+
 function adjustByLevel(value: number, level: string): number {
   const boosts: Record<string, number> = { beginner: 0, intermediate: 5, advanced: 10, expert: 15 }
   return Math.min(100, value + (boosts[level] || 0))
@@ -595,13 +629,13 @@ export function useProfileSurvey() {
     try {
       const agentResult = await agentProfileAnalyze(answers.value)
       if (agentResult.profile) {
-        result.value = agentResult.profile as ProfileResult
+        result.value = normalizeProfileResult(agentResult.profile as ProfileResult & Record<string, any>)
       } else {
-        result.value = await analyzeProfileRequest(answers.value)
+        result.value = normalizeProfileResult(await analyzeProfileRequest(answers.value) as ProfileResult & Record<string, any>)
       }
     } catch {
       try {
-        result.value = await analyzeProfileRequest(answers.value)
+        result.value = normalizeProfileResult(await analyzeProfileRequest(answers.value) as ProfileResult & Record<string, any>)
       } catch {
         result.value = generateResult(answers.value)
       }
@@ -614,7 +648,7 @@ export function useProfileSurvey() {
   }
 
   function toResults(data: ProfileResult) {
-    result.value = data
+    result.value = normalizeProfileResult(data as ProfileResult & Record<string, any>)
     phase.value = 'results'
   }
 
@@ -636,7 +670,7 @@ export function useProfileSurvey() {
   function loadFromStorage(): ProfileResult | null {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
-      return raw ? JSON.parse(raw) : null
+      return raw ? normalizeProfileResult(JSON.parse(raw)) : null
     } catch {
       return null
     }
@@ -648,7 +682,8 @@ export function useProfileSurvey() {
 
   async function loadLatestSavedResult() {
     try {
-      return await fetchLatestProfile()
+      const saved = await fetchLatestProfile()
+      return saved ? normalizeProfileResult(saved as ProfileResult & Record<string, any>) : null
     } catch {
       return null
     }

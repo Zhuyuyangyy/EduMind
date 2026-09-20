@@ -273,9 +273,9 @@ export function generateDailyCollaboration(dayIndex) {
   }
 }
 
-export function seedAllDays(storeFn) {
+export async function seedAllDays(storeFn) {
   for (let i = 0; i < 7; i++) {
     const payload = generateDailyCollaboration(i)
-    storeFn(DAY_NAMES[i], payload)
+    await storeFn(DAY_NAMES[i], payload)
   }
 }

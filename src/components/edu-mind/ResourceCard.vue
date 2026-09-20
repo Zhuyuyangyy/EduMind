@@ -153,7 +153,7 @@
     <footer class="edu-resource-card__footer">
       <div class="edu-resource-card__author">
         <span class="edu-resource-card__avatar">{{ authorInitial }}</span>
-        <span>{{ resource.author || 'EduMind 教研组' }}</span>
+        <span>{{ resource.author || '智学星枢教研组' }}</span>
         <span>·</span>
         <span>{{ resource.date }}</span>
       </div>

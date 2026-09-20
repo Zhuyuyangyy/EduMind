@@ -1,0 +1,33 @@
+header,
+nav,
+aside,
+[role="navigation"],
+.sidebar,
+.app-sidebar,
+.app-header,
+.navbar,
+.navigation,
+.menu {
+  z-index: 2147483000 !important;
+  pointer-events: auto !important;
+  isolation: isolate !important;
+}
+
+header a,
+nav a,
+aside a,
+[role="navigation"] a,
+.sidebar a,
+.app-sidebar a,
+.app-header a,
+.navbar a,
+.navigation a,
+.menu a {
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+}
+
+html.hard-navigation-active,
+html.hard-navigation-active body {
+  cursor: progress !important;
+}

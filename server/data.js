@@ -2,12 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { callLlm, isLlmAvailable } from './llm/provider.js'
-import {
-  getLatestAccountKnowledgePath,
-  getLatestAccountProfile,
-  saveAccountKnowledgePath,
-  saveAccountProfile,
-} from './store/account-profile.js'
+import { getProfileResult as getMySqlProfileResult, saveProfileResult as saveMySqlProfileResult } from './store/mysql.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -80,20 +75,22 @@ export function getTutoringTopics() {
   return readJsonFile('tutoring-topics.json')
 }
 
-export async function getLatestProfileResult(accountId) {
-  return getLatestAccountProfile(accountId)
+export async function getLatestProfileResult(accountId = 'default') {
+  return getMySqlProfileResult(accountId)
 }
 
-export async function saveProfileResult(profileResult, accountContext) {
-  return saveAccountProfile(profileResult, accountContext)
+export async function saveProfileResult(profileResult, accountId = 'default') {
+  return saveMySqlProfileResult(accountId, profileResult)
 }
 
-export async function getLatestKnowledgePath(accountId) {
-  return getLatestAccountKnowledgePath(accountId)
+export function getLatestKnowledgePath() {
+  return readStore().knowledgePathResult
 }
 
-export async function saveKnowledgePathResult(result, accountContext) {
-  return saveAccountKnowledgePath(result, accountContext)
+export function saveKnowledgePathResult(result) {
+  const store = readStore()
+  store.knowledgePathResult = result
+  writeStore(store)
 }
 
 export function getChatHistory() {
@@ -148,7 +145,7 @@ export function saveTutoringHistoryEntry({ question, answer, mode, scenario, mul
   writeStore(store)
 }
 
-const CHAT_SYSTEM_PROMPT = `你是 EduMind 个性化学习智能体系统的 AI 学习导师。你的职责是：
+const CHAT_SYSTEM_PROMPT = `你是智学星枢个性化学习智能体系统的 AI 学习导师。你的职责是：
 
 1. 理解学生的学习问题，提供清晰、耐心的解答
 2. 根据学生的水平调整讲解的深度和方式

@@ -892,7 +892,7 @@ export function getAllLearningResources(): Resource[] {
             date: '2026-06-25',
             views: 100 + Math.floor(Math.random() * 900),
             starred: false,
-            author: 'EduMind 教研组',
+    author: '智学星枢教研组',
             estimatedTime: res.type === 'code' ? '30分钟' : res.type === 'exercise' ? '20分钟' : '15分钟',
             contentMarkdown: slides.map((s, i) => `## 第${i + 1}页：${s.title}\n\n${s.content}`).join('\n\n---\n\n'),
             slides,

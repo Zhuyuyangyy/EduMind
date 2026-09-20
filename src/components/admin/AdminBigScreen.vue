@@ -82,7 +82,7 @@ const avgTraceConfidence = evidenceResults.length
   ? Math.round(evidenceResults.reduce((sum, result) => sum + (result.confidence ?? 0), 0) / evidenceResults.length * 1000) / 10
   : 0
 const projectMetrics = {
-  agentTotal: 12,
+  agentTotal: 7,
   moduleTotal: 6,
   collaborationEvents: 40,
   resources: resources.length,
@@ -168,7 +168,7 @@ const centerKpis: Array<{ label: string; anim: ComputedRef<string>; tone: string
 
 /* ---------- 左 1：平台运行监控（环形仪表） ---------- */
 const gauges = [
-  { label: '智能体覆盖', value: String(projectMetrics.agentTotal), sub: '/12', note: 'server/collaboration-data', pct: 100, tone: '#35c7ff' },
+  { label: '智能体覆盖', value: String(projectMetrics.agentTotal), sub: '/7', note: 'server/collaboration-data', pct: 100, tone: '#35c7ff' },
   { label: '模块闭环', value: String(projectMetrics.moduleTotal), sub: '/6', note: '画像-路径-资源-辅导-评估-反馈', pct: 100, tone: '#7c5cff' },
   { label: '资源推荐', value: String(projectMetrics.recommendedResources), sub: `/${projectMetrics.resources}`, note: 'recommended-resources', pct: Math.round(projectMetrics.recommendedResources / Math.max(projectMetrics.resources, 1) * 100), tone: '#23d18b' },
   { label: '证据链覆盖', value: String(projectMetrics.traces), sub: '条', note: `${projectMetrics.traceAgents} 类智能体`, pct: 100, tone: '#ffb648' },
@@ -179,7 +179,7 @@ const trendTabs = ['近 1 小时', '近 24 小时', '近 7 天']
 const trendTab = ref(1)
 const trendSets = [
   {
-    total: [2, 3, 4, 5, 6, 6, 7, 8, 9, 10, 11, 12],
+    total: [1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7],
     rate: [58, 63, 66, 71, 74, 79, 82, 86, 89, 93, 96, 100],
     ticks: ['-60m', '-50m', '-40m', '-30m', '-20m', '-10m'],
   },
@@ -225,7 +225,7 @@ const nodeTabs = ['智能体链路', '内容资产', '证据记录', '学习路�
 const nodeTab = ref(0)
 const nodeSets = [
   [
-    { name: 'ProfileAgent', status: '在线', cpu: '画像', mem: '24维', load: '0.92', up: '证据链', tone: 'ok' },
+    { name: 'ProfileAgent', status: '在线', cpu: '画像', mem: '六维', load: '0.92', up: '证据链', tone: 'ok' },
     { name: 'ResourceAgent', status: '在线', cpu: '资源', mem: `${projectMetrics.resources}`, load: '0.87', up: '生成', tone: 'ok' },
     { name: 'TutorAgent', status: '在线', cpu: '辅导', mem: 'QA', load: '0.90', up: '对话', tone: 'ok' },
     { name: 'EvaluationAgent', status: '关注', cpu: '评估', mem: `${projectMetrics.weaknessCount}弱项`, load: '0.88', up: '补弱', tone: 'warn' },
@@ -831,7 +831,7 @@ onBeforeUnmount(() => {
     <Transition name="boot">
       <div v-if="booting" class="boot-overlay" aria-hidden="true">
         <div class="boot-box">
-          <strong>EDUMIND · 多智能体监控中心</strong>
+          <strong>智学星枢 · 多智能体监控中心</strong>
           <small>SYSTEM INITIALIZING</small>
           <div class="boot-bar"><i :style="{ width: `${bootPct}%` }" /></div>
           <em>{{ Math.round(bootPct) }}%</em>

@@ -662,7 +662,7 @@ const handlePostForum = () => {
   forumPosts.value = [
     {
       id: Date.now(),
-      author: '我（EduMind）',
+          author: '我（智学星枢）',
       avatar: '🦊',
       content: newForumInput.value.trim(),
       replies: 0,

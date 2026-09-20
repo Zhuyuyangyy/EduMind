@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { setAuthSession } from '@/lib/auth'
+import { loginDemoAccount } from '@/lib/api'
 
 type LoginRole = 'student' | 'admin'
 
@@ -26,8 +27,8 @@ const roleConfigs = {
     placeholderAccount: '请输入学号/账号',
     placeholderPassword: '请输入密码',
     buttonText: '进入学习平台',
-    defaultAccount: 'student',
-    defaultPassword: 'student123',
+    defaultAccount: 'reviewer',
+    defaultPassword: 'Zhixue2026!',
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
       <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
       <path d="M6 12v5c3 3 9 3 12 0v-5"/>
@@ -39,8 +40,8 @@ const roleConfigs = {
     placeholderAccount: '请输入管理员账号',
     placeholderPassword: '请输入密码',
     buttonText: '进入管理后台',
-    defaultAccount: 'admin',
-    defaultPassword: 'admin123',
+    defaultAccount: '',
+    defaultPassword: '',
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
       <path d="m9 12 2 2 4-4"/>
@@ -58,33 +59,27 @@ function switchRole(role: LoginRole) {
   password.value = roleConfigs[role].defaultPassword
 }
 
-function handleSubmit() {
+async function handleSubmit() {
   if (!account.value || !password.value) {
     alert('请输入账号密码')
     return
   }
 
   loading.value = true
-  setTimeout(() => {
+  try {
+    const result = await loginDemoAccount(account.value, password.value, activeRole.value)
+    setAuthSession({
+      role: result.role,
+      name: result.displayName,
+      account: result.account,
+      loginAt: new Date().toISOString(),
+    })
+    await router.push(result.role === 'admin' ? '/admin' : '/home')
+  } catch (error) {
+    alert(error instanceof Error ? error.message : '账号或密码错误')
+  } finally {
     loading.value = false
-    if (activeRole.value === 'admin') {
-      setAuthSession({
-        role: 'admin',
-        name: '管理员',
-        account: account.value || 'admin',
-        loginAt: new Date().toISOString(),
-      })
-      router.push('/admin')
-    } else {
-      setAuthSession({
-        role: 'student',
-        name: '学习者',
-        account: account.value || 'student',
-        loginAt: new Date().toISOString(),
-      })
-      router.push('/home')
-    }
-  }, 900)
+  }
 }
 
 function handleRegister() {
@@ -106,7 +101,7 @@ function handleRegister() {
 </script>
 
 <template>
-  <aside class="login-panel" aria-label="EduMind 登录">
+    <aside class="login-panel" aria-label="智学星枢登录">
     <div class="panel-border-glow" aria-hidden="true"></div>
     <div class="panel-scan-line" aria-hidden="true"></div>
 
@@ -130,8 +125,8 @@ function handleRegister() {
           </svg>
         </div>
         <div class="brand-texts">
-          <span class="brand-cn">智学云</span>
-          <span class="brand-en">SMART LEARN</span>
+          <span class="brand-cn">智学星枢</span>
+          <span class="brand-en">ZHIXUE XINGSHU</span>
         </div>
         <span class="brand-divider" />
         <span class="ai-badge">
@@ -167,7 +162,7 @@ function handleRegister() {
 
     <header class="panel-header">
       <h1 class="panel-title">多智能体智慧学习平台</h1>
-      <p class="panel-subtitle">—— Software Cup · 智能教育赛道 ——</p>
+        <p class="panel-subtitle">—— 自适应学习路径决策与伴学 ——</p>
     </header>
 
     <form v-if="!showRegister" class="login-form" @submit.prevent="handleSubmit">
@@ -348,9 +343,9 @@ function handleRegister() {
 
     <footer class="panel-stats">
       <div class="stat-block">
-        <span class="stat-num">1,000,000+</span>
+        <span class="stat-num">可追溯</span>
         <span class="stat-desc">学习数据</span>
-        <span class="stat-sub">累计学习行为分析</span>
+        <span class="stat-sub">以真实运行记录为准</span>
       </div>
       <div class="stat-divider"></div>
       <div class="stat-block">
@@ -360,9 +355,9 @@ function handleRegister() {
       </div>
       <div class="stat-divider"></div>
       <div class="stat-block">
-        <span class="stat-num accent-emerald">99.9%</span>
-        <span class="stat-desc">系统可用性</span>
-        <span class="stat-sub">稳定可靠的平台服务</span>
+        <span class="stat-num accent-emerald">可验证</span>
+        <span class="stat-desc">运行状态</span>
+        <span class="stat-sub">不展示无监测依据的指标</span>
       </div>
     </footer>
   </aside>

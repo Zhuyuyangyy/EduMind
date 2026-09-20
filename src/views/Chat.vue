@@ -465,7 +465,7 @@ onMounted(() => {
               </div>
             </div>
             <div class="message-body">
-              <div class="message-sender">{{ msg.role === 'assistant' ? 'EduMind 助手' : '你' }}</div>
+              <div class="message-sender">{{ msg.role === 'assistant' ? '智学星枢助手' : '你' }}</div>
               <div v-if="msg.multimodalContents && msg.multimodalContents.length > 0" class="multimodal-container">
                 <div v-for="(content, index) in msg.multimodalContents" :key="index">
                   <img v-if="content.type === 'image'" :src="content.imageData" class="message-image" />
@@ -513,7 +513,7 @@ onMounted(() => {
               <div class="avatar-content">AI</div>
             </div>
             <div class="message-body">
-              <div class="message-sender">EduMind 助手</div>
+              <div class="message-sender">智学星枢助手</div>
               <div class="message-content" v-html="formatContent(streamContent || '正在分析中...')" />
               <div class="typing-indicator">
                 <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />

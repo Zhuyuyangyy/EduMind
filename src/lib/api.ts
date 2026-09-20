@@ -13,7 +13,9 @@ import type {
   AgentTrace,
   LearningWorkflowResponse,
   GeneratedResource,
+  GeneratedResourceItem,
   EvidenceTrace,
+  TraceRecord,
   EvidenceSummary,
   ResourceGenerateRequest,
   ResourceGenerateResponse,
@@ -26,16 +28,40 @@ import type {
   FullRunResponse,
   KnowledgeContextResponse,
   KnowledgeStatusResponse,
-  RetrievalMetricsResponse,
-  ReviewGenerateRequest,
-  ReviewGenerateResponse,
-  ReviewMistakesResponse,
-  ReviewSubmitRequest,
-  ReviewSubmitResponse,
 } from '@/types/api'
 import type { ProfileResult } from '@/composables/useProfileSurvey'
 import { useAppStore } from '@/store'
 import { getAuthSession } from '@/lib/auth'
+
+function currentAccountId() {
+  return getAuthSession()?.account || 'default'
+}
+
+export interface AccountSettings {
+  accountId: string
+  displayName: string
+  updatedAt?: string
+}
+
+export async function loginDemoAccount(account: string, password: string, role: 'student' | 'admin') {
+  return requestJson<{ account: string; displayName: string; role: 'student' | 'admin' }>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ account, password, role }),
+  })
+}
+
+export async function fetchAccountSettings(accountId = currentAccountId()) {
+  const data = await requestJson<{ result: AccountSettings | null }>(`/api/account/settings?accountId=${encodeURIComponent(accountId)}`)
+  return data.result
+}
+
+export async function saveAccountSettings(displayName: string) {
+  const data = await requestJson<{ result: AccountSettings }>('/api/account/settings', {
+    method: 'POST',
+    body: JSON.stringify({ accountId: currentAccountId(), displayName }),
+  })
+  return data.result
+}
 
 async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
   const appStore = useAppStore()
@@ -57,19 +83,12 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
   let aiRequestSettled = false
 
   try {
-    const headers = new Headers(init?.headers)
-    headers.set('Content-Type', 'application/json')
-
-    const session = getAuthSession()
-    if (session) {
-      headers.set('X-Edumind-Account', session.account)
-      headers.set('X-Edumind-Role', session.role)
-      headers.set('X-Edumind-Name', session.name)
-    }
-
     const response = await fetch(input, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers || {}),
+      },
       ...init,
-      headers,
     })
 
     if (!response.ok) {
@@ -99,19 +118,19 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
 export function analyzeProfile(payload: ProfileAnalyzeRequest) {
   return requestJson<ProfileAnalyzeResponse>('/api/profile/analyze', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, accountId: currentAccountId() }),
   })
 }
 
 export async function fetchLatestProfile() {
-  const data = await requestJson<LatestProfileResponse>('/api/profile/latest')
+  const data = await requestJson<LatestProfileResponse>(`/api/profile/latest?accountId=${encodeURIComponent(currentAccountId())}`)
   return data.result
 }
 
 export function saveProfile(report: { score: number; radarPoints: { dimension: string; score: number }[]; weaknesses: string[]; suggestions: string[] } | ProfileResult) {
   return requestJson<any>('/api/profile/save', {
     method: 'POST',
-    body: JSON.stringify(report),
+    body: JSON.stringify({ ...report, accountId: currentAccountId() }),
   })
 }
 
@@ -177,7 +196,7 @@ export function fetchAgentWorkflow() {
 }
 
 export function generateResources(topic?: string, resourceType?: string) {
-  return requestJson<{ items: GeneratedResource[] }>('/api/resources/generate', {
+  return requestJson<{ resources: GeneratedResourceItem[] }>('/api/resources/generate', {
     method: 'POST',
     body: JSON.stringify({
       topic: topic || '综合学习',
@@ -207,7 +226,7 @@ export function fetchEvidenceSummary() {
 export function agentProfileAnalyze(payload: unknown) {
   return requestJson<{ profile: ProfileAnalyzeResponse; agentResults: unknown[]; trace: unknown }>('/api/agents/profile', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...(payload as Record<string, unknown>), accountId: currentAccountId() }),
   })
 }
 
@@ -222,10 +241,28 @@ export function agentPathReplan(payload: { profile?: unknown; evaluation?: unkno
   })
 }
 
-export function agentTutoring(payload: { question: string; mode: string; profile?: unknown; resources?: unknown[] }) {
+export function agentTutoring(payload: { question: string; mode: string; profile?: unknown; resources?: unknown[]; hintLevel?: number; attempts?: number }) {
   return requestJson<TutorAgentResponse>('/api/agents/tutor', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, accountId: currentAccountId() }),
+  })
+}
+
+export function submitLearningCycleUpdate(payload: {
+  profile: unknown
+  currentPath?: unknown
+  learningData?: unknown
+  exerciseResults?: unknown
+}) {
+  return requestJson<{
+    workflowId: string
+    profileChanges: Array<{ dimension: string; before: number; after: number; reason: string }>
+    path: { replanReason?: string; phases?: unknown[] }
+    reflection: { reflection?: string; nextSteps?: string[] }
+    trace: TraceRecord
+  }>('/api/learning-cycles/update', {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, accountId: currentAccountId() }),
   })
 }
 
@@ -240,34 +277,11 @@ export function fetchKnowledgeStatus() {
   return requestJson<KnowledgeStatusResponse>('/api/knowledge/status')
 }
 
-export function fetchRetrievalMetrics() {
-  return requestJson<RetrievalMetricsResponse>('/api/knowledge/metrics')
-}
-
-export function searchKnowledge(payload: { query?: string; profile?: unknown; learningData?: unknown; exerciseResults?: unknown; limit?: number; domain?: string; type?: string; agentName?: string; weights?: { vector: number; tag: number; keyword: number } }) {
+export function searchKnowledge(payload: { query?: string; profile?: unknown; learningData?: unknown; exerciseResults?: unknown; limit?: number }) {
   return requestJson<KnowledgeContextResponse>('/api/knowledge/search', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
-}
-
-export function generateReviewQuestions(payload: ReviewGenerateRequest = {}) {
-  return requestJson<ReviewGenerateResponse>('/api/review/generate', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
-export function submitReviewAnswers(payload: ReviewSubmitRequest) {
-  return requestJson<ReviewSubmitResponse>('/api/review/submit', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function fetchReviewMistakes(limit = 50) {
-  const data = await requestJson<ReviewMistakesResponse>(`/api/review/mistakes?limit=${encodeURIComponent(String(limit))}`)
-  return data.items
 }
 
 export function agentFullRun(payload: FullRunRequest) {

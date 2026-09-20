@@ -31,6 +31,8 @@ let dpr = 1
 const particles: Particle[] = []
 const maxParticles = 80
 const bgImage = new Image()
+bgImage.fetchPriority = 'high'
+bgImage.decoding = 'sync'
 bgImage.src = '/login.png'
 
 function resizeCanvas() {

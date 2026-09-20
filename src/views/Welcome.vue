@@ -35,6 +35,11 @@ const hubProgress = computed(() => (
   `${((currentHubStep.value + 1) / hubStages.length) * 100}%`
 ))
 
+const showAgentHub = ref(false)
+onMounted(() => {
+  window.setTimeout(() => { showAgentHub.value = true }, 1800)
+})
+
 function handleAgentHubBeat(event: MessageEvent) {
   if (event.data?.type !== 'agenthub:beat') return
   const nextStage = hubStages.find(stage => stage.visualId === event.data.id)
@@ -73,12 +78,12 @@ onBeforeUnmount(() => {
     <section class="hub-workbench home-breathe-surface home-breathe-hub">
       <aside class="hub-context-card" :style="{ '--stage-color': currentHubStage.color }">
         <div class="hub-context-topline">
-          <span class="hub-context-kicker">6 MODULES · 12 AGENTS</span>
+          <span class="hub-context-kicker">6 MODULES · 7 CORE AGENTS</span>
           <span class="hub-live-pill"><i /> LIVE HANDOFF</span>
         </div>
         <h2>六个模块如何协同</h2>
         <p class="hub-context-summary">
-          一次学习卡顿会被 12 个智能体拆解：诊断画像、规划路径、生产资源、实时辅导、测评归因，最后写回反馈形成闭环。
+          一次学习卡顿由 7 个核心智能体协同处理：诊断画像、规划路径、生成资源、脚手架辅导、测评归因，最后写回反馈形成闭环。
         </p>
 
         <div class="hub-current-strip" aria-live="polite">
@@ -126,7 +131,7 @@ onBeforeUnmount(() => {
       </aside>
 
       <div class="hub-workbench-main">
-        <AgentHub class="home-breathe-surface home-breathe-agenthub" :control-beat-id="controlBeatId" :control-nonce="controlNonce" />
+        <AgentHub v-if="showAgentHub" class="home-breathe-surface home-breathe-agenthub" :control-beat-id="controlBeatId" :control-nonce="controlNonce" />
         <TrainFlow class="home-breathe-surface home-breathe-trainflow" embedded-stage-only :active-beat-id="currentHubStage.visualId" />
       </div>
     </section>

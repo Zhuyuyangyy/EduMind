@@ -11,14 +11,21 @@ export function getLlmConfig() {
 }
 
 export async function callLlm(systemPrompt, userPrompt, options = {}) {
-  const { temperature = 0.7, maxTokens = 2048 } = options
+  const { temperature = 0.7, maxTokens = 2048, jsonMode = false } = options
+  const timeoutMs = Math.max(100, Number(process.env.LLM_TIMEOUT_MS || 30000))
 
   if (!isLlmAvailable()) {
     return { content: null, fallbackUsed: true, error: null }
   }
 
-  try {
-    const response = await fetch(LLM_API_URL, {
+  // A single transient connection failure should not make a complete learning
+  // workflow look like it was generated locally. Retry only transport/5xx
+  // failures once; 4xx errors are configuration or request errors and should
+  // be surfaced immediately.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(LLM_API_URL, {
+      signal: AbortSignal.timeout(timeoutMs),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -32,28 +39,59 @@ export async function callLlm(systemPrompt, userPrompt, options = {}) {
         ],
         temperature,
         max_tokens: maxTokens,
+        ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
       }),
-    })
+      })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      return { content: null, fallbackUsed: true, error: `LLM API error ${response.status}: ${errorText}` }
+      if (!response.ok) {
+        const errorText = await response.text()
+        if (response.status >= 500 && attempt === 0) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+          continue
+        }
+        return { content: null, fallbackUsed: true, error: `LLM API error ${response.status}: ${errorText}` }
+      }
+
+      const data = await response.json()
+      const content = data?.choices?.[0]?.message?.content || data?.data?.text || data?.text || data?.answer || null
+      return { content, fallbackUsed: false, error: null }
+    } catch (error) {
+      if (attempt === 0) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        continue
+      }
+      const causeCode = error?.cause?.code ? ` (${error.cause.code})` : ''
+      return { content: null, fallbackUsed: true, error: `${error.message || 'LLM request failed'}${causeCode}` }
     }
-
-    const data = await response.json()
-    const content = data?.choices?.[0]?.message?.content || data?.data?.text || data?.text || data?.answer || null
-    return { content, fallbackUsed: false, error: null }
-  } catch (error) {
-    return { content: null, fallbackUsed: true, error: error.message }
   }
+
+  return { content: null, fallbackUsed: true, error: 'LLM request failed after retry' }
 }
 
 export function safeParseJson(text) {
   if (!text) return null
+  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
   try {
-    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     return JSON.parse(cleaned)
   } catch {
+    const firstObject = cleaned.indexOf('{')
+    const lastObject = cleaned.lastIndexOf('}')
+    if (firstObject >= 0 && lastObject > firstObject) {
+      try {
+        return JSON.parse(cleaned.slice(firstObject, lastObject + 1))
+      } catch {
+        // Continue with array extraction below.
+      }
+    }
+    const firstArray = cleaned.indexOf('[')
+    const lastArray = cleaned.lastIndexOf(']')
+    if (firstArray >= 0 && lastArray > firstArray) {
+      try {
+        return JSON.parse(cleaned.slice(firstArray, lastArray + 1))
+      } catch {
+        return null
+      }
+    }
     return null
   }
 }
@@ -75,7 +113,7 @@ export async function generateStructuredJson({ systemPrompt, userPrompt, schema,
   }
 
   try {
-    const result = await callLlm(systemPrompt, userPrompt)
+    const result = await callLlm(systemPrompt, userPrompt, { jsonMode: true })
     const rawText = result.content || ''
 
     if (result.fallbackUsed || result.error) {

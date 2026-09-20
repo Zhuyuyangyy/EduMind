@@ -1031,27 +1031,27 @@ html.dark #edu-mind-app #main-header {
 }
 
 /* Cards & containers - default border */
-#edu-mind-app .border-\[#e8e8e8\] {
+#edu-mind-app .border-\[\#e8e8e8\] {
   border-color: var(--edu-border-default) !important;
 }
-html.dark #edu-mind-app .border-\[#e8e8e8\] {
+html.dark #edu-mind-app .border-\[\#e8e8e8\] {
   border-color: var(--edu-border-dark) !important;
 }
-#edu-mind-app .border-\[#bfbfbf\],
-#edu-mind-app .border-\[#cbd5e1\],
-#edu-mind-app .border-\[#d5dae6\] {
+#edu-mind-app .border-\[\#bfbfbf\],
+#edu-mind-app .border-\[\#cbd5e1\],
+#edu-mind-app .border-\[\#d5dae6\] {
   border-color: var(--edu-border-default) !important;
 }
 
 /* Dividers & separators */
-#edu-mind-app .border-\[#f0f0f0\],
-#edu-mind-app .border-\[#f1f1f5\],
-#edu-mind-app .border-\[#fafafa\] {
+#edu-mind-app .border-\[\#f0f0f0\],
+#edu-mind-app .border-\[\#f1f1f5\],
+#edu-mind-app .border-\[\#fafafa\] {
   border-color: var(--edu-border-subtle) !important;
 }
-html.dark #edu-mind-app .border-\[#f0f0f0\],
-html.dark #edu-mind-app .border-\[#f1f1f5\],
-html.dark #edu-mind-app .border-\[#fafafa\] {
+html.dark #edu-mind-app .border-\[\#f0f0f0\],
+html.dark #edu-mind-app .border-\[\#f1f1f5\],
+html.dark #edu-mind-app .border-\[\#fafafa\] {
   border-color: var(--edu-border-dark-subtle) !important;
 }
 
@@ -1072,7 +1072,7 @@ html.dark #edu-mind-app .border-slate-800 {
 }
 
 /* Hover borders */
-#edu-mind-app .hover\:border-\[#bfbfbf\]:hover {
+#edu-mind-app .hover\:border-\[\#bfbfbf\]:hover {
   border-color: var(--edu-border-hover) !important;
 }
 html.dark #edu-mind-app .hover\:border-gray-300:hover,
@@ -1145,9 +1145,9 @@ html.dark #edu-mind-app .dark\:hover\:border-slate-600:hover {
 }
 
 /* All dark: bg overrides */
-html.dark #edu-mind-app .dark\:bg-\[#0f172a\],
+html.dark #edu-mind-app .dark\:bg-\[\#0f172a\],
 html.dark #edu-mind-app .dark\:bg-\[\#0f172a\] { background-color: transparent !important; }
-html.dark #edu-mind-app .dark\:bg-\[#1e293b\],
+html.dark #edu-mind-app .dark\:bg-\[\#1e293b\],
 html.dark #edu-mind-app .dark\:bg-\[\#1e293b\] { background-color: var(--edu-bg-card) !important; backdrop-filter: blur(3px) saturate(1.05); -webkit-backdrop-filter: blur(3px) saturate(1.05); }
 html.dark #edu-mind-app .dark\:bg-slate-800 { background-color: var(--edu-bg-inset) !important; backdrop-filter: blur(3px) saturate(1.05); -webkit-backdrop-filter: blur(3px) saturate(1.05); }
 html.dark #edu-mind-app .dark\:bg-slate-700 { background-color: var(--edu-bg-elevated) !important; backdrop-filter: blur(3px) saturate(1.05); -webkit-backdrop-filter: blur(3px) saturate(1.05); }
@@ -1163,11 +1163,11 @@ html.dark #edu-mind-app .bg-white { background-color: var(--edu-bg-card) !import
 html.dark #edu-mind-app .bg-slate-50 { background-color: var(--edu-bg-inset) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 html.dark #edu-mind-app .bg-slate-100 { background-color: var(--edu-bg-elevated) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 html.dark #edu-mind-app .bg-gray-50 { background-color: var(--edu-bg-inset) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-html.dark #edu-mind-app .bg-\[#f0f4ff\] { background-color: var(--edu-accent-soft) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-html.dark #edu-mind-app .bg-\[#f9fafb\] { background-color: var(--edu-bg-inset) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-html.dark #edu-mind-app .bg-\[#f5f7fa\] { background-color: var(--edu-bg-inset) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-html.dark #edu-mind-app .bg-\[#f0f2f5\] { background-color: var(--edu-bg-inset) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-html.dark #edu-mind-app .bg-\[#fafbff\] { background-color: var(--edu-bg-card) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.dark #edu-mind-app .bg-\[\#f0f4ff\] { background-color: var(--edu-accent-soft) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.dark #edu-mind-app .bg-\[\#f9fafb\] { background-color: var(--edu-bg-inset) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.dark #edu-mind-app .bg-\[\#f5f7fa\] { background-color: var(--edu-bg-inset) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.dark #edu-mind-app .bg-\[\#f0f2f5\] { background-color: var(--edu-bg-inset) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.dark #edu-mind-app .bg-\[\#fafbff\] { background-color: var(--edu-bg-card) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 html.dark #edu-mind-app .bg-red-50 { background-color: rgba(120, 28, 28, 0.06) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 html.dark #edu-mind-app .bg-green-50 { background-color: rgba(6, 78, 59, 0.06) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 html.dark #edu-mind-app .bg-orange-50 { background-color: rgba(120, 53, 15, 0.06) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
@@ -1177,48 +1177,48 @@ html.dark #edu-mind-app .bg-slate-50\/90 { background-color: rgba(12, 10, 20, 0.
 html.dark #edu-mind-app [class*="bg-white/"] { background-color: var(--edu-bg-card) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 
 /* Accent */
-html.dark #edu-mind-app .bg-\[#4a6cf7\] { background-color: rgba(59, 130, 246, 0.35) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-html.dark #edu-mind-app .dark\:bg-\[#4a6cf7\]\/15 { background-color: rgba(59, 130, 246, 0.05) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-html.dark #edu-mind-app .dark\:bg-\[#4a6cf7\]\/20 { background-color: rgba(59, 130, 246, 0.06) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-html.dark #edu-mind-app .dark\:bg-\[#4a6cf7\]\/5 { background-color: rgba(59, 130, 246, 0.02) !important; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
-html.dark #edu-mind-app .dark\:bg-\[#4a6cf7\]\/10 { background-color: rgba(59, 130, 246, 0.04) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-html.dark #edu-mind-app .from-\[#4a6cf7\] { --tw-gradient-from: rgba(59, 130, 246, 0.5) !important; }
-html.dark #edu-mind-app .to-\[#6a8cff\] { --tw-gradient-to: rgba(96, 165, 250, 0.5) !important; }
-html.dark #edu-mind-app .hover\:bg-\[#4a6cf7\]:hover { background-color: rgba(59, 130, 246, 0.12) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-html.dark #edu-mind-app .hover\:bg-\[#3555db\]:hover { background-color: rgba(29, 78, 216, 0.35) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.dark #edu-mind-app .bg-\[\#4a6cf7\] { background-color: rgba(59, 130, 246, 0.35) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.dark #edu-mind-app .dark\:bg-\[\#4a6cf7\]\/15 { background-color: rgba(59, 130, 246, 0.05) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.dark #edu-mind-app .dark\:bg-\[\#4a6cf7\]\/20 { background-color: rgba(59, 130, 246, 0.06) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.dark #edu-mind-app .dark\:bg-\[\#4a6cf7\]\/5 { background-color: rgba(59, 130, 246, 0.02) !important; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+html.dark #edu-mind-app .dark\:bg-\[\#4a6cf7\]\/10 { background-color: rgba(59, 130, 246, 0.04) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.dark #edu-mind-app .from-\[\#4a6cf7\] { --tw-gradient-from: rgba(59, 130, 246, 0.5) !important; }
+html.dark #edu-mind-app .to-\[\#6a8cff\] { --tw-gradient-to: rgba(96, 165, 250, 0.5) !important; }
+html.dark #edu-mind-app .hover\:bg-\[\#4a6cf7\]:hover { background-color: rgba(59, 130, 246, 0.12) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.dark #edu-mind-app .hover\:bg-\[\#3555db\]:hover { background-color: rgba(29, 78, 216, 0.35) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 
 /* Text */
 html.dark #edu-mind-app .text-accent { color: var(--edu-accent) !important; }
-html.dark #edu-mind-app .text-\[#4a6cf7\] { color: var(--edu-accent) !important; }
-html.dark #edu-mind-app .dark\:text-\[#6a8cff\] { color: #60a5fa !important; }
+html.dark #edu-mind-app .text-\[\#4a6cf7\] { color: var(--edu-accent) !important; }
+html.dark #edu-mind-app .dark\:text-\[\#6a8cff\] { color: #60a5fa !important; }
 html.dark #edu-mind-app .dark\:text-white { color: var(--edu-text-main) !important; }
 html.dark #edu-mind-app .dark\:text-slate-200 { color: #a5b4d8 !important; }
 html.dark #edu-mind-app .dark\:text-slate-300 { color: #a5b4d8 !important; }
 html.dark #edu-mind-app .dark\:text-slate-400 { color: var(--edu-text-muted) !important; }
 html.dark #edu-mind-app .dark\:text-slate-500 { color: var(--edu-text-dim) !important; }
-html.dark #edu-mind-app .hover\:text-\[#4a6cf7\]:hover { color: var(--edu-accent) !important; }
+html.dark #edu-mind-app .hover\:text-\[\#4a6cf7\]:hover { color: var(--edu-accent) !important; }
 html.dark #edu-mind-app .hover\:text-accent:hover { color: var(--edu-accent) !important; }
 html.dark #edu-mind-app .group:hover .group-hover\:text-accent { color: var(--edu-accent) !important; }
-html.dark #edu-mind-app .dark\:hover\:text-\[#6a8cff\]:hover { color: #60a5fa !important; }
-html.dark #edu-mind-app .dark\:group-hover\:text-\[#6a8cff\] { color: #60a5fa !important; }
+html.dark #edu-mind-app .dark\:hover\:text-\[\#6a8cff\]:hover { color: #60a5fa !important; }
+html.dark #edu-mind-app .dark\:group-hover\:text-\[\#6a8cff\] { color: #60a5fa !important; }
 
 /* Border */
 html.dark #edu-mind-app .dark\:border-slate-700 { border-color: rgba(100, 140, 220, 0.12) !important; }
 html.dark #edu-mind-app .dark\:border-slate-700\/60 { border-color: rgba(80, 120, 200, 0.08) !important; }
 html.dark #edu-mind-app .dark\:border-slate-600 { border-color: rgba(100, 140, 220, 0.1) !important; }
 html.dark #edu-mind-app .dark\:border-slate-800 { border-color: rgba(80, 120, 200, 0.06) !important; }
-html.dark #edu-mind-app .dark\:border-\[#6a8cff\]\/20 { border-color: rgba(100, 140, 220, 0.12) !important; }
-html.dark #edu-mind-app .dark\:border-\[#6a8cff\]\/40 { border-color: rgba(100, 140, 220, 0.18) !important; }
-html.dark #edu-mind-app .dark\:border-\[#4a6cf7\]\/30 { border-color: rgba(100, 140, 220, 0.15) !important; }
+html.dark #edu-mind-app .dark\:border-\[\#6a8cff\]\/20 { border-color: rgba(100, 140, 220, 0.12) !important; }
+html.dark #edu-mind-app .dark\:border-\[\#6a8cff\]\/40 { border-color: rgba(100, 140, 220, 0.18) !important; }
+html.dark #edu-mind-app .dark\:border-\[\#4a6cf7\]\/30 { border-color: rgba(100, 140, 220, 0.15) !important; }
 html.dark #edu-mind-app .hover\:border-\[\#4a6cf7\]\/30:hover { border-color: rgba(100, 140, 220, 0.2) !important; }
 
 /* Hover */
 html.dark #edu-mind-app .dark\:hover\:bg-slate-700:hover { background-color: rgba(22, 18, 32, 0.5) !important; }
 html.dark #edu-mind-app .dark\:hover\:bg-slate-800\/80:hover { background-color: rgba(17, 14, 26, 0.8) !important; }
 html.dark #edu-mind-app .dark\:hover\:border-slate-600:hover { border-color: rgba(59, 130, 246, 0.2) !important; }
-html.dark #edu-mind-app .dark\:focus\:border-\[#6a8cff\]:focus { border-color: #3b82f6 !important; }
-html.dark #edu-mind-app .focus\:border-\[#4a6cf7\]:focus { border-color: #3b82f6 !important; }
-html.dark #edu-mind-app .focus\:ring-\[#4a6cf7\]\/10 { --tw-ring-color: rgba(59, 130, 246, 0.1) !important; }
+html.dark #edu-mind-app .dark\:focus\:border-\[\#6a8cff\]:focus { border-color: #3b82f6 !important; }
+html.dark #edu-mind-app .focus\:border-\[\#4a6cf7\]:focus { border-color: #3b82f6 !important; }
+html.dark #edu-mind-app .focus\:ring-\[\#4a6cf7\]\/10 { --tw-ring-color: rgba(59, 130, 246, 0.1) !important; }
 
 /* Sidebar & header */
 html.dark #edu-mind-app #app-sidebar { background-color: rgba(10, 8, 18, 0.22) !important; border-right-color: rgba(80, 120, 200, 0.05) !important; backdrop-filter: blur(5px) saturate(1.1); -webkit-backdrop-filter: blur(5px) saturate(1.1); }

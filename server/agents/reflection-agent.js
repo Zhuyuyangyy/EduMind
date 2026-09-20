@@ -1,37 +1,20 @@
 import { callLlm, safeParseJson } from '../llm/provider.js'
 import { createAgentResult, AGENT_NAMES } from '../schemas.js'
-import { retrieveKnowledgeContext, buildKnowledgeEvidence, summarizeKnowledgeForPrompt } from '../knowledge-base/retrieval.js'
 
 const SYSTEM_PROMPT = `你是一个学习反思与反馈专家。根据用户的学习历程、评估结果和画像变化，生成反思总结和下一步建议。
 请以 JSON 格式返回，包含：reflection(反思总结)、achievements(成就列表)、nextSteps(下一步建议)、riskAssessment(风险评估)。`
 
-export async function runReflectionAgent({ profile, evaluation, learningHistory, knowledgeContext }) {
+export async function runReflectionAgent({ profile, evaluation, learningHistory }) {
   const start = Date.now()
   const input = { profile, evaluation }
-
-  const queryText = [
-    evaluation?.suggestions?.join(' ') || '',
-    profile?.totalScore ? `score ${profile.totalScore}` : '',
-    Array.isArray(profile?.weaknesses) ? profile.weaknesses.map(w => w?.tag || w?.label || '').join(' ') : '',
-  ].filter(Boolean).join(' ')
-
-  const resolvedKb = knowledgeContext || retrieveKnowledgeContext({
-    agentName: AGENT_NAMES.REFLECTION,
-    query: queryText,
-    profile,
-    domain: 'pedagogy',
-    limit: 3,
-  })
 
   const userPrompt = `用户画像: ${JSON.stringify(profile?.dimensions || [])}
 评估结果: ${JSON.stringify(evaluation?.mastery || [])}
 学习历史: ${JSON.stringify(learningHistory?.slice?.(-5) || [])}
-知识参考:
-${summarizeKnowledgeForPrompt(resolvedKb.matches)}
 
-请生成学习反思与反馈。如果知识参考里有"错因诊断三步法"或"心流调节"，请体现在 reflection 和 riskAssessment 中。`
+请生成学习反思与反馈。`
 
-  const llmResult = await callLlm(SYSTEM_PROMPT, userPrompt)
+  const llmResult = await callLlm(SYSTEM_PROMPT, userPrompt, { jsonMode: true })
   let output
   let fallbackUsed = false
   const evidence = []
@@ -53,24 +36,11 @@ ${summarizeKnowledgeForPrompt(resolvedKb.matches)}
     evidence.push('本地规则 fallback 生成反思反馈')
   }
 
-  evidence.push(...buildKnowledgeEvidence(resolvedKb, { summary: '反思知识库' }))
-
   const durationMs = Date.now() - start
   return createAgentResult({
     agentName: AGENT_NAMES.REFLECTION,
     input,
-    output: {
-      ...output,
-      knowledgeContext: {
-        detectedDomain: resolvedKb.detectedDomain,
-        matches: resolvedKb.matches.map(m => ({
-          id: m.id,
-          title: m.title,
-          score: m.score,
-          agentHint: m.agentHint,
-        })),
-      },
-    },
+    output,
     confidence: fallbackUsed ? 0.6 : 0.82,
     evidence,
     durationMs,

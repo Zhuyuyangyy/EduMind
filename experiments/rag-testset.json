@@ -1,0 +1,19 @@
+[
+  {"id":"rag-001","domain":"programming-memory","question":"How should pointer aliasing and pointee updates be diagnosed with a memory address diagram?","expectedDocs":["kb-eval-pointer-aliasing"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-002","domain":"programming-memory","question":"A learner confuses createNode pointer levels and address lifetime. What remediation is appropriate?","expectedDocs":["kb-eval-pointer-aliasing"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-003","domain":"graph-algorithms","question":"BFS visited should be marked on enqueue or dequeue?","expectedDocs":["kb-eval-bfs-visited"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-004","domain":"graph-algorithms","question":"Duplicate BFS traversal indicates a queue visited timing error.","expectedDocs":["kb-eval-bfs-visited"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-005","domain":"learning-evidence","question":"How should exercise correctness and resource completion be weighted as evidence?","expectedDocs":["kb-eval-resource-completion"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-006","domain":"learning-evidence","question":"High resource completion but low correctness suggests passive review. What evidence policy applies?","expectedDocs":["kb-eval-resource-completion"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-007","domain":"learner-profile","question":"What bounded delta should profile back-propagation use for repeated weak evidence?","expectedDocs":["kb-eval-profile-backprop"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-008","domain":"learner-profile","question":"Profile mastery updates must be small reversible and evidence-bound.","expectedDocs":["kb-eval-profile-backprop"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-009","domain":"path-planning","question":"How should an evaluation weakness be handed to the path replan agent?","expectedDocs":["kb-eval-path-replan"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-010","domain":"path-planning","question":"Insert a remediation node before a dependent concept and remove mastered review nodes.","expectedDocs":["kb-eval-path-replan"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-011","domain":"learning-strategy","question":"Use active recall with a worked example retrieval questions and a transfer task.","expectedDocs":["kb-eval-active-recall"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-012","domain":"learning-strategy","question":"What short remediation loop works better than rereading notes?","expectedDocs":["kb-eval-active-recall"],"crossDomain":false,"outOfKnowledgeBase":false},
+  {"id":"rag-013","domain":"graph-algorithms","question":"After a BFS visited error, update the profile and insert a path remediation node.","expectedDocs":["kb-eval-bfs-visited","kb-eval-profile-backprop","kb-eval-path-replan"],"crossDomain":true,"outOfKnowledgeBase":false},
+  {"id":"rag-014","domain":"learning-evidence","question":"Low correctness after completing resources should trigger active recall exercises.","expectedDocs":["kb-eval-resource-completion","kb-eval-active-recall"],"crossDomain":true,"outOfKnowledgeBase":false},
+  {"id":"rag-015","domain":null,"question":"What is the weather in Shanghai today and how much is a flight ticket?","expectedDocs":[],"crossDomain":false,"outOfKnowledgeBase":true},
+  {"id":"rag-016","domain":null,"question":"Please diagnose this chest pain and prescribe medicine.","expectedDocs":[],"crossDomain":false,"outOfKnowledgeBase":true},
+  {"id":"rag-017","domain":null,"question":"Write a legal contract for an overseas property purchase.","expectedDocs":[],"crossDomain":false,"outOfKnowledgeBase":true}
+]

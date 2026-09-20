@@ -126,7 +126,7 @@ function defaultChains(): Chain[] {
 
 function baseEvents(): EventNode[] {
   return [
-    { id: 'e1', chain: 'profile-module', agent: 'profileCapture', t: 9 * 60 + 12, type: 'PC', label: '采集学习信号', detail: '采集答题、停留时长、偏好和卡顿行为，更新 24 维画像。', value: 'medium' },
+    { id: 'e1', chain: 'profile-module', agent: 'profileCapture', t: 9 * 60 + 12, type: 'PC', label: '采集学习信号', detail: '采集答题、停留时长、偏好和卡顿行为，更新六维核心画像。', value: 'medium' },
     { id: 'e2', chain: 'profile-module', agent: 'profileDiagnosis', t: 9 * 60 + 14, type: 'DG', label: '识别指针薄弱', detail: '二级指针传参题正确率仅 41%，标记为薄弱知识域。', value: 'high' },
     { id: 'e3', chain: 'path-module', agent: 'pathPlan', t: 9 * 60 + 16, type: 'PL', label: '插入补弱节点', detail: '路径规划在课后巩固阶段插入二级指针专项训练。', value: 'medium' },
     { id: 'e4', chain: 'path-module', agent: 'pathReplan', t: 9 * 60 + 21, type: 'RP', label: '动态重排路径', detail: '根据卡顿强度推迟进阶节点，前置偏导和梯度复习。', value: 'high' },
@@ -140,7 +140,7 @@ function baseEvents(): EventNode[] {
     { id: 'e12', chain: 'eval-module', agent: 'evalQuiz', t: 14 * 60 + 20, type: 'QZ', label: '阶段测评 82 分', detail: '评估出题智能体验证指针补弱效果。', value: 'high' },
     { id: 'e13', chain: 'eval-module', agent: 'evalCause', t: 14 * 60 + 27, type: 'CA', label: '错因归类', detail: '将错题拆成概念遗漏、步骤跳跃和迁移困难三类原因。', value: 'medium' },
     { id: 'e14', chain: 'eval-module', agent: 'feedbackWrite', t: 14 * 60 + 35, type: 'WB', label: '提交回写证据', detail: '把测评结论和错因标签交给反馈模块。', value: 'high' },
-    { id: 'e15', chain: 'feedback-module', agent: 'feedbackWrite', t: 15 * 60 + 10, type: 'FB', label: '反向写入画像', detail: '将测评薄弱点反向传播至画像 24 维向量。', value: 'high' },
+    { id: 'e15', chain: 'feedback-module', agent: 'feedbackWrite', t: 15 * 60 + 10, type: 'FB', label: '反向写入画像', detail: '将测评薄弱点反向更新到六维核心画像。', value: 'high' },
     { id: 'e16', chain: 'feedback-module', agent: 'reflection', t: 15 * 60 + 18, type: 'RF', label: '生成成长复盘', detail: '沉淀今日成就、风险和明日行动建议。', value: 'medium' },
     { id: 'e17', chain: 'feedback-module', agent: 'pathReplan', t: 15 * 60 + 32, type: 'RP', label: '触发路径修正', detail: '明日聚焦 4 个反馈盲点，插入思维导图生成节点。', value: 'high' },
     { id: 'e18', chain: 'feedback-module', agent: 'profileCapture', t: 16 * 60 + 3, type: 'NU', label: '画像进入新轮次', detail: '连续学习 5 天，今日还差 14 分钟达标，准备下一轮协同。', value: 'low' },

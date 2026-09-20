@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { computed, onMounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTheme } from '../../composables/useEduMindTheme'
-import { clearAuthSession } from '@/lib/auth'
+import { clearAuthSession, getAuthSession, setAuthSession } from '@/lib/auth'
+import { fetchAccountSettings, saveAccountSettings } from '@/lib/api'
 import {
   User,
   Bell,
@@ -29,15 +30,36 @@ import {
 const activeSection = ref<string>('profile')
 const router = useRouter()
 const { themeMode, isDark, setTheme } = useTheme()
+const authSession = getAuthSession()
+const accountName = authSession?.name || authSession?.account || '学习者'
+const accountId = authSession?.account || 'student'
+const accountRole = computed(() => authSession?.role === 'admin' ? '管理员' : '学习者')
 
 const profileForm = reactive({
-  nickname: '小明同学',
-  email: 'liuhongwei4138@gmail.com',
-  phone: '138****6789',
+  nickname: '学习者',
+  email: 'demo@zhixue.local',
+  phone: '',
   bio: '热爱编程，专注计算机科学与软件工程领域的学习与探索。',
   location: '北京',
-  school: '清华大学',
-  studentId: '2024XXXX'
+  school: '示例大学',
+  studentId: 'DEMO-001'
+})
+
+profileForm.nickname = accountName
+profileForm.email = `${accountId}@edumind.local`
+profileForm.studentId = accountId
+
+onMounted(async () => {
+  if (!authSession) return
+  try {
+    const settings = await fetchAccountSettings(authSession.account)
+    if (settings?.displayName) {
+      profileForm.nickname = settings.displayName
+      setAuthSession({ ...authSession, name: settings.displayName })
+    }
+  } catch {
+    // Keep the current session display name when the API is unavailable.
+  }
 })
 
 const studySettings = reactive({
@@ -75,7 +97,17 @@ const showToast = (msg: string) => {
   toastTimer = setTimeout(() => { toastMsg.value = null }, 2500)
 }
 
-const handleSaveProfile = () => {
+const handleSaveProfile = async () => {
+  if (authSession) {
+    const name = profileForm.nickname.trim() || authSession.account
+    try {
+      const settings = await saveAccountSettings(name)
+      profileForm.nickname = settings.displayName
+      setAuthSession({ ...authSession, name: settings.displayName })
+    } catch {
+      setAuthSession({ ...authSession, name })
+    }
+  }
   showToast('个人资料已保存')
 }
 
@@ -140,7 +172,7 @@ const sections = [
             </div>
             <div class="leading-tight">
               <h3 class="text-[15px] font-bold text-[#1a1a2e] dark:text-white">{{ profileForm.nickname }}</h3>
-              <p class="text-[13px] text-[#8c8c8c] dark:text-slate-500 mt-0.5">Lv.12 · VIP会员</p>
+              <p class="text-[13px] text-[#8c8c8c] dark:text-slate-500 mt-0.5">{{ accountRole }} · {{ accountId }}</p>
             </div>
           </div>
         </div>
@@ -567,7 +599,7 @@ const sections = [
 
         <div v-if="activeSection === 'about'" class="bg-white dark:bg-[#1e293b] rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs p-6">
           <h3 class="text-[16px] font-bold text-[#1e293b] dark:text-white mb-1">关于平台</h3>
-          <p class="text-[13px] text-slate-400 dark:text-slate-500 mb-6">EduMind 智慧学习平台相关信息</p>
+      <p class="text-[13px] text-slate-400 dark:text-slate-500 mb-6">智学星枢智慧学习平台相关信息</p>
 
           <div class="flex flex-col gap-5">
             <div class="flex items-center gap-4 p-5 bg-gradient-to-r from-[#f0f4ff] dark:from-[#1e293b] to-white dark:to-[#0f172a] rounded-xl border border-[#dbe4ff] dark:border-slate-700">
@@ -575,7 +607,7 @@ const sections = [
                 <BookOpen :size="28" class="text-white" />
               </div>
               <div>
-                <h4 class="text-[16px] font-extrabold text-[#1a1a2e] dark:text-white">EduMind 智慧学习平台</h4>
+          <h4 class="text-[16px] font-extrabold text-[#1a1a2e] dark:text-white">智学星枢智慧学习平台</h4>
                 <p class="text-[13px] text-slate-400 dark:text-slate-500 mt-0.5">版本 3.0.0 · 构建 20260526</p>
               </div>
             </div>
@@ -593,8 +625,8 @@ const sections = [
               <div class="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
                 <h4 class="text-[13px] font-bold text-slate-500 dark:text-slate-400 mb-2">开发团队</h4>
                 <div class="flex flex-col gap-2 text-[13px]">
-                  <div class="flex justify-between"><span class="text-slate-400 dark:text-slate-500">团队</span><span class="text-slate-700 dark:text-slate-300 font-semibold">EduMind Lab</span></div>
-                  <div class="flex justify-between"><span class="text-slate-400 dark:text-slate-500">联系方式</span><span class="text-slate-700 dark:text-slate-300 font-semibold">dev@edumind.cn</span></div>
+        <div class="flex justify-between"><span class="text-slate-400 dark:text-slate-500">研发</span><span class="text-slate-700 dark:text-slate-300 font-semibold">智学星枢</span></div>
+              <div class="flex justify-between"><span class="text-slate-400 dark:text-slate-500">联系方式</span><span class="text-slate-700 dark:text-slate-300 font-semibold">demo@zhixuexingshu.local</span></div>
                   <div class="flex justify-between"><span class="text-slate-400 dark:text-slate-500">许可证</span><span class="text-slate-700 dark:text-slate-300 font-semibold">MIT License</span></div>
                   <div class="flex justify-between"><span class="text-slate-400 dark:text-slate-500">仓库</span><span class="text-[#4a6cf7] dark:text-[#6a8cff] font-semibold">GitHub</span></div>
                 </div>

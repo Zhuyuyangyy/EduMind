@@ -6,7 +6,7 @@
         <div class="logo-icon">
           <Orbit class="orbit-icon" :size="48" />
         </div>
-        <h1 class="title font-display">EduMind 宇宙学习路径</h1>
+      <h1 class="title font-display">智学星枢宇宙学习路径</h1>
         <p class="subtitle">在浩瀚星海中，探索知识的无限可能</p>
       </div>
       <div class="info-cards">

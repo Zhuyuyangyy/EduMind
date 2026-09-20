@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   User,
@@ -23,7 +23,8 @@ import {
   LogOut,
 } from 'lucide-vue-next'
 import { useAppStore } from '@/store'
-import { clearAuthSession } from '@/lib/auth'
+import { clearAuthSession, getAuthSession, setAuthSession } from '@/lib/auth'
+import { fetchAccountSettings, saveAccountSettings } from '@/lib/api'
 
 const router = useRouter()
 const appStore = useAppStore()
@@ -39,8 +40,37 @@ const shareData = ref(false)
 const accountEmail = ref('user@example.com')
 const accountName = ref('学习者')
 const saved = ref(false)
+const authSession = getAuthSession()
 
-function saveSettings() {
+if (authSession) {
+  accountName.value = authSession.name || authSession.account
+  accountEmail.value = `${authSession.account}@edumind.local`
+}
+
+onMounted(async () => {
+  if (!authSession) return
+  try {
+    const settings = await fetchAccountSettings(authSession.account)
+    if (settings?.displayName) {
+      accountName.value = settings.displayName
+      setAuthSession({ ...authSession, name: settings.displayName })
+    }
+  } catch {
+    // The local session remains usable if settings cannot be loaded.
+  }
+})
+
+async function saveSettings() {
+  if (authSession) {
+    const name = accountName.value.trim() || authSession.account
+    try {
+      const settings = await saveAccountSettings(name)
+      accountName.value = settings.displayName
+      setAuthSession({ ...authSession, name: settings.displayName })
+    } catch {
+      setAuthSession({ ...authSession, name })
+    }
+  }
   saved.value = true
   setTimeout(() => { saved.value = false }, 2000)
 }
@@ -295,7 +325,7 @@ function handleLogout() {
           </div>
           <div class="about-row">
             <span class="about-key">AI 引擎</span>
-            <span class="about-value">EduMind AI Engine v2.4</span>
+            <span class="about-value">智学星枢 AI Engine v2.4</span>
           </div>
           <div class="about-row">
             <span class="about-key">最近更新</span>

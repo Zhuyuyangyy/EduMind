@@ -119,8 +119,8 @@
           id="profile-dropdown"
         >
           <div class="px-4 py-2 border-b border-[#e8e8e8] dark:border-slate-700/60 mb-1">
-            <p class="text-[14px] font-semibold text-slate-800 dark:text-white">小明同学</p>
-            <p class="text-[12px] text-slate-400 dark:text-slate-400">liuhongwei4138@gmail.com</p>
+            <p class="text-[14px] font-semibold text-slate-800 dark:text-white">学习者</p>
+            <p class="text-[12px] text-slate-400 dark:text-slate-400">demo@zhixue.local</p>
           </div>
           <a href="#profile" class="block px-4 py-2 text-[14px] text-slate-500 dark:text-slate-400 hover:bg-[#f5f7fa] dark:hover:bg-slate-800">个人账户设置</a>
           <a href="#stats" class="block px-4 py-2 text-[14px] text-slate-500 dark:text-slate-400 hover:bg-[#f5f7fa] dark:hover:bg-slate-800">我的学习周报</a>

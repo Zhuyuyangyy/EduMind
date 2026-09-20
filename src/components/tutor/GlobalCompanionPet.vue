@@ -43,7 +43,6 @@ const chatInput = ref('')
 const isChatSending = ref(false)
 const chatPanelRef = ref<HTMLElement | null>(null)
 const chatInputRef = ref<HTMLInputElement | null>(null)
-const companionHelperPrompt = '你是 EduMind 平台里的 Live2D 陪伴助手。你的主要职责不是讲解具体课程知识，而是回答学习之外的平台使用、页面导航、功能说明、数据变化解释、下一步操作建议等问题。如果用户问具体学习内容，请温和引导他去画像生成、学习资源、智能评估或对话导师模块。'
 
 function toggleChat() {
   showChat.value = !showChat.value
@@ -68,7 +67,7 @@ async function sendChat() {
   interactionState.value = 'thinking'
 
   try {
-    const reply = await sendChatMessage(`${companionHelperPrompt}\n\n用户问题：${text}`)
+    const reply = await sendChatMessage(text)
     const content = reply.content ?? '抱歉，我暂时无法回答这个问题。'
     chatMessages.value.push({ role: 'assistant', text: content })
     interactionState.value = 'cheer'
@@ -335,9 +334,6 @@ onBeforeUnmount(() => {
         <span class="chat-panel-title">学习助手</span>
         <button class="chat-panel-close" type="button" @click="showChat = false">✕</button>
       </div>
-      <div class="chat-helper-note">
-        不知道页面怎么用、下一步点哪里，或者学习以外的问题，都可以问我。
-      </div>
       <div ref="chatPanelRef" class="chat-panel-body">
         <div v-for="(msg, i) in chatMessages" :key="i" :class="['chat-msg', msg.role]">
           <div class="chat-msg-bubble">{{ msg.text }}</div>
@@ -353,7 +349,7 @@ onBeforeUnmount(() => {
           ref="chatInputRef"
           v-model="chatInput"
           type="text"
-          placeholder="问我页面怎么用、下一步点哪里..."
+          placeholder="问我任何学习问题..."
           :disabled="isChatSending"
           @keydown.enter="sendChat"
         />
@@ -471,17 +467,6 @@ onBeforeUnmount(() => {
 .chat-panel-close:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
-}
-
-.chat-helper-note {
-  margin: 10px 12px 0;
-  padding: 9px 10px;
-  border: 1px solid rgba(0, 212, 255, 0.12);
-  border-radius: 10px;
-  background: rgba(0, 212, 255, 0.06);
-  color: rgba(224, 244, 255, 0.82);
-  font-size: 12px;
-  line-height: 1.55;
 }
 
 .chat-panel-body {

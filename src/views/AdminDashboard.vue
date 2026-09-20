@@ -243,7 +243,7 @@ function confirmEditRole() {
 const profileForm = ref({
   name: '管理员',
   phone: '138****2026',
-  email: 'admin@edumind.cn',
+  email: 'admin@zhixuexingshu.local',
   oldPassword: '',
   newPassword: '',
   confirmPassword: '',
@@ -263,7 +263,7 @@ function handleCancelProfile() {
   profileForm.value = {
     name: '管理员',
     phone: '138****2026',
-    email: 'admin@edumind.cn',
+    email: 'admin@zhixuexingshu.local',
     oldPassword: '',
     newPassword: '',
     confirmPassword: '',
@@ -299,7 +299,7 @@ function goToPage(page: number) {
             <ShieldCheck :size="24" />
           </div>
           <div class="logo-text">
-            <strong>EDUMIND</strong>
+            <strong>智学星枢</strong>
             <small>管理控制中心</small>
           </div>
         </div>
@@ -341,7 +341,7 @@ function goToPage(page: number) {
           <div class="topbar-left">
             <i class="title-deco left" aria-hidden="true" />
             <div class="title-block">
-              <p>EDUMIND ADMIN CONTROL CENTER</p>
+              <p>智学星枢管理控制中心</p>
               <h1>
                 {{ activePanel === 'users' ? '用户管理中心' : activePanel === 'roles' ? '角色权限管理' : '个人信息设置' }}
               </h1>

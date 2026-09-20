@@ -477,7 +477,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div class="hub-core-title">
-      <h2>智学云平台</h2>
+          <h2>智学星枢平台</h2>
       <p>AI-Powered Multi-Agent Learning System</p>
     </div>
   </div>

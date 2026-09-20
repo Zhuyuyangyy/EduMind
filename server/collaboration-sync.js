@@ -143,14 +143,14 @@ export function buildCollaborationFromTraces(traces) {
   return resultByDay
 }
 
-export function syncTracesToCollaboration() {
+export async function syncTracesToCollaboration() {
   const traces = readTraces()
   const byDay = buildCollaborationFromTraces(traces)
   if (!byDay) return false
 
   for (const [dayIndex, payload] of byDay) {
     const { name } = resolveDay(dayIndex)
-    saveCollaboration(name, payload)
+    await saveCollaboration(name, payload)
   }
   return true
 }
@@ -220,12 +220,12 @@ export function buildCollaborationForDay(dayParam, traces) {
   return mergeWithSimulated(real, index)
 }
 
-export function getCollaborationForDay(dayParam) {
+export async function getCollaborationForDay(dayParam) {
   const traces = readTraces()
   const merged = buildCollaborationForDay(dayParam, traces)
   if (merged && merged.totalEvents > 0) {
     const { name } = resolveDay(dayParam)
-    saveCollaboration(name, merged)
+    await saveCollaboration(name, merged)
     return merged
   }
   return null

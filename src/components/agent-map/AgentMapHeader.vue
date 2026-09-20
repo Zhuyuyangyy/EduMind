@@ -34,7 +34,7 @@ const statusColor = computed(() => {
     <!-- Left: Brand -->
     <div class="am-header-brand">
       <div class="am-header-dot" />
-      <span class="am-header-logo">EDUMIND</span>
+      <span class="am-header-logo">智学星枢</span>
       <div class="am-header-sep" />
       <div class="am-header-clock">
         <span class="am-header-tick">AGENT MAP</span>

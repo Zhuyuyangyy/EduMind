@@ -1,11 +1,13 @@
 import { ref, shallowRef } from 'vue'
 
 const API_INFO = {
-  serverUrl: 'wss://avatar.cn-huadong-1.xf-yun.com/v1/interact',
-  appId: 'ce39128c',
-  apiKey: 'YOUR-XFYUN-API-KEY',
-  apiSecret: 'YOUR-XFYUN-API-SECRET',
-  sceneId: '331730107897090048',
+  // Long-lived avatar credentials must never be shipped to the browser.
+  // Keep the feature disabled until the backend can issue a short-lived session.
+  serverUrl: '',
+  appId: '',
+  apiKey: '',
+  apiSecret: '',
+  sceneId: '',
 }
 
 const PREFERRED_AVATAR_ID = '110117005'

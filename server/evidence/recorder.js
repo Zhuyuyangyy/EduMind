@@ -1,20 +1,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getRetrievalMetrics } from '../knowledge-base/metrics.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const tracesDir = path.join(__dirname, '..', 'evidence-data')
-
-function ensureDir() {
-  if (!fs.existsSync(tracesDir)) {
-    fs.mkdirSync(tracesDir, { recursive: true })
-  }
+function tracesPath() {
+  return process.env.ZHIXUE_TRACE_FILE || path.join(__dirname, '..', 'evidence-data', 'traces.json')
 }
 
-function tracesPath() {
-  return path.join(tracesDir, 'traces.json')
+function ensureDir() {
+  fs.mkdirSync(path.dirname(tracesPath()), { recursive: true })
 }
 
 export function readTraces() {
@@ -77,19 +72,21 @@ export function getTraceSummary() {
     if (t.durationMs) {
       totalDurationMs += t.durationMs
     }
-    if (!t.agents) continue
-    for (const agent of t.agents) {
-      if (!agentStats[agent.agentId]) {
-        agentStats[agent.agentId] = {
-          agentId: agent.agentId,
-          agentName: agent.agentName,
+    if (!Array.isArray(t.agentResults)) continue
+    for (const agent of t.agentResults) {
+      const key = agent.agentId || agent.agentName
+      if (!key) continue
+      if (!agentStats[key]) {
+        agentStats[key] = {
+          ...(agent.agentId ? { agentId: agent.agentId } : {}),
+          agentName: agent.agentName || agent.agentId,
           totalRuns: 0,
           fallbackCount: 0,
           avgConfidence: 0,
           avgDurationMs: 0,
         }
       }
-      const s = agentStats[agent.agentId]
+      const s = agentStats[key]
       s.avgConfidence = (s.avgConfidence * s.totalRuns + (agent.confidence || 0)) / (s.totalRuns + 1)
       s.avgDurationMs = (s.avgDurationMs * s.totalRuns + (agent.durationMs || 0)) / (s.totalRuns + 1)
       s.totalRuns += 1
@@ -121,7 +118,7 @@ export function getTraceSummary() {
 }
 
 export function buildTrace({ requestId, agents, inputsSummary, outputsSummary, evidence, riskFlags, fallbackUsed, durationMs, agentResults }) {
-  const retrievalHits = extractRetrievalHits(agentResults || [])
+  const normalizedAgentResults = agentResults || []
   return {
     requestId: requestId || `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     timestamp: new Date().toISOString(),
@@ -131,58 +128,19 @@ export function buildTrace({ requestId, agents, inputsSummary, outputsSummary, e
     evidence: evidence || [],
     riskFlags: riskFlags || [],
     fallbackUsed: fallbackUsed || false,
+    securityRefused: normalizedAgentResults.some(result => result.securityRefused),
+    fallbackAgents: normalizedAgentResults.filter(result => result.fallbackUsed).map(result => result.agentName),
     durationMs: durationMs || 0,
-    agentResults: (agentResults || []).map(r => ({
+    agentResults: normalizedAgentResults.map(r => ({
       agentName: r.agentName,
       inputSummary: r.inputSummary || '',
       outputSummary: r.outputSummary || '',
       confidence: r.confidence,
       evidence: r.evidence || [],
+      riskFlags: r.riskFlags || [],
+      securityRefused: r.securityRefused || false,
       durationMs: r.durationMs || 0,
       fallbackUsed: r.fallbackUsed || false,
     })),
-    retrievalSummary: {
-      totalHits: retrievalHits.totalHits,
-      agentsUsed: retrievalHits.agentsUsed,
-      topDomains: retrievalHits.topDomains,
-      topDocs: retrievalHits.topDocs.slice(0, 5),
-      globalMetrics: getRetrievalMetrics(),
-    },
-  }
-}
-
-function extractRetrievalHits(agentResults) {
-  const agentsUsed = new Set()
-  const docHits = new Map()
-  const domainHits = new Map()
-  let totalHits = 0
-
-  for (const result of agentResults) {
-    const matches = result?.output?.knowledgeContext?.matches
-    if (Array.isArray(matches) && matches.length) {
-      agentsUsed.add(result.agentName)
-      for (const match of matches) {
-        totalHits += 1
-        const docKey = match.docId || match.id || match.title || 'unknown'
-        docHits.set(docKey, (docHits.get(docKey) || 0) + 1)
-        if (match.domain) {
-          domainHits.set(match.domain, (domainHits.get(match.domain) || 0) + 1)
-        }
-      }
-    }
-  }
-
-  const topDocs = Array.from(docHits.entries())
-    .sort((left, right) => right[1] - left[1])
-    .map(([docId, count]) => ({ docId, hits: count }))
-  const topDomains = Array.from(domainHits.entries())
-    .sort((left, right) => right[1] - left[1])
-    .map(([domain, count]) => ({ domain, count }))
-
-  return {
-    totalHits,
-    agentsUsed: Array.from(agentsUsed),
-    topDocs,
-    topDomains,
   }
 }

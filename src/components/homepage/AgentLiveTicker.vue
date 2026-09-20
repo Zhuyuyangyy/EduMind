@@ -28,12 +28,12 @@ const agents: AgentInfo[] = [
 ]
 
 const initialItems: TickerItem[] = [
-  { agent: 'profile-capture', text: '采集答题、停留和偏好信号，更新 24 维学习画像' },
+  { agent: 'profile-capture', text: '采集答题、停留和偏好信号，更新六维核心学习画像' },
   { agent: 'profile-diagnosis', text: '识别到「指针与内存」掌握度仅 42%，标记为薄弱知识域' },
   { agent: 'path-plan', text: '在课后巩固阶段插入「二级指针专项训练」学习节点' },
   { agent: 'path-replan', text: '根据最新测评结果重排明日学习顺序，前置 2 个基础节点' },
-  { agent: 'resource-search', text: '从资源池筛出 18 个候选材料，按难度和偏好重新排序' },
-  { agent: 'resource-generate', text: '为薄弱点生成 5 个个性化学习资源，包括思维导图和专项练习' },
+  { agent: 'resource-search', text: '从本地知识索引检索候选材料，并记录来源与匹配分数' },
+  { agent: 'resource-generate', text: '为薄弱点生成适配当前画像的学习资源与专项练习' },
   { agent: 'tutor-explain', text: '准备好提供辅导，支持概念讲解、代码辅导、错题诊断等模式' },
   { agent: 'tutor-dialogue', text: '根据学生回答生成下一轮追问，帮助确认是否真正理解' },
   { agent: 'eval-quiz', text: '完成阶段性测评，发现 4 个知识盲点需要进一步巩固' },
@@ -55,7 +55,7 @@ function getAgent(id: string) {
   <div class="collaboration-log">
     <div class="log-header">
       <h3 class="log-title">多智能体协作</h3>
-      <span class="log-desc">12 位智能体在 6 个模块内协同工作，为你构建个性化学习体验</span>
+      <span class="log-desc">7 个核心智能体在 6 个模块内协同工作，并记录每次决策证据</span>
     </div>
     
     <div class="log-container">

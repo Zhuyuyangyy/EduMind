@@ -21,7 +21,7 @@ export function validateResourceGenerateInput(input) {
   return { valid: errors.length === 0, errors }
 }
 
-export function createAgentResult({ agentName, input, output, confidence, evidence, durationMs, status, fallbackUsed }) {
+export function createAgentResult({ agentName, input, output, confidence, evidence, riskFlags, securityRefused, durationMs, status, fallbackUsed }) {
   return {
     agentName,
     inputSummary: summarize(input),
@@ -30,6 +30,8 @@ export function createAgentResult({ agentName, input, output, confidence, eviden
     output,
     confidence: confidence ?? 0.8,
     evidence: evidence || [],
+    riskFlags: riskFlags || [],
+    securityRefused: securityRefused || false,
     durationMs: durationMs ?? 0,
     status: status || 'completed',
     fallbackUsed: fallbackUsed || false,

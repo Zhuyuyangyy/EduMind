@@ -1,0 +1,21 @@
+.git
+.claude
+.agents
+.playwright-mcp
+.env
+.env.*
+!.env.production.example
+node_modules
+dist
+output
+tmp
+.mysql-test-data
+*.log
+*.png
+*.zip
+EduMind_设计与开发文档
+resourses
+adminbigscreen
+智学云枢 (1)
+*.docx
+*.pptx

@@ -1,6 +1,5 @@
 import { callLlm, safeParseJson } from '../llm/provider.js'
 import { createAgentResult, AGENT_NAMES } from '../schemas.js'
-import { retrieveKnowledgeContext, buildKnowledgeEvidence, summarizeKnowledgeForPrompt } from '../knowledge-base/retrieval.js'
 
 const SYSTEM_PROMPT = `你是一个个性化学习路径规划智能体。根据用户的学习画像分析结果，为其生成定制化的知识学习路径。
 
@@ -108,34 +107,17 @@ function fallbackKnowledgePath(profile) {
   return { phases: domainTemplates }
 }
 
-export async function runKnowledgePathAgent(profile, { knowledgeContext } = {}) {
+export async function runKnowledgePathAgent(profile) {
   const start = Date.now()
   const input = { profile }
-
-  const queryText = [
-    Array.isArray(profile?.weaknesses) ? profile.weaknesses.map(w => w?.tag || w?.label || '').join(' ') : '',
-    Array.isArray(profile?.dimensions) ? profile.dimensions.map(d => `${d.label || ''} ${d.value || ''}`).join(' ') : '',
-  ].filter(Boolean).join(' ')
-
-  const resolvedKb = knowledgeContext || retrieveKnowledgeContext({
-    agentName: AGENT_NAMES.KNOWLEDGE_PATH,
-    query: queryText,
-    profile,
-    domain: 'pedagogy',
-    limit: 3,
-  })
 
   const userPrompt = `根据以下学习画像生成个性化知识学习路径：
 用户能力评分：${JSON.stringify(profile?.dimensions || [])}
 综合评分：${profile?.totalScore || '未知'}
 弱点：${JSON.stringify(profile?.weaknesses || [])}
-建议：${JSON.stringify(profile?.recommendations || [])}
-知识参考:
-${summarizeKnowledgeForPrompt(resolvedKb.matches)}
+建议：${JSON.stringify(profile?.recommendations || [])}`
 
-如果知识参考里提到"间隔重复"、"项目驱动学习"或"知识内化四阶段"，请体现在 topics 的 recommended 和 mastery 评估中。`
-
-  const llmResult = await callLlm(SYSTEM_PROMPT, userPrompt, { maxTokens: 3000 })
+  const llmResult = await callLlm(SYSTEM_PROMPT, userPrompt, { maxTokens: 3000, jsonMode: true })
   let output
   let fallbackUsed = false
   const evidence = []
@@ -157,25 +139,12 @@ ${summarizeKnowledgeForPrompt(resolvedKb.matches)}
     evidence.push('本地规则 fallback 生成知识路径')
   }
 
-  evidence.push(...buildKnowledgeEvidence(resolvedKb, { summary: '知识路径知识库' }))
-
   const durationMs = Date.now() - start
 
   return createAgentResult({
     agentName: AGENT_NAMES.KNOWLEDGE_PATH,
     input,
-    output: {
-      ...output,
-      knowledgeContext: {
-        detectedDomain: resolvedKb.detectedDomain,
-        matches: resolvedKb.matches.map(m => ({
-          id: m.id,
-          title: m.title,
-          score: m.score,
-          agentHint: m.agentHint,
-        })),
-      },
-    },
+    output,
     confidence: fallbackUsed ? 0.6 : 0.85,
     evidence,
     durationMs,

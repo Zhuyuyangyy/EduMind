@@ -190,7 +190,7 @@ onUnmounted(() => {
           <div class="draft-panel">
             <div class="draft-toolbar">
               <span class="toolbar-dot" />
-              <span>EDUMIND_LOOP_DRAFT.md</span>
+              <span>ZHIXUE_XINGSHU_LOOP_DRAFT.md</span>
               <span class="draft-live">LIVE</span>
             </div>
             <div class="draft-body">

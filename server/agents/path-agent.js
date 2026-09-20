@@ -1,39 +1,21 @@
 import { callLlm, safeParseJson } from '../llm/provider.js'
 import { createAgentResult, AGENT_NAMES } from '../schemas.js'
-import { retrieveKnowledgeContext, buildKnowledgeEvidence, summarizeKnowledgeForPrompt } from '../knowledge-base/retrieval.js'
 
 const SYSTEM_PROMPT = `你是一个学习路径规划专家。根据用户画像、评估结果和当前进度，规划或重规划学习路径。
 请以 JSON 格式返回，包含：phases(数组，每项含title/period/progress/status/nodes)、weeklyGoals(数组)、replanReason(字符串，如果是重规划)。`
 
-export async function runPathAgent({ profile, evaluation, currentPath, replan, knowledgeContext }) {
+export async function runPathAgent({ profile, evaluation, currentPath, replan }) {
   const start = Date.now()
   const input = { profile, evaluation, replan }
-
-  const queryText = [
-    replan ? 'replan remediation' : 'path planning',
-    Array.isArray(profile?.weaknesses) ? profile.weaknesses.map(w => w?.tag || w?.label || '').join(' ') : '',
-    evaluation?.suggestions?.join(' ') || '',
-  ].filter(Boolean).join(' ')
-
-  const resolvedKb = knowledgeContext || retrieveKnowledgeContext({
-    agentName: AGENT_NAMES.PATH,
-    query: queryText,
-    profile,
-    evaluation,
-    domain: 'pedagogy',
-    limit: 3,
-  })
 
   const userPrompt = `用户画像: ${JSON.stringify(profile?.dimensions || [])}
 评估结果: ${JSON.stringify(evaluation?.stats || [])}
 当前路径: ${JSON.stringify(currentPath?.phases?.map(p => p.title) || [])}
 是否重规划: ${replan ? '是' : '否'}
-知识参考:
-${summarizeKnowledgeForPrompt(resolvedKb.matches)}
 
-请${replan ? '重新' : ''}规划学习路径。如果知识参考里有"主动回忆补救"或"考前冲刺"策略，请体现在薄弱点专项节点中。`
+请${replan ? '重新' : ''}规划学习路径。`
 
-  const llmResult = await callLlm(SYSTEM_PROMPT, userPrompt)
+  const llmResult = await callLlm(SYSTEM_PROMPT, userPrompt, { jsonMode: true })
   let output
   let fallbackUsed = false
   const evidence = []
@@ -55,24 +37,11 @@ ${summarizeKnowledgeForPrompt(resolvedKb.matches)}
     evidence.push('本地规则 fallback 生成学习路径')
   }
 
-  evidence.push(...buildKnowledgeEvidence(resolvedKb, { summary: '路径规划知识库' }))
-
   const durationMs = Date.now() - start
   return createAgentResult({
     agentName: AGENT_NAMES.PATH,
     input,
-    output: {
-      ...output,
-      knowledgeContext: {
-        detectedDomain: resolvedKb.detectedDomain,
-        matches: resolvedKb.matches.map(m => ({
-          id: m.id,
-          title: m.title,
-          score: m.score,
-          agentHint: m.agentHint,
-        })),
-      },
-    },
+    output,
     confidence: fallbackUsed ? 0.6 : 0.85,
     evidence,
     durationMs,
@@ -83,6 +52,8 @@ ${summarizeKnowledgeForPrompt(resolvedKb.matches)}
 function fallbackPathPlan({ profile, evaluation, replan }) {
   const score = profile?.totalScore || 50
   const weakTags = (profile?.weaknesses || [])
+    .map(item => typeof item === 'string' ? item : item?.tag || item?.label || item?.name)
+    .filter(Boolean)
 
   const phases = [
     {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BarChart3, HelpCircle, Library, MessageCircle, Route, Sparkles } from 'lucide-vue-next'
+import { BarChart3, Library, MessageCircle, Route, Sparkles } from 'lucide-vue-next'
 import AiriLive2DRenderer from './live2d/AiriLive2DRenderer.vue'
 import type { CompanionState } from '@/store'
 
@@ -58,14 +58,6 @@ const steps: GuideStep[] = [
     detail: '学完一段后回来测试。系统会分析错因、更新画像，并推荐下一步任务，形成「诊断 → 学习 → 评估 → 再诊断」的闭环。',
     icon: BarChart3,
     accent: '#f0b24a',
-  },
-  {
-    target: 'companion-helper',
-    label: '陪伴助手',
-    title: '不知道问谁，就问这个小人',
-    detail: '右下角的 Live2D 小人主要负责学习之外的使用问题：比如页面在哪里、按钮怎么用、数据为什么变化、下一步该点哪里。学习内容本身交给画像、资源和评估模块；系统使用上的困惑可以直接问它。',
-    icon: HelpCircle,
-    accent: '#ff8fc7',
   },
 ]
 

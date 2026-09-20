@@ -1,14 +1,16 @@
 import { callLlm } from '../llm/provider.js'
 import { createAgentResult, AGENT_NAMES } from '../schemas.js'
-import { retrieveKnowledgeContext, buildKnowledgeEvidence, summarizeKnowledgeForPrompt } from '../knowledge-base/retrieval.js'
-import { detectDomain } from '../knowledge-base/detect-domain.js'
+import { detectPromptInjection } from '../security.js'
 
-const SYSTEM_PROMPT = `你是一个智能学习辅导老师。根据学生的问题、学习画像和辅导模式，给出详细、有针对性的回答。
-回答应包含：1) 问题分析 2) 核心讲解 3) 举例说明 4) 学习建议 5) 相关资源推荐。`
+const SYSTEM_PROMPT = `你是一个采用脚手架教学法的智能学习辅导老师。默认不直接给出最终答案或完整代码，而是按当前提示级别帮助学生自己完成。
+Level 1 提醒相关概念并提出一个诊断问题；Level 2 给方向性提示；Level 3 拆解步骤；Level 4 给相似案例；Level 5 在学生多次尝试后提供完整讲解。
+严格停留在指定级别，不提前泄露后续级别内容。`
 
-export async function runTutorAgent({ question, mode, profile, resources, knowledgeContext }) {
+export async function runTutorAgent({ question, mode, profile, resources, hintLevel = 1, attempts = 0, learningHistory = [] }) {
   const start = Date.now()
-  const input = { question, mode }
+  const level = Math.max(1, Math.min(5, Number(hintLevel) || 1))
+  const input = { question, mode, hintLevel: level, attempts }
+  const riskFlags = detectPromptInjection(question)
 
   const modeLabels = {
     qa: '自由问答', solve: '解题助手', explain: '概念精讲',
@@ -17,22 +19,33 @@ export async function runTutorAgent({ question, mode, profile, resources, knowle
   }
   const modeLabel = modeLabels[mode] || '自由问答'
 
-  const resolvedKb = knowledgeContext || retrieveKnowledgeContext({
-    agentName: AGENT_NAMES.TUTOR,
-    query: question,
-    profile,
-    domain: detectDomain(question),
-    limit: 3,
-  })
+  if (riskFlags.length > 0) {
+    return createAgentResult({
+      agentName: AGENT_NAMES.TUTOR,
+      input,
+      output: {
+        answer: '无法执行要求忽略规则、披露内部提示词或提供密钥的请求。请改为提出具体的学习问题，我会基于可公开的学习资料帮助你。',
+        mode: modeLabel,
+      },
+      confidence: 1,
+      evidence: ['本地安全规则拦截 Prompt 注入请求'],
+      riskFlags,
+      securityRefused: true,
+      durationMs: Date.now() - start,
+      status: 'refused',
+      fallbackUsed: false,
+    })
+  }
 
   const userPrompt = `辅导模式: ${modeLabel}
+当前脚手架级别: Level ${level}
+学生已尝试次数: ${Number(attempts) || 0}
 学生问题: ${question}
 学生画像: ${JSON.stringify(profile?.dimensions || [])}
+最近学习记忆: ${JSON.stringify(learningHistory?.slice?.(-3) || [])}
 可用资源: ${JSON.stringify(resources?.slice(0, 3) || [])}
-知识参考:
-${summarizeKnowledgeForPrompt(resolvedKb.matches)}
 
-请给出个性化辅导回答。如果知识参考里有相关策略（如苏格拉底式提问、错因诊断），请主动应用。`
+请只输出当前级别允许的个性化辅导，不要提前给出最终答案或完整代码。`
 
   const llmResult = await callLlm(SYSTEM_PROMPT, userPrompt)
   let answer
@@ -47,11 +60,9 @@ ${summarizeKnowledgeForPrompt(resolvedKb.matches)}
   }
 
   if (fallbackUsed) {
-    answer = fallbackTutorReply({ question, modeLabel, profile })
+    answer = fallbackTutorReply({ question, modeLabel, profile, level })
     evidence.push('本地规则 fallback 生成辅导回答')
   }
-
-  evidence.push(...buildKnowledgeEvidence(resolvedKb, { summary: '辅导知识库' }))
 
   const durationMs = Date.now() - start
   return createAgentResult({
@@ -60,46 +71,38 @@ ${summarizeKnowledgeForPrompt(resolvedKb.matches)}
     output: {
       answer,
       mode: modeLabel,
-      knowledgeContext: {
-        detectedDomain: resolvedKb.detectedDomain,
-        matches: resolvedKb.matches.map(m => ({
-          id: m.id,
-          title: m.title,
-          score: m.score,
-          snippet: m.snippet,
-          agentHint: m.agentHint,
-        })),
+      scaffolding: {
+        level,
+        attempts: Number(attempts) || 0,
+        revealsCompleteAnswer: level === 5,
+        nextLevelAvailable: level < 5,
       },
     },
     confidence: fallbackUsed ? 0.6 : 0.9,
     evidence,
+    riskFlags,
+    securityRefused: false,
     durationMs,
     fallbackUsed,
   })
 }
 
-function fallbackTutorReply({ question, modeLabel, profile }) {
+function fallbackTutorReply({ question, modeLabel, profile, level }) {
   const q = String(question || '').trim() || '未提供问题'
   const weakest = profile?.weaknesses?.[0] || ''
-
-  return (
-    `当前模式：${modeLabel}\n\n` +
-    `问题：${q}\n\n` +
-    '**问题分析**\n' +
-    '这个问题涉及核心概念的理解和应用。让我们逐步分析。\n\n' +
-    '**核心讲解**\n' +
-    '1. 首先抓住定义：用一句话说清楚核心概念。\n' +
-    '2. 然后理解原理：为什么这样设计，解决了什么问题。\n' +
-    '3. 最后看应用：在实际场景中如何使用。\n\n' +
-    '**举例说明**\n' +
-    '以一个最简单的例子开始，逐步增加复杂度，确保每一步都能理解。\n\n' +
-    '**学习建议**\n' +
-    (weakest ? `- 针对你的薄弱点"${weakest}"，建议先巩固基础再深入。\n` : '') +
-    '- 建议采用"理解→练习→总结"三步法。\n' +
-    '- 每次学习后做 5 分钟回顾，加深记忆。\n\n' +
-    '**推荐资源**\n' +
-    '- 概念速查卡片\n' +
-    '- 配套练习题集\n' +
-    '- 知识脉络思维导图'
-  )
+  const prefix = `当前模式：${modeLabel}\n脚手架级别：Level ${level}\n\n`
+  if (level === 1) {
+    return prefix + '**概念提示**\n先想一想：BFS 为什么需要记录“已经发现”的节点？如果等到出队才标记，同一节点可能发生什么？' +
+      (weakest ? `\n\n结合你的薄弱点“${weakest}”，先用三个节点的小图手工模拟一次。` : '')
+  }
+  if (level === 2) {
+    return prefix + '**方向提示**\n把“发现节点、加入队列、标记 visited”放在同一个时刻考虑。尝试比较入队标记与出队标记时，队列中是否会出现重复节点。'
+  }
+  if (level === 3) {
+    return prefix + '**步骤拆解**\n1. 初始化队列并放入起点。\n2. 处理队首节点。\n3. 遍历邻接点，只处理未访问节点。\n4. 决定标记与入队的先后顺序。\n请先补全第 4 步，再检查每个节点是否只入队一次。'
+  }
+  if (level === 4) {
+    return prefix + '**相似案例**\n在 A-B、A-C、B-C 的三角图中，从 A 开始搜索。若 B、C 都能发现同一未标记节点，该节点可能重复入队。用这个案例判断 visited 应在哪一步更新。'
+  }
+  return prefix + '**完整讲解**\nBFS 通常在节点入队时立即标记 visited。这样其他节点再检查到它时会跳过，保证每个节点最多入队一次。基本过程是：起点入队并标记；循环取出队首；遍历邻接点；对未访问邻接点先标记再入队。'
 }

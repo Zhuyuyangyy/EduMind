@@ -29,7 +29,7 @@ interface AgentCard {
 const fallbackAgents: AgentCard[] = [
   {
     agentId: 'profile', agentName: 'ProfileAgent', role: '画像分析',
-    input: '学生答题记录 + 历史画像', process: '分析 24 维画像向量',
+    input: '学生答题记录 + 历史画像', process: '分析六维核心画像',
     output: '识别指针与图结构薄弱', confidence: 0.92,
     evidenceTags: ['画像分析', '薄弱识别'], status: 'completed', color: T.purple,
   },

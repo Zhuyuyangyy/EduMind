@@ -53,7 +53,7 @@ onMounted(async () => {
   <div class="evidence-page">
     <div class="page-header">
       <div class="header-left">
-        <div class="hero-badge">A3 证据链</div>
+        <div class="hero-badge">Agent Evidence Trace</div>
         <h1 class="page-title">多智能体<span class="gradient-text">协作证据链</span></h1>
         <p class="page-subtitle">追踪每次画像分析、资源生成、路径规划、辅导回答、评估反馈的完整协作过程与证据。</p>
       </div>

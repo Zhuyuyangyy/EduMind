@@ -43,8 +43,8 @@ interface Agent {
 const agents: Agent[] = [
   { id: 'profile-capture', name: '画像采集智能体', en: 'Profile Capture', role: 'PROFILE-1', color: T.purple, glyph: '◉',
     angle: -90, orbitRx: 252, orbitRy: 188, orbitTilt: -6, planetSize: 25,
-    activity: { verb: '采集中', text: '汇总答题、停留、偏好和学习节奏', detail: '行为日志 18 条 · 偏好信号 4 类 · 画像维度 24', ts: '8 秒前' },
-    stats: [{ label: '画像维度', value: '24' }, { label: '掌握度', value: '68%' }] },
+    activity: { verb: '采集中', text: '汇总答题、停留、偏好和学习节奏', detail: '演示画像 · 六维核心能力 · 可持续更新', ts: '8 秒前' },
+    stats: [{ label: '画像维度', value: '6' }, { label: '掌握度', value: '演示' }] },
   { id: 'profile-diagnosis', name: '薄弱诊断智能体', en: 'Weakness Diagnosis', role: 'PROFILE-2', color: T.violet, glyph: '◎',
     angle: -60, orbitRx: 328, orbitRy: 236, orbitTilt: 8, planetSize: 22,
     activity: { verb: '诊断中', text: '锁定 2 个高风险薄弱域', detail: '二级指针传参 41% · BFS visited 38%', ts: '7 秒前' },
@@ -59,8 +59,8 @@ const agents: Agent[] = [
     stats: [{ label: '重排次数', value: '3' }, { label: '命中率', value: '89%' }] },
   { id: 'resource-search', name: '资源检索智能体', en: 'Resource Search', role: 'RESOURCE-1', color: T.emerald, glyph: '◬',
     angle: 30, orbitRx: 292, orbitRy: 220, orbitTilt: -14, planetSize: 23,
-    activity: { verb: '检索中', text: '从资源池筛出 18 个候选材料', detail: '视频 6 · 例题 5 · 图解卡片 7', ts: '6 秒前' },
-    stats: [{ label: '资源池', value: '1.2k+' }, { label: '已完成', value: '47' }] },
+    activity: { verb: '检索中', text: '从本地知识索引检索候选材料', detail: '返回来源 · 匹配分数 · Evidence Trace', ts: '6 秒前' },
+    stats: [{ label: '检索', value: 'RAG' }, { label: '依据', value: '可追溯' }] },
   { id: 'resource-generate', name: '资源生成智能体', en: 'Resource Generator', role: 'RESOURCE-2', color: T.lime, glyph: '△',
     angle: 60, orbitRx: 338, orbitRy: 238, orbitTilt: 13, planetSize: 22,
     activity: { verb: '生成中', text: '将候选资源改写成个性化练习包', detail: '思维导图 1 · 专项练习 3 · 图解卡片 1', ts: '3 秒前' },
@@ -270,8 +270,8 @@ function initStarfield() {
 
         <div class="hero-metrics">
           <div class="metric-item">
-            <span class="metric-num">12</span>
-            <span class="metric-label">个学习智能体</span>
+            <span class="metric-num">7</span>
+            <span class="metric-label">个核心智能体</span>
           </div>
           <div class="metric-sep" />
           <div class="metric-item">
@@ -452,9 +452,9 @@ function initStarfield() {
         <div class="sphere-label">
           <div class="sphere-eyebrow">STUDENT PROFILE</div>
           <div class="sphere-title">知识宇宙</div>
-          <div class="sphere-sub">学习者 · 12 智能体 · 6 模块协同</div>
+          <div class="sphere-sub">学习者 · 7 核心智能体 · 6 模块协同</div>
           <div class="sphere-stats">
-            <div v-for="s in [{ l: '智能体', v: '12' }, { l: '协同模块', v: '6' }, { l: '画像维度', v: '24' }]" :key="s.l" class="sphere-stat">
+            <div v-for="s in [{ l: '核心智能体', v: '7' }, { l: '协同模块', v: '6' }, { l: '画像维度', v: '6' }]" :key="s.l" class="sphere-stat">
               <div class="sphere-stat-val">{{ s.v }}</div>
               <div class="sphere-stat-label">{{ s.l }}</div>
             </div>

@@ -363,7 +363,7 @@ function drawHud(ctx: CanvasRenderingContext2D) {
   ctx.font = '600 9px "JetBrains Mono", monospace'
   ctx.fillStyle = 'rgba(125, 211, 252, 0.34)'
   ctx.textAlign = 'left'
-  ctx.fillText(`WORLD: EDUMIND-AGENT-SIM  AGENTS:${agents.length}  ACTIVE:${active}  MSGS:${store.systemMetrics.totalMessages}`, 14, canvasHeight.value - 64)
+  ctx.fillText(`WORLD: ZHIXUE-XINGSHU  AGENTS:${agents.length}  ACTIVE:${active}  MSGS:${store.systemMetrics.totalMessages}`, 14, canvasHeight.value - 64)
 
   ctx.textAlign = 'right'
   ctx.fillStyle = 'rgba(255, 229, 143, 0.32)'
