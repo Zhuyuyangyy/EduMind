@@ -31,7 +31,7 @@ import type {
 } from '@/types/api'
 import type { ProfileResult } from '@/composables/useProfileSurvey'
 import { useAppStore } from '@/store'
-import { getAuthSession } from '@/lib/auth'
+import { clearAuthSession, getAuthSession, getAuthToken } from '@/lib/auth'
 
 function currentAccountId() {
   return getAuthSession()?.account || 'default'
@@ -43,11 +43,33 @@ export interface AccountSettings {
   updatedAt?: string
 }
 
+export interface LoginResult {
+  account: string
+  displayName: string
+  role: 'student' | 'admin'
+  /** 服务端签发会话 token；Capacitor 端放入 Authorization: Bearer，Web 端由 Cookie 自动携带 */
+  token: string
+  expiresAt: string
+}
+
 export async function loginDemoAccount(account: string, password: string, role: 'student' | 'admin') {
-  return requestJson<{ account: string; displayName: string; role: 'student' | 'admin' }>('/api/auth/login', {
+  return requestJson<LoginResult>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ account, password, role }),
   })
+}
+
+/** 用服务端会话校验本地登录态（启动时调用）。 */
+export async function fetchCurrentSession() {
+  return requestJson<{ account: string; role: 'student' | 'admin'; displayName: string }>('/api/auth/session')
+}
+
+export async function logout() {
+  try {
+    await requestJson<{ ok: true }>('/api/auth/logout', { method: 'POST' })
+  } finally {
+    clearAuthSession()
+  }
 }
 
 export async function fetchAccountSettings(accountId = currentAccountId()) {
@@ -83,9 +105,12 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
   let aiRequestSettled = false
 
   try {
+    const token = getAuthToken()
     const response = await fetch(input, {
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(init?.headers || {}),
       },
       ...init,
@@ -95,6 +120,13 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
       if (isAiRequest) {
         appStore.finishAiRequest(false)
         aiRequestSettled = true
+      }
+      // 登录接口的 401 是账号密码错误，不做会话失效处理
+      if (response.status === 401 && !input.startsWith('/api/auth/')) {
+        clearAuthSession()
+        if (typeof window !== 'undefined') {
+          window.location.assign('/login')
+        }
       }
       throw new Error(`Request failed: ${response.status}`)
     }

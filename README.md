@@ -22,6 +22,14 @@ npm run dev
 
 当前提交材料未承诺持续可用的公网部署地址，请以本地 Demo 为准。评审账号为独立演示账号，不对应真实学生。
 
+## 登录态与数据归属（feat/mobile-v1 起）
+
+- 登录成功后由服务端签发会话（httpOnly Cookie；Capacitor 等原生端使用响应中的 token 走 `Authorization: Bearer`），有效期默认 7 天（`SESSION_TTL_HOURS` 可调）。
+- 会话为服务端内存存储：**服务重启后需重新登录**；MySQL 持久化列为后续工作。
+- 所有业务接口的账号归属由服务端会话推导，客户端传入的 `accountId` 不再被信任；管理后台入口同样以服务端下发的角色为准。
+- CORS 由通配 `*` 改为白名单反射（`CORS_ALLOWED_ORIGINS` 可配置），默认放行本地开发与 Capacitor 来源。
+- 聊天与辅导历史按账号隔离，多账号互不可见。
+
 ## 验证命令
 
 ```powershell

@@ -23,8 +23,8 @@ import {
   LogOut,
 } from 'lucide-vue-next'
 import { useAppStore } from '@/store'
-import { clearAuthSession, getAuthSession, setAuthSession } from '@/lib/auth'
-import { fetchAccountSettings, saveAccountSettings } from '@/lib/api'
+import { getAuthSession, setAuthSession } from '@/lib/auth'
+import { fetchAccountSettings, logout, saveAccountSettings } from '@/lib/api'
 
 const router = useRouter()
 const appStore = useAppStore()
@@ -77,7 +77,7 @@ async function saveSettings() {
 
 function handleLogout() {
   if (confirm('确定要退出登录吗？')) {
-    clearAuthSession()
+    void logout()
     window.location.href = '/login'
   }
 }

@@ -73,7 +73,7 @@ async function handleSubmit() {
       name: result.displayName,
       account: result.account,
       loginAt: new Date().toISOString(),
-    })
+    }, result.token)
     await router.push(result.role === 'admin' ? '/admin' : '/home')
   } catch (error) {
     alert(error instanceof Error ? error.message : '账号或密码错误')

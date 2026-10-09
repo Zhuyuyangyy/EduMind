@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
+import { createExperimentSession, withSessionCookie } from './api-session.mjs'
 
 const baseUrl = process.argv[2] || 'http://127.0.0.1:8788'
 const outputPath = path.resolve(process.argv[3] || 'experiments/output/api-benchmark.json')
@@ -14,6 +15,8 @@ const scenarios = [
   { name: 'knowledge-search', method: 'POST', path: '/api/knowledge/search', body: { query: 'BFS visited queue', limit: 5 } },
 ]
 
+const session = await createExperimentSession(baseUrl)
+
 function percentile(values, ratio) {
   const sorted = [...values].sort((a, b) => a - b)
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)] || 0
@@ -24,7 +27,7 @@ async function execute(scenario) {
   try {
     const response = await fetch(baseUrl + scenario.path, {
       method: scenario.method,
-      headers: scenario.body ? { 'content-type': 'application/json' } : undefined,
+      headers: withSessionCookie(session, scenario.body ? { 'content-type': 'application/json' } : undefined),
       body: scenario.body ? JSON.stringify(scenario.body) : undefined,
     })
     await response.arrayBuffer()

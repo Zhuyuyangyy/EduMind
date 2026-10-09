@@ -26,7 +26,6 @@ import {
 } from './data.js'
 import {
   orchestrateProfileAnalysis,
-  orchestrateResourceGeneration,
   orchestratePathReplan,
   orchestrateTutoring,
   orchestrateFullEvaluation,
@@ -36,11 +35,18 @@ import {
   runResourceGeneration,
 } from './agents/orchestrator.js'
 import { getTraces, getTraceSummary, buildTrace, recordTrace, setTraceRecordedHook } from './evidence/recorder.js'
-import { validateResourceGenerateInput } from './schemas.js'
 import { isLlmAvailable, getLlmConfig } from './llm/provider.js'
 import { getKnowledgeBaseStats, searchKnowledgeBase } from './knowledge-base/vector-store.js'
 import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, getStorageBackend, saveAccountSettings, saveLearningCycle } from './store/mysql.js'
 import { summarizeLearningHistory } from './learner-memory.js'
+import {
+  buildSessionCookie,
+  clearSessionCookie,
+  createSession,
+  destroySession,
+  extractToken,
+  getSession,
+} from './auth.js'
 import {
   getCollaborationByDay,
   saveCollaboration,
@@ -53,17 +59,56 @@ import { syncTracesToCollaboration, getCollaborationForDay } from './collaborati
 const PORT = Number(process.env.PORT || 8788)
 const MAX_BODY_SIZE = 1024 * 1024
 
-function getAccountId(body = {}, searchParams) {
-  const value = body.accountId || body.userAccount || searchParams?.get('accountId') || 'default'
-  return String(value).trim() || 'default'
+/**
+ * P0 认证改造（feat/mobile-v1）：
+ * - 除公开路径外，所有 /api/* 接口必须携带有效会话（httpOnly Cookie 或 Bearer token）。
+ * - accountId 一律由服务端会话推导（accountIdOf），客户端传的 accountId 不再被信任。
+ * - CORS 由通配 * 改为白名单反射，携带凭证时浏览器才放行。
+ */
+const PUBLIC_API_PATHS = new Set([
+  '/api/health',
+  '/api/llm/status',
+  '/api/auth/login',
+  '/api/auth/session',
+  '/api/auth/logout',
+])
+
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:5174',
+  'http://127.0.0.1:5174',
+  'https://localhost', // Capacitor Android
+  'capacitor://localhost', // Capacitor iOS
+]
+
+function allowedOrigins() {
+  const configured = (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+  return configured.length > 0 ? configured : DEFAULT_ALLOWED_ORIGINS
 }
 
-function sendJson(res, statusCode, payload) {
+function applyCors(req, res) {
+  res.setHeader('Vary', 'Origin')
+  const origin = req.headers.origin
+  if (!origin) return
+  if (!allowedOrigins().includes(origin)) return
+  res.setHeader('Access-Control-Allow-Origin', origin)
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+  res.setHeader('Access-Control-Max-Age', '600')
+}
+
+/** 数据归属只认服务端会话；调用方必须已通过 authMiddleware。 */
+function accountIdOf(req) {
+  return req.session.account
+}
+
+function sendJson(res, statusCode, payload, extraHeaders = {}) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    ...extraHeaders,
   })
   res.end(JSON.stringify(payload))
 }
@@ -148,19 +193,32 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'OPTIONS') {
+    applyCors(req, res)
     res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Max-Age': '600',
     })
     res.end()
     return
   }
 
+  applyCors(req, res)
+
   const url = new URL(req.url, `http://${req.headers.host}`)
   const { pathname, searchParams } = url
 
   try {
+    // 认证中间件：公开路径之外一律要求有效会话，并将账号绑定到请求上
+    if (pathname.startsWith('/api/') && !PUBLIC_API_PATHS.has(pathname)) {
+      const session = getSession(extractToken(req))
+      if (!session) {
+        sendJson(res, 401, { error: 'Unauthorized', message: '登录状态无效或已过期，请重新登录。' })
+        return
+      }
+      req.session = session
+    }
+
     if (req.method === 'GET' && pathname === '/api/health') {
       sendJson(res, 200, {
         ok: true,
@@ -216,16 +274,41 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 401, { error: 'Unauthorized', message: '账号或密码错误，管理员演示入口默认关闭。' })
         return
       }
+      const displayName = role === 'admin' ? '演示管理员' : '评审体验账号'
+      const { token, session } = createSession({ account, role, displayName })
       sendJson(res, 200, {
         account,
         role,
-        displayName: role === 'admin' ? '演示管理员' : '评审体验账号',
+        displayName,
+        token,
+        expiresAt: new Date(session.expiresAt).toISOString(),
+      }, { 'Set-Cookie': buildSessionCookie(token, session.expiresAt - Date.now()) })
+      return
+    }
+
+    // 校验当前会话（启动恢复登录态用）
+    if (req.method === 'GET' && pathname === '/api/auth/session') {
+      const session = getSession(extractToken(req))
+      if (!session) {
+        sendJson(res, 401, { error: 'Unauthorized', message: '登录状态无效或已过期，请重新登录。' })
+        return
+      }
+      sendJson(res, 200, {
+        account: session.account,
+        role: session.role,
+        displayName: session.displayName,
       })
       return
     }
 
+    if (req.method === 'POST' && pathname === '/api/auth/logout') {
+      destroySession(extractToken(req))
+      sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearSessionCookie() })
+      return
+    }
+
     if (req.method === 'GET' && pathname === '/api/account/settings') {
-      sendJson(res, 200, { result: await getAccountSettings(getAccountId({}, searchParams)) })
+      sendJson(res, 200, { result: await getAccountSettings(accountIdOf(req)) })
       return
     }
 
@@ -236,13 +319,13 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 400, { error: 'Bad Request', message: '用户名长度应为 1 到 64 个字符。' })
         return
       }
-      sendJson(res, 200, { result: await saveAccountSettings(getAccountId(body), { displayName }) })
+      sendJson(res, 200, { result: await saveAccountSettings(accountIdOf(req), { displayName }) })
       return
     }
 
     if (req.method === 'POST' && pathname === '/api/agents/run') {
       const body = await readJson(req)
-      const accountId = getAccountId(body)
+      const accountId = accountIdOf(req)
       const result = await orchestrateFullRun({
         answers: body.answers || body,
         topic: body.topic,
@@ -278,13 +361,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && pathname === '/api/profile/analyze') {
       const body = await readJson(req)
       const agentResult = await orchestrateProfileAnalysis(body)
-      await saveProfileResult(agentResult.profile, getAccountId(body))
+      await saveProfileResult(agentResult.profile, accountIdOf(req))
       sendJson(res, 200, agentResult.profile)
       return
     }
 
     if (req.method === 'GET' && pathname === '/api/profile/latest') {
-      sendJson(res, 200, { result: await getLatestProfileResult(getAccountId({}, searchParams)) })
+      sendJson(res, 200, { result: await getLatestProfileResult(accountIdOf(req)) })
       return
     }
 
@@ -297,7 +380,7 @@ const server = http.createServer(async (req, res) => {
           source: body.source || 'profile-save',
           savedAt: new Date().toISOString(),
         }
-        await saveProfileResult(profile, getAccountId(body))
+        await saveProfileResult(profile, accountIdOf(req))
         sendJson(res, 200, profile)
         return
       }
@@ -314,7 +397,7 @@ const server = http.createServer(async (req, res) => {
         source: 'dialogue',
         savedAt: new Date().toISOString(),
       }
-      await saveProfileResult(profile, getAccountId(body))
+      await saveProfileResult(profile, accountIdOf(req))
       sendJson(res, 200, profile)
       return
     }
@@ -322,7 +405,7 @@ const server = http.createServer(async (req, res) => {
     // AI 智能体生成个性化知识路径
     if (req.method === 'POST' && pathname === '/api/knowledge-path/generate') {
       const body = await readJson(req)
-      const profile = body.profile || await getLatestProfileResult(getAccountId(body)) || {}
+      const profile = body.profile || await getLatestProfileResult(accountIdOf(req)) || {}
       const result = await orchestrateKnowledgePath({ profile })
       saveKnowledgePathResult(result.knowledgePath)
       sendJson(res, 200, result.knowledgePath)
@@ -341,7 +424,7 @@ const server = http.createServer(async (req, res) => {
       const isDialoguePayload = Array.isArray(body.messages)
       const message = isDialoguePayload ? latestUserMessage(body.messages) : String(body.message || '').trim()
       const reply = await buildChatReplyAsync(message, body.multimodalContents)
-      saveChatHistoryEntry(message, reply, body.multimodalContents)
+      saveChatHistoryEntry(accountIdOf(req), message, reply, body.multimodalContents)
       const chatTrace = buildTrace({
         requestId: `chat-${Date.now()}`,
         agents: ['ChatAgent'],
@@ -359,7 +442,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/api/chat/history') {
-      sendJson(res, 200, { items: getChatHistory() })
+      sendJson(res, 200, { items: getChatHistory(accountIdOf(req)) })
       return
     }
 
@@ -369,7 +452,7 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 400, { error: 'Bad Request', message: '学习问题不能为空。' })
         return
       }
-      const profile = await getLatestProfileResult(getAccountId(body)) || {}
+      const profile = await getLatestProfileResult(accountIdOf(req)) || {}
       const agentResult = await orchestrateTutoring({
         question: body.question,
         mode: body.mode,
@@ -377,7 +460,7 @@ const server = http.createServer(async (req, res) => {
         resources: [],
       })
       const answer = agentResult.answer
-      saveTutoringHistoryEntry({
+      saveTutoringHistoryEntry(accountIdOf(req), {
         question: String(body.question || '').trim() || '未提供问题',
         answer,
         mode: body.mode || 'qa',
@@ -395,7 +478,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/api/tutoring/history') {
-      sendJson(res, 200, { items: getTutoringHistory() })
+      sendJson(res, 200, { items: getTutoringHistory(accountIdOf(req)) })
       return
     }
 
@@ -436,7 +519,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && pathname === '/api/knowledge/search') {
       const body = await readJson(req)
-      const profile = body.profile || await getLatestProfileResult(getAccountId(body)) || {}
+      const profile = body.profile || await getLatestProfileResult(accountIdOf(req)) || {}
       const result = searchKnowledgeBase({
         query: body.query,
         profile,
@@ -448,36 +531,17 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    if (req.method === 'POST' && pathname === '/api/resources/generate') {
-      const body = await readJson(req)
-      const validation = validateResourceGenerateInput(body)
-      if (!validation.valid) {
-        sendJson(res, 400, { error: 'Bad Request', details: validation.errors })
-        return
-      }
-      const profile = body.profile || await getLatestProfileResult(getAccountId(body)) || {}
-      const weaknesses = body.weaknesses || profile.weaknesses || []
-      const result = await orchestrateResourceGeneration({
-        profile,
-        weaknesses,
-        topic: body.topic,
-        resourceType: body.resourceType,
-      })
-      sendJson(res, 200, result)
-      return
-    }
-
     if (req.method === 'POST' && pathname === '/api/agents/profile') {
       const body = await readJson(req)
       const result = await orchestrateProfileAnalysis(body)
-      await saveProfileResult(result.profile, getAccountId(body))
+      await saveProfileResult(result.profile, accountIdOf(req))
       sendJson(res, 200, result)
       return
     }
 
     if (req.method === 'POST' && pathname === '/api/agents/path-replan') {
       const body = await readJson(req)
-      const profile = body.profile || await getLatestProfileResult(getAccountId(body)) || {}
+      const profile = body.profile || await getLatestProfileResult(accountIdOf(req)) || {}
       const result = await orchestratePathReplan({
         profile,
         evaluation: body.evaluation,
@@ -489,7 +553,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && pathname === '/api/agents/tutor') {
       const body = await readJson(req)
-      const accountId = getAccountId(body)
+      const accountId = accountIdOf(req)
       const profile = body.profile || await getLatestProfileResult(accountId) || {}
       const learningHistory = summarizeLearningHistory(await getLearningCycleHistory(accountId))
       const result = await orchestrateTutoring({
@@ -507,7 +571,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && pathname === '/api/agents/evaluate') {
       const body = await readJson(req)
-      const profile = body.profile || await getLatestProfileResult(getAccountId(body)) || {}
+      const profile = body.profile || await getLatestProfileResult(accountIdOf(req)) || {}
       const result = await orchestrateFullEvaluation({
         profile,
         learningData: body.learningData,
@@ -519,13 +583,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/api/learning-cycles/latest') {
-      sendJson(res, 200, { result: await getLatestLearningCycle(getAccountId({}, searchParams)) })
+      sendJson(res, 200, { result: await getLatestLearningCycle(accountIdOf(req)) })
       return
     }
 
     if (req.method === 'POST' && pathname === '/api/learning-cycles/update') {
       const body = await readJson(req)
-      const accountId = getAccountId(body)
+      const accountId = accountIdOf(req)
       const profile = body.profile || await getLatestProfileResult(accountId)
       if (!profile) {
         sendJson(res, 400, { error: 'Bad Request', message: '缺少可更新的学生画像。' })
@@ -542,20 +606,6 @@ const server = http.createServer(async (req, res) => {
       await saveProfileResult(result.profile, accountId)
       await saveLearningCycle(accountId, result)
       sendJson(res, 200, result)
-      return
-    }
-
-    if (req.method === 'GET' && pathname === '/api/evidence/traces') {
-      const limit = Number(searchParams.get('limit') || 50)
-      const offset = Number(searchParams.get('offset') || 0)
-      const traces = getTraces(limit, offset)
-      sendJson(res, 200, { items: traces, total: traces.length })
-      return
-    }
-
-    if (req.method === 'GET' && pathname === '/api/evidence/summary') {
-      const summary = getTraceSummary()
-      sendJson(res, 200, { ...summary, llmAvailable: isLlmAvailable() })
       return
     }
 

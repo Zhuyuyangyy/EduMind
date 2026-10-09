@@ -4,6 +4,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { performance } from 'node:perf_hooks'
+import { createExperimentSession, withSessionCookie } from './api-session.mjs'
 
 const API_PORT = Number(process.env.ANOMALY_API_PORT || 8794)
 const FAKE_LLM_PORT = Number(process.env.ANOMALY_LLM_PORT || 8795)
@@ -41,10 +42,15 @@ async function waitForHealth(api) {
   throw new Error('Timed out waiting for API server')
 }
 
+let session = null
+
 async function request(name, urlPath, options = {}) {
   const started = performance.now()
   try {
-    const response = await fetch(baseUrl + urlPath, options)
+    const response = await fetch(baseUrl + urlPath, {
+      ...options,
+      headers: withSessionCookie(session, options.headers),
+    })
     const text = await response.text()
     let body = text
     try { body = JSON.parse(text) } catch {}
@@ -80,6 +86,7 @@ api.stderr.on('data', chunk => { serverStderr += chunk.toString() })
 const results = []
 try {
   await waitForHealth(api)
+  session = await createExperimentSession(baseUrl)
   results.push(await request('malformed-json-body', '/api/knowledge/search', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: '{broken',
   }))

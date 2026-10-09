@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { createExperimentSession, withSessionCookie } from './api-session.mjs'
 
 const baseUrl = process.argv[2] || 'http://localhost:8788'
 const outputDir = path.resolve(process.argv[3] || '../../artifacts/learning-cycles')
@@ -45,13 +46,15 @@ function profileOf(values, weaknesses) {
 async function post(urlPath, body) {
   const response = await fetch(baseUrl + urlPath, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: withSessionCookie(session, { 'content-type': 'application/json' }),
     body: JSON.stringify(body),
   })
   const data = await response.json()
   if (!response.ok) throw new Error(`${urlPath} returned ${response.status}: ${JSON.stringify(data)}`)
   return data
 }
+
+const session = await createExperimentSession(baseUrl)
 
 const results = []
 for (const item of cases) {

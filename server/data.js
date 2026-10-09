@@ -7,7 +7,7 @@ import { getProfileResult as getMySqlProfileResult, saveProfileResult as saveMyS
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const contentDir = path.join(__dirname, 'content')
-const storePath = path.join(__dirname, 'store.json')
+const storePath = process.env.ZHIXUE_CHAT_STORE_FILE || path.join(__dirname, 'store.json')
 
 function readJsonFile(filename) {
   const filePath = path.join(contentDir, filename)
@@ -93,55 +93,66 @@ export function saveKnowledgePathResult(result) {
   writeStore(store)
 }
 
-export function getChatHistory() {
-  return readStore().chatHistory
+/**
+ * 聊天 / 辅导历史按账号隔离（P0 认证改造 · feat/mobile-v1）。
+ * store.json 中 chatHistory / tutoringHistory 由「全局数组」改为「账号 -> 数组」映射；
+ * 旧格式（数组）按 default 账号读取，保证历史数据不丢。
+ */
+function readHistoryMap(store, key) {
+  const value = store[key]
+  if (Array.isArray(value)) return { default: value }
+  if (value && typeof value === 'object') return value
+  return {}
 }
 
-export function saveChatHistoryEntry(userMessage, reply, multimodalContents) {
+const HISTORY_LIMITS = { chatHistory: 30, tutoringHistory: 20 }
+
+function writeHistoryEntry(store, key, accountId, entry) {
+  const map = readHistoryMap(store, key)
+  const existing = Array.isArray(map[accountId]) ? map[accountId] : []
+  map[accountId] = keepLast([...existing, entry], HISTORY_LIMITS[key])
+  store[key] = map
+}
+
+export function getChatHistory(accountId = 'default') {
+  return readHistoryMap(readStore(), 'chatHistory')[accountId] || []
+}
+
+export function saveChatHistoryEntry(accountId = 'default', userMessage, reply, multimodalContents) {
   const store = readStore()
   const timestamp = nowTime()
-  const historyItems = [
-    ...store.chatHistory,
-    {
-      id: Date.now(),
-      role: 'user',
-      content: userMessage,
-      time: timestamp,
-      multimodalContents: multimodalContents || [],
-    },
-    {
-      id: Date.now() + 1,
-      role: 'assistant',
-      content: reply.content,
-      time: timestamp,
-      resources: reply.resources ?? [],
-      suggestions: reply.suggestions ?? [],
-    },
-  ]
-  store.chatHistory = keepLast(historyItems, 30)
+  writeHistoryEntry(store, 'chatHistory', accountId, {
+    id: Date.now(),
+    role: 'user',
+    content: userMessage,
+    time: timestamp,
+    multimodalContents: multimodalContents || [],
+  })
+  writeHistoryEntry(store, 'chatHistory', accountId, {
+    id: Date.now() + 1,
+    role: 'assistant',
+    content: reply.content,
+    time: timestamp,
+    resources: reply.resources ?? [],
+    suggestions: reply.suggestions ?? [],
+  })
   writeStore(store)
 }
 
-export function getTutoringHistory() {
-  return readStore().tutoringHistory
+export function getTutoringHistory(accountId = 'default') {
+  return readHistoryMap(readStore(), 'tutoringHistory')[accountId] || []
 }
 
-export function saveTutoringHistoryEntry({ question, answer, mode, scenario, multimodalContents }) {
+export function saveTutoringHistoryEntry(accountId = 'default', { question, answer, mode, scenario, multimodalContents }) {
   const store = readStore()
-  store.tutoringHistory = keepLast(
-    [
-      ...store.tutoringHistory,
-      {
-        q: question,
-        a: answer,
-        time: nowTime(),
-        mode,
-        scenario: scenario || 'preview',
-        multimodalContents: multimodalContents || [],
-      },
-    ],
-    20,
-  )
+  writeHistoryEntry(store, 'tutoringHistory', accountId, {
+    q: question,
+    a: answer,
+    time: nowTime(),
+    mode,
+    scenario: scenario || 'preview',
+    multimodalContents: multimodalContents || [],
+  })
   writeStore(store)
 }
 
