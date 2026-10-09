@@ -8,8 +8,9 @@ import { test } from 'node:test'
 
 const TEST_PORT = 8791
 const BASE_URL = `http://127.0.0.1:${TEST_PORT}`
-// 与其他测试文件隔离数据文件，避免并行执行时争抢 store.json
+// 与其他测试文件隔离数据文件，避免并行执行时争抢 store.json / traces.json
 const DATA_FILE = path.join(os.tmpdir(), `edumind-test-chat-${process.pid}.json`)
+const TRACE_FILE = path.join(os.tmpdir(), `edumind-test-chat-traces-${process.pid}.json`)
 
 async function waitForServer(process) {
   const deadline = Date.now() + 5000
@@ -37,6 +38,7 @@ async function withApiServer(fn) {
       PORT: String(TEST_PORT),
       ZHIXUE_DATA_FILE: DATA_FILE,
       ZHIXUE_CHAT_STORE_FILE: DATA_FILE,
+      ZHIXUE_TRACE_FILE: TRACE_FILE,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -55,6 +57,7 @@ async function withApiServer(fn) {
       await once(api, 'exit')
     }
     fs.rmSync(DATA_FILE, { force: true })
+    fs.rmSync(TRACE_FILE, { force: true })
   }
 
   assert.equal(stderr, '')

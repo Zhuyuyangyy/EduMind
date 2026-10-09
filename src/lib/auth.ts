@@ -29,13 +29,16 @@ export function getAuthToken(): string | null {
   return window.localStorage.getItem(AUTH_TOKEN_KEY)
 }
 
+/**
+ * 写入本地登录态。
+ * token 参数语义：传入新 token 时覆盖；省略时保留现有 token
+ * （设置页等只更新展示信息的调用不能把移动端 Bearer 认证的 token 清掉）。
+ */
 export function setAuthSession(session: AuthSession, token?: string) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session))
   if (token) {
     window.localStorage.setItem(AUTH_TOKEN_KEY, token)
-  } else {
-    window.localStorage.removeItem(AUTH_TOKEN_KEY)
   }
 }
 

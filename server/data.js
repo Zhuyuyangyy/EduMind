@@ -83,13 +83,26 @@ export async function saveProfileResult(profileResult, accountId = 'default') {
   return saveMySqlProfileResult(accountId, profileResult)
 }
 
-export function getLatestKnowledgePath() {
-  return readStore().knowledgePathResult
+/**
+ * 知识路径按账号隔离（P0 数据隔离 · feat/mobile-v1）。
+ * 新格式存于 store.json 的 knowledgePathByAccount（账号 -> 路径对象）；
+ * 旧格式的单份全局 knowledgePathResult 按 default 账号迁移读取，历史数据不丢。
+ */
+function readKnowledgePathMap(store) {
+  const map = store.knowledgePathByAccount
+  if (map && typeof map === 'object' && !Array.isArray(map)) return map
+  return store.knowledgePathResult ? { default: store.knowledgePathResult } : {}
 }
 
-export function saveKnowledgePathResult(result) {
+export function getLatestKnowledgePath(accountId = 'default') {
+  return readKnowledgePathMap(readStore())[accountId] || null
+}
+
+export function saveKnowledgePathResult(accountId = 'default', result) {
   const store = readStore()
-  store.knowledgePathResult = result
+  const map = readKnowledgePathMap(store)
+  map[accountId] = result
+  store.knowledgePathByAccount = map
   writeStore(store)
 }
 
@@ -184,6 +197,8 @@ export async function buildChatReplyAsync(message, multimodalContents) {
             { type: 'exercise', title: '配套练习', color: '#06d6a0' },
           ],
           suggestions: ['用更简单的话解释', '给我一个代码示例', '顺便出 3 道练习题'],
+          // 供证据追踪如实记录：本次回复来自真实 LLM，未走降级
+          fallbackUsed: false,
         }
       }
     } catch (err) {
@@ -191,7 +206,7 @@ export async function buildChatReplyAsync(message, multimodalContents) {
     }
   }
 
-  return buildChatReply(message, multimodalContents)
+  return { ...buildChatReply(message, multimodalContents), fallbackUsed: true }
 }
 
 export function buildChatReply(message, multimodalContents) {

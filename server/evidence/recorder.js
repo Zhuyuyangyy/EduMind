@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { AsyncLocalStorage } from 'node:async_hooks'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -12,6 +13,27 @@ function ensureDir() {
   fs.mkdirSync(path.dirname(tracesPath()), { recursive: true })
 }
 
+/**
+ * 账号上下文（P0 数据隔离 · feat/mobile-v1）。
+ * 由 server/index.js 的认证中间件在每次请求时注入；
+ * orchestrator 等深层调用无需改签名即可把 trace 归属到当前账号。
+ * 历史 trace 没有 accountId 字段，一律按 'default' 归属（仅 default 账号可见）。
+ */
+const accountStorage = new AsyncLocalStorage()
+const LEGACY_ACCOUNT = 'default'
+
+export function runWithAccount(accountId, fn) {
+  return accountStorage.run(accountId, fn)
+}
+
+export function currentAccount() {
+  return accountStorage.getStore() || LEGACY_ACCOUNT
+}
+
+function traceAccount(trace) {
+  return trace.accountId || LEGACY_ACCOUNT
+}
+
 export function readTraces() {
   ensureDir()
   const fp = tracesPath()
@@ -21,6 +43,11 @@ export function readTraces() {
   } catch {
     return []
   }
+}
+
+/** 仅返回指定账号的 trace（按时间正序）。 */
+export function readTracesForAccount(accountId) {
+  return readTraces().filter(trace => traceAccount(trace) === accountId)
 }
 
 function writeTraces(traces) {
@@ -35,27 +62,29 @@ export function setTraceRecordedHook(hook) {
 }
 
 export function recordTrace(trace) {
+  const stamped = { ...trace, accountId: trace.accountId || currentAccount() }
   const traces = readTraces()
-  traces.push(trace)
+  traces.push(stamped)
   const kept = traces.slice(-200)
   writeTraces(kept)
   if (typeof traceHook === 'function') {
     try {
-      traceHook(trace)
+      traceHook(stamped)
     } catch (err) {
       console.error('[traceHook] failed:', err)
     }
   }
-  return trace
+  return stamped
 }
 
-export function getTraces(limit = 50, offset = 0) {
-  const traces = readTraces()
+/** 按账号读取 trace 列表（新→旧分页），杜绝跨账号可见。 */
+export function getTraces(accountId, limit = 50, offset = 0) {
+  const traces = readTracesForAccount(accountId)
   return traces.slice(-(limit + offset)).slice(0, limit).reverse()
 }
 
-export function getTraceSummary() {
-  const traces = readTraces()
+export function getTraceSummary(accountId) {
+  const traces = readTracesForAccount(accountId)
   const totalTraces = traces.length
   const fallbackCount = traces.filter(t => t.fallbackUsed).length
   const riskFlagCount = traces.filter(t => t.riskFlags && t.riskFlags.length > 0).length

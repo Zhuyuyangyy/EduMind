@@ -14,8 +14,9 @@ import { test } from 'node:test'
 
 const TEST_PORT = 8792
 const BASE_URL = `http://127.0.0.1:${TEST_PORT}`
-// 与其他测试文件隔离数据文件，避免并行执行时争抢 store.json
+// 与其他测试文件隔离数据文件，避免并行执行时争抢 store.json / traces.json
 const DATA_FILE = path.join(os.tmpdir(), `edumind-test-auth-${process.pid}.json`)
+const TRACE_FILE = path.join(os.tmpdir(), `edumind-test-auth-traces-${process.pid}.json`)
 
 async function waitForServer(child) {
   const deadline = Date.now() + 5000
@@ -41,6 +42,7 @@ async function withApiServer(fn) {
       PORT: String(TEST_PORT),
       ZHIXUE_DATA_FILE: DATA_FILE,
       ZHIXUE_CHAT_STORE_FILE: DATA_FILE,
+      ZHIXUE_TRACE_FILE: TRACE_FILE,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -59,6 +61,7 @@ async function withApiServer(fn) {
       await once(api, 'exit')
     }
     fs.rmSync(DATA_FILE, { force: true })
+    fs.rmSync(TRACE_FILE, { force: true })
   }
 
   assert.equal(stderr, '')
@@ -240,5 +243,94 @@ test('登出后会话立即失效', async () => {
 
     const after = await fetch(`${BASE_URL}/api/tutoring/topics`, { headers: { Cookie: cookie } })
     assert.equal(after.status, 401)
+  })
+})
+
+test('证据追踪按账号隔离：两个账号互相看不到对方的 trace', async () => {
+  await withApiServer(async () => {
+    const marker = `trace-leak-${Date.now()}`
+    const reviewer = await login('reviewer', 'Zhixue2026!')
+    const student = await login('student', 'student123')
+
+    const chat = await fetch(`${BASE_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: reviewer.cookie },
+      body: JSON.stringify({ message: marker }),
+    })
+    assert.equal(chat.status, 200)
+
+    const reviewerTraces = await fetch(`${BASE_URL}/api/evidence/traces`, { headers: { Cookie: reviewer.cookie } })
+    const reviewerItems = (await reviewerTraces.json()).items
+    assert.ok(reviewerItems.some(t => (t.inputsSummary || '').includes(marker)), 'reviewer should see own trace')
+
+    const studentTraces = await fetch(`${BASE_URL}/api/evidence/traces`, { headers: { Cookie: student.cookie } })
+    const studentItems = (await studentTraces.json()).items
+    assert.ok(!studentItems.some(t => (t.inputsSummary || '').includes(marker)), 'student must not see reviewer trace')
+
+    const reviewerSummary = await fetch(`${BASE_URL}/api/evidence/summary`, { headers: { Cookie: reviewer.cookie } })
+    const studentSummary = await fetch(`${BASE_URL}/api/evidence/summary`, { headers: { Cookie: student.cookie } })
+    const rSummary = await reviewerSummary.json()
+    const sSummary = await studentSummary.json()
+    assert.ok(rSummary.totalTraces >= 1, 'reviewer summary counts own trace')
+    assert.equal(sSummary.totalTraces, 0, 'student summary must not count reviewer trace')
+  })
+})
+
+test('历史 trace（无 accountId 字段）对登录用户不可见', async () => {
+  await withApiServer(async () => {
+    // 直接在 trace 文件里埋一条改造前的历史数据
+    const legacy = [{
+      requestId: 'legacy-1',
+      timestamp: new Date().toISOString(),
+      agents: ['ChatAgent'],
+      inputsSummary: 'legacy-secret-message',
+      outputsSummary: 'legacy-secret-reply',
+      evidence: [], riskFlags: [], fallbackUsed: true, durationMs: 0, agentResults: [],
+    }]
+    fs.writeFileSync(TRACE_FILE, JSON.stringify(legacy), 'utf8')
+
+    const { cookie } = await login('reviewer', 'Zhixue2026!')
+    const traces = await fetch(`${BASE_URL}/api/evidence/traces`, { headers: { Cookie: cookie } })
+    const items = (await traces.json()).items
+    assert.ok(!items.some(t => (t.inputsSummary || '').includes('legacy-secret')), 'legacy traces must not leak to logged-in users')
+  })
+})
+
+test('协作演示数据重置接口要求管理员角色', async () => {
+  await withApiServer(async () => {
+    const student = await login('student', 'student123')
+    const denied = await fetch(`${BASE_URL}/api/agent-collaboration/seed`, {
+      method: 'POST', headers: { Cookie: student.cookie },
+    })
+    assert.equal(denied.status, 403)
+  })
+})
+
+test('知识路径按账号隔离', async () => {
+  await withApiServer(async () => {
+    const reviewer = await login('reviewer', 'Zhixue2026!')
+    const student = await login('student', 'student123')
+    const profile = {
+      dimensions: [
+        { label: '知识基础', value: 61 }, { label: '学习速度', value: 61 },
+        { label: '逻辑思维', value: 61 }, { label: '创造力', value: 61 },
+        { label: '专注力', value: 61 }, { label: '自律力', value: 61 },
+      ],
+      totalScore: 61,
+      weaknesses: ['知识基础需巩固'],
+    }
+
+    const generated = await fetch(`${BASE_URL}/api/knowledge-path/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: reviewer.cookie },
+      body: JSON.stringify({ profile }),
+    })
+    assert.equal(generated.status, 200)
+
+    const reviewerLatest = await fetch(`${BASE_URL}/api/knowledge-path/latest`, { headers: { Cookie: reviewer.cookie } })
+    assert.notEqual((await reviewerLatest.json()).result, null, 'reviewer sees own knowledge path')
+
+    const studentLatest = await fetch(`${BASE_URL}/api/knowledge-path/latest`, { headers: { Cookie: student.cookie } })
+    assert.equal((await studentLatest.json()).result, null, 'student must not see reviewer knowledge path')
   })
 })

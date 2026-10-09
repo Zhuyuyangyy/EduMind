@@ -34,7 +34,7 @@ import {
   orchestrateLearningUpdate,
   runResourceGeneration,
 } from './agents/orchestrator.js'
-import { getTraces, getTraceSummary, buildTrace, recordTrace, setTraceRecordedHook } from './evidence/recorder.js'
+import { getTraces, getTraceSummary, buildTrace, recordTrace, setTraceRecordedHook, runWithAccount } from './evidence/recorder.js'
 import { isLlmAvailable, getLlmConfig } from './llm/provider.js'
 import { getKnowledgeBaseStats, searchKnowledgeBase } from './knowledge-base/vector-store.js'
 import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, getStorageBackend, saveAccountSettings, saveLearningCycle } from './store/mysql.js'
@@ -208,17 +208,8 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`)
   const { pathname, searchParams } = url
 
-  try {
-    // 认证中间件：公开路径之外一律要求有效会话，并将账号绑定到请求上
-    if (pathname.startsWith('/api/') && !PUBLIC_API_PATHS.has(pathname)) {
-      const session = getSession(extractToken(req))
-      if (!session) {
-        sendJson(res, 401, { error: 'Unauthorized', message: '登录状态无效或已过期，请重新登录。' })
-        return
-      }
-      req.session = session
-    }
-
+  // 全部 /api 路由（公开路径也在内，只是没有账号上下文）
+  const routeApi = async () => {
     if (req.method === 'GET' && pathname === '/api/health') {
       sendJson(res, 200, {
         ok: true,
@@ -349,12 +340,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && pathname === '/api/evidence/traces') {
       const limit = Math.min(Number(searchParams.get('limit')) || 50, 100)
       const offset = Number(searchParams.get('offset')) || 0
-      sendJson(res, 200, { items: getTraces(limit, offset) })
+      sendJson(res, 200, { items: getTraces(accountIdOf(req), limit, offset) })
       return
     }
 
     if (req.method === 'GET' && pathname === '/api/evidence/summary') {
-      sendJson(res, 200, getTraceSummary())
+      sendJson(res, 200, getTraceSummary(accountIdOf(req)))
       return
     }
 
@@ -407,14 +398,14 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req)
       const profile = body.profile || await getLatestProfileResult(accountIdOf(req)) || {}
       const result = await orchestrateKnowledgePath({ profile })
-      saveKnowledgePathResult(result.knowledgePath)
+      saveKnowledgePathResult(accountIdOf(req), result.knowledgePath)
       sendJson(res, 200, result.knowledgePath)
       return
     }
 
-    // 获取已生成的知识路径
+    // 获取已生成的知识路径（按账号隔离）
     if (req.method === 'GET' && pathname === '/api/knowledge-path/latest') {
-      const kp = getLatestKnowledgePath()
+      const kp = getLatestKnowledgePath(accountIdOf(req))
       sendJson(res, 200, { result: kp })
       return
     }
@@ -430,9 +421,10 @@ const server = http.createServer(async (req, res) => {
         agents: ['ChatAgent'],
         inputsSummary: `消息: ${String(message || '').slice(0, 80)}`,
         outputsSummary: `回复: ${String(reply.content || '').slice(0, 80)}`,
-        evidence: ['本地规则生成对话回复'],
+        evidence: [reply.fallbackUsed ? '本地规则生成对话回复' : 'LLM 生成对话回复'],
         riskFlags: [],
-        fallbackUsed: true,
+        // 如实记录：真实 LLM 成功时不得标记为降级
+        fallbackUsed: reply.fallbackUsed !== false,
         durationMs: 0,
         agentResults: [],
       })
@@ -630,12 +622,33 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && pathname === '/api/agent-collaboration/seed') {
+      // 共享演示数据的写操作要求管理员角色（普通登录用户即可触发是不合理的）
+      if (req.session?.role !== 'admin') {
+        sendJson(res, 403, { error: 'Forbidden', message: '只有管理员可以重置协作演示数据。' })
+        return
+      }
       await seedAllDays(saveCollaboration)
       sendJson(res, 200, { ok: true, days: listDays() })
       return
     }
 
     notFound(res)
+  }
+
+  try {
+    // 认证中间件：公开路径之外一律要求有效会话；业务路由在账号上下文内执行，
+    // 使 orchestrator / recorder 的深层调用无需改签名即可归属到当前账号。
+    if (pathname.startsWith('/api/') && !PUBLIC_API_PATHS.has(pathname)) {
+      const session = getSession(extractToken(req))
+      if (!session) {
+        sendJson(res, 401, { error: 'Unauthorized', message: '登录状态无效或已过期，请重新登录。' })
+        return
+      }
+      req.session = session
+      await runWithAccount(session.account, routeApi)
+      return
+    }
+    await routeApi()
   } catch (error) {
     const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 500
     sendJson(res, statusCode, {

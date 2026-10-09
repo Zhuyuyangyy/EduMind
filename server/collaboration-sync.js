@@ -69,7 +69,8 @@ function buildModuleEvents(tracesForDay, moduleId, baseIndex) {
       t: minutesForTimestamp(trace.timestamp),
       type: tpl.type,
       label: `${tpl.label} #${i + 1}`,
-      detail: trace.outputsSummary || trace.inputsSummary || tpl.detail,
+      // 安全边界：协作看板是全局共享数据，绝不把 trace 里的用户输入/输出摘要抄进来
+      detail: tpl.detail,
     }
   })
 }
