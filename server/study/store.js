@@ -71,12 +71,19 @@ export function naturalDay(atIso, timeZone = 'Asia/Shanghai') {
 
 /* ———————————— 会话 ———————————— */
 
-export function createStudySession(accountId, { topicId, phaseId, timezone, exerciseCount } = {}) {
+export function createStudySession(accountId, { topicId, topicIds, phaseId, timezone, exerciseCount } = {}) {
   const store = readStore()
   const bank = loadExerciseBank()
-  let exercises = bank.exercises.filter(item => item.topicId === topicId)
+  // 主题选择：topicIds（混合练习）优先，其次单个 topicId；始终由服务端从题库选取
+  const wanted = Array.isArray(topicIds) && topicIds.length > 0
+    ? topicIds.filter(id => typeof id === 'string')
+    : (typeof topicId === 'string' && topicId ? [topicId] : [])
+  if (wanted.length === 0) {
+    return { error: 'invalid-topic', message: '必须提供 topicId 或 topicIds' }
+  }
+  let exercises = bank.exercises.filter(item => wanted.includes(item.topicId))
   if (exercises.length === 0) {
-    return { error: 'no-exercises', message: `题库中暂无 topicId=${topicId} 的题目` }
+    return { error: 'no-exercises', message: `题库中暂无这些主题的题目: ${wanted.join(',')}` }
   }
   if (Number.isInteger(exerciseCount) && exerciseCount > 0) {
     exercises = exercises.slice(0, exerciseCount)

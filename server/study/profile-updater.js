@@ -1,27 +1,35 @@
 /**
- * 证据驱动的画像与路径更新（P3-2 · feat/mobile-v1）
+ * 证据驱动的画像与路径更新（P3-2.1 · feat/mobile-v1）
  *
  * 规则边界（全部确定性，不依赖模型）：
- * 1. 证据量门槛：作答题数 < MIN_QUESTIONS 不更新画像（一次三题练习
- *    可以给学习建议，但不足以证明整体能力变化）；
+ * 1. 证据量门槛：会话作答题数 < MIN_QUESTIONS 不更新画像；
+ *    单个维度有效题数 < MIN_DIMENSION_QUESTIONS 不调整该维度；
  * 2. 变化边界：单维度单次变化限制在 ±MAX_DELTA；
  * 3. 稳定区间：0.4 <= 正确率 < 0.8 视为稳定，不调整；
  * 4. 无基线不更新；无变化不写库；
- * 5. 每次真实更新写入 ProfileRevision（before/after/reason/eventIds/
- *    source/version），路径更新保持知识点 ID 稳定并递增版本。
+ * 5. 派生字段一致：dimensions 变化后同步 totalScore / radarPoints / score，
+ *    不触碰 source、weaknesses 等无关字段；
+ * 6. 每次真实更新产出修订载荷（before/after/reason/eventIds/source/version），
+ *    由调用方按恢复协议落库。
+ *
+ * 崩溃安全（write-ahead 协议）：
+ * prepare* 只读且确定性；调用方先把意图（profileAfterValues /
+ * pendingRevision）持久化，再 commit* 落库。恢复时按意图对账，
+ * 每个子更新最多生效一次，绝不出现「分数已变但无证据」。
  */
 import { getProfileResult, saveProfileResult } from '../store/mysql.js'
 import { getLatestKnowledgePath, saveKnowledgePathResult } from '../data.js'
 import { findExercise } from './exercise-bank.js'
 import { summarizeAttempts } from './scoring.js'
-import { saveProfileRevision, listLearningEvents } from './repository.js'
+import { listLearningEvents } from './repository.js'
 
 export const UPDATE_RULES = {
   MIN_QUESTIONS: 3,
+  MIN_DIMENSION_QUESTIONS: 2,
   MAX_DELTA: 4,
   STABLE_LOW: 0.4,
   STABLE_HIGH: 0.8,
-  PATH_STEP: 0.3, // 路径掌握度向观测正确率移动的步长比例
+  PATH_STEP: 0.3,
 }
 
 /** 按画像维度汇总练习证据（确定性） */
@@ -49,12 +57,36 @@ function clamp(value, min, max) {
 }
 
 /**
- * 应用练习证据到画像。返回结构化决策记录（无论是否应用）。
+ * 画像派生字段一致性：dimensions 变化后同步 totalScore / radarPoints / score，
+ * 不触碰 source、weaknesses、recommendations 等无关字段。
  */
-export async function applyEvidenceToProfile({ accountId, session, attempts }) {
-  const assessment = summarizeAttempts(attempts)
+export function withDerivedFields(profile) {
+  const dimensions = Array.isArray(profile.dimensions) ? profile.dimensions : []
+  if (dimensions.length === 0) return profile
 
-  // 门槛 1：证据量
+  const values = dimensions.map(d => Number(d.value) || 0)
+  const mean = Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+  const next = { ...profile, totalScore: mean }
+
+  if (Array.isArray(profile.radarPoints)) {
+    const byLabel = new Map(dimensions.map(d => [d.label, d.value]))
+    next.radarPoints = profile.radarPoints.map(point => {
+      const label = point?.dimension ?? point?.label
+      const value = byLabel.get(label)
+      return value == null ? point : { ...point, dimension: label, score: value }
+    })
+  }
+  if ('score' in profile) {
+    next.score = mean
+  }
+  return next
+}
+
+/**
+ * 准备画像更新（只读、确定性、无副作用）。
+ * 返回 { applied, reason, changes, skippedDimensions, nextProfile?, revision?, profileAfter? }
+ */
+export async function prepareProfileUpdate({ accountId, session, attempts }) {
   if (attempts.length < UPDATE_RULES.MIN_QUESTIONS) {
     return {
       applied: false,
@@ -63,17 +95,22 @@ export async function applyEvidenceToProfile({ accountId, session, attempts }) {
     }
   }
 
-  // 门槛 2：画像基线必须来自服务端
   const profile = await getProfileResult(accountId)
   if (!profile || !Array.isArray(profile.dimensions)) {
     return { applied: false, reason: '无服务端画像基线，不更新', changes: [] }
   }
 
   const evidence = collectDimensionEvidence(attempts)
+  const skippedDimensions = []
   const changes = []
   const nextDimensions = profile.dimensions.map(dimension => {
     const entry = evidence.find(item => item.dimension === dimension.label)
     if (!entry || entry.rate == null) return dimension
+
+    if (entry.total < UPDATE_RULES.MIN_DIMENSION_QUESTIONS) {
+      skippedDimensions.push(`${dimension.label}（仅 ${entry.total} 题，低于 ${UPDATE_RULES.MIN_DIMENSION_QUESTIONS} 题门槛）`)
+      return dimension
+    }
 
     let delta = 0
     if (entry.rate >= UPDATE_RULES.STABLE_HIGH) delta = UPDATE_RULES.MAX_DELTA
@@ -94,36 +131,60 @@ export async function applyEvidenceToProfile({ accountId, session, attempts }) {
   })
 
   if (changes.length === 0) {
-    return { applied: false, reason: '各维度正确率处于稳定区间，无需调整', changes: [] }
+    const reason = skippedDimensions.length > 0
+      ? `维度证据不足：${skippedDimensions.join('；')}`
+      : '各维度正确率处于稳定区间，无需调整'
+    return { applied: false, reason, changes: [], skippedDimensions }
   }
 
-  const nextProfile = { ...profile, dimensions: nextDimensions }
-  await saveProfileResult(accountId, nextProfile)
-
-  // 事件溯源：本会话相关事件 ID
+  const nextProfile = withDerivedFields({ ...profile, dimensions: nextDimensions })
   const events = await listLearningEvents(accountId, 50)
   const eventIds = events
     .filter(event => event.sessionId === session.id && ['answer-submit', 'session-complete'].includes(event.type))
     .map(event => event.id)
+  const revisionReason = changes.map(change => `${change.dimension}: ${change.before}→${change.after}（${change.reason}）`).join('；')
 
-  const revision = await saveProfileRevision(accountId, {
-    eventIds,
-    before: profile,
-    after: nextProfile,
-    reason: changes.map(change => `${change.dimension}: ${change.before}→${change.after}（${change.reason}）`).join('；'),
-    source: 'rule',
-    version: 1,
-    sessionId: session.id,
-  })
+  return {
+    applied: true,
+    reason: revisionReason,
+    changes,
+    skippedDimensions,
+    nextProfile,
+    profileAfter: Object.fromEntries(changes.map(change => [change.dimension, change.after])),
+    revision: {
+      eventIds,
+      before: profile,
+      after: nextProfile,
+      reason: revisionReason,
+      source: 'rule',
+      version: 1,
+      sessionId: session.id,
+    },
+  }
+}
 
-  return { applied: true, reason: revision.reason, changes, revisionId: revision.id }
+/** 落库画像更新（唯一写操作） */
+export async function commitProfileUpdate(accountId, nextProfile) {
+  await saveProfileResult(accountId, nextProfile)
 }
 
 /**
- * 用观测正确率修正路径掌握度估计（有界步长），知识点 ID 保持不变，
- * 路径版本递增并可追踪旧版。
+ * 兼容封装：prepare + commit（无恢复协议的简单调用方使用）。
  */
-export async function applyEvidenceToPath({ accountId, session, attempts }) {
+export async function applyEvidenceToProfile({ accountId, session, attempts }) {
+  const prepared = await prepareProfileUpdate({ accountId, session, attempts })
+  if (!prepared.applied) return prepared
+  await commitProfileUpdate(accountId, prepared.nextProfile)
+  const { nextProfile, ...rest } = prepared
+  return rest
+}
+
+/* ———————————— 路径更新 ———————————— */
+
+/**
+ * 准备路径更新（只读、确定性）。知识点 ID 保持不变，版本递增。
+ */
+export async function preparePathUpdate({ accountId, session, attempts }) {
   if (attempts.length === 0) {
     return { applied: false, reason: '无作答证据，不调整路径' }
   }
@@ -132,19 +193,23 @@ export async function applyEvidenceToPath({ accountId, session, attempts }) {
     return { applied: false, reason: '无知识路径，不调整' }
   }
 
+  const currentVersion = Number(path.version) || 1
   const assessment = summarizeAttempts(attempts)
   const rate = assessment.correctRate
   if (rate == null) {
     return { applied: false, reason: '无有效正确率，不调整' }
   }
 
-  const currentVersion = Number(path.version) || 1
+  // 本次实际作答覆盖的知识点（从题目推导，支持混合主题会话）
+  const sessionTopicIds = new Set(
+    attempts.map(attempt => findExercise(attempt.exerciseId)?.topicId).filter(Boolean),
+  )
+
   let touched = 0
   const nextPhases = path.phases.map(phase => ({
     ...phase,
-    // 按知识点 ID 匹配（题库 topicId 与路径 topic.id 同源，ID 稳定）
     topics: (phase.topics || []).map(topic => {
-      if (topic.id !== session.topicId) return topic
+      if (!sessionTopicIds.has(topic.id)) return topic
       const mastery = Number(topic.mastery) || 0
       const next = clamp(mastery + (rate - mastery) * UPDATE_RULES.PATH_STEP, 0, 1)
       if (Math.abs(next - mastery) < 0.001) return topic
@@ -165,11 +230,25 @@ export async function applyEvidenceToPath({ accountId, session, attempts }) {
     updatedAt: new Date().toISOString(),
     updateReason: `依据练习观测正确率 ${Math.round(rate * 100)}% 修正掌握度估计（有界步长，知识点 ID 不变）`,
   }
-  await saveKnowledgePathResult(accountId, nextPath)
   return {
     applied: true,
     reason: nextPath.updateReason,
     version: nextPath.version,
     basedOn: currentVersion,
+    nextPath,
   }
+}
+
+/** 落库路径更新（唯一写操作） */
+export async function commitPathUpdate(accountId, nextPath) {
+  await saveKnowledgePathResult(accountId, nextPath)
+}
+
+/** 兼容封装 */
+export async function applyEvidenceToPath({ accountId, session, attempts }) {
+  const prepared = await preparePathUpdate({ accountId, session, attempts })
+  if (!prepared.applied) return prepared
+  await commitPathUpdate(accountId, prepared.nextPath)
+  const { nextPath, ...rest } = prepared
+  return rest
 }

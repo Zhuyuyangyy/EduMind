@@ -63,12 +63,20 @@ import {
   getStudyStats,
   listLearningEvents,
   listProfileRevisions,
+  saveProfileRevision,
   listBankTopics,
   findExercise,
   summarizeAttempts,
 } from './study/repository.js'
 import { generateStudyFeedback, buildWrongItems } from './study/feedback.js'
-import { applyEvidenceToProfile, applyEvidenceToPath, UPDATE_RULES } from './study/profile-updater.js'
+import {
+  prepareProfileUpdate,
+  commitProfileUpdate,
+  preparePathUpdate,
+  commitPathUpdate,
+  UPDATE_RULES,
+} from './study/profile-updater.js'
+import { claimFeedback, mutateFeedback, getFeedbackState } from './study/feedback-state.js'
 
 const PORT = Number(process.env.PORT || 8788)
 const MAX_BODY_SIZE = 1024 * 1024
@@ -608,6 +616,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req)
       const result = await createStudySession(accountIdOf(req), {
         topicId: typeof body.topicId === 'string' ? body.topicId : '',
+        topicIds: Array.isArray(body.topicIds) ? body.topicIds.filter(id => typeof id === 'string') : undefined,
         phaseId: typeof body.phaseId === 'string' ? body.phaseId : null,
         timezone: typeof body.timezone === 'string' ? body.timezone : null,
         exerciseCount: Number.isInteger(body.exerciseCount) ? body.exerciseCount : null,
@@ -663,28 +672,165 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    // P3-2 反馈与受控更新：仅对已完成会话；评分不变，反馈可降级，
-    // 画像/路径更新受证据门槛与边界控制（全部记录修订账本）
+    // P3-2.1 反馈与受控更新：状态机 + 写前日志恢复协议。
+    // 同一 (accountId, sessionId) 只允许一次有效处理：
+    //   completed → 直接返回缓存结果（幂等，绝不重复改画像/路径）；
+    //   processing（未超时）→ 409 处理中；
+    //   failed / 超时 → 接管重试，按持久化意图对账，每个子更新最多生效一次。
     const feedbackMatch = pathname.match(/^\/api\/study\/sessions\/([A-Za-z0-9-]+)\/feedback$/)
     if (req.method === 'POST' && feedbackMatch) {
       const accountId = accountIdOf(req)
-      const state = await getStudySession(accountId, feedbackMatch[1])
+      const sessionId = feedbackMatch[1]
+
+      const claim = await claimFeedback(accountId, sessionId)
+      if (claim.status === 'completed') {
+        // 幂等：返回首次处理缓存的结果
+        sendJson(res, 200, { ...(claim.result || {}), idempotent: true })
+        return
+      }
+      if (claim.status === 'in-progress') {
+        sendJson(res, 409, { error: 'feedback-in-progress', message: '该会话的反馈正在处理中，请稍后重试' })
+        return
+      }
+
+      const state = await getStudySession(accountId, sessionId)
       if (!state) {
+        await mutateFeedback(accountId, sessionId, record => ({
+          ...record,
+          status: 'failed',
+          finishedAt: new Date().toISOString(),
+          error: 'session-not-found',
+        }))
         sendJson(res, 404, { error: 'Not Found', message: '会话不存在或不属于当前账号' })
         return
       }
       if (state.session.status !== 'completed') {
+        await mutateFeedback(accountId, sessionId, record => ({
+          ...record,
+          status: 'failed',
+          finishedAt: new Date().toISOString(),
+          error: 'session-not-completed',
+        }))
         sendJson(res, 400, { error: 'session-not-completed', message: '会话尚未完成，不能生成反馈' })
         return
       }
+
       const attempts = state.attempts
+      // 权威评分：只读已保存的 AnswerSubmission，LLM 无权修改
       const assessment = summarizeAttempts(attempts)
       const wrongItems = buildWrongItems(attempts, findExercise)
-      // 反馈与判分隔离：LLM 任何故障只影响 feedback.source/text
-      const feedback = await generateStudyFeedback({ assessment, wrongItems })
-      const profileUpdate = await applyEvidenceToProfile({ accountId, session: state.session, attempts })
-      const pathUpdate = await applyEvidenceToPath({ accountId, session: state.session, attempts })
-      sendJson(res, 200, { assessment, feedback, profileUpdate, pathUpdate, rules: UPDATE_RULES })
+
+      try {
+        // 步骤 0：AI 反馈（不持有任何事务；失败只影响 feedback，不影响评分）
+        const feedback = await generateStudyFeedback({ assessment, wrongItems })
+
+        // 步骤 1：画像更新（写前日志：先持久化意图，再落库）
+        let profileUpdate
+        const record = (await getFeedbackState(accountId, sessionId)) || { steps: claim.steps, profileAfterValues: null, pendingRevision: null, partial: {} }
+        if (record.steps?.profile !== 'done') {
+          const prepared = await prepareProfileUpdate({ accountId, session: state.session, attempts })
+          if (prepared.applied) {
+            // 恢复对账：当前画像已等于意图目标值 → 上次写入已生效，跳过落库
+            const currentProfile = await getLatestProfileResult(accountId)
+            const alreadyApplied = record.profileAfterValues
+              && Object.entries(record.profileAfterValues).every(([label, value]) => {
+                const dimension = currentProfile?.dimensions?.find(item => item.label === label)
+                return dimension && Number(dimension.value) === Number(value)
+              })
+            if (alreadyApplied) {
+              profileUpdate = {
+                applied: true,
+                reason: '恢复对账：上次更新已生效，不重复应用',
+                changes: prepared.changes,
+                reconciled: true,
+              }
+            } else {
+              // 意图先落盘（崩溃后可对账），再执行唯一写操作
+              await mutateFeedback(accountId, sessionId, r => ({
+                ...r,
+                profileAfterValues: prepared.profileAfter,
+                pendingRevision: prepared.revision,
+              }))
+              await commitProfileUpdate(accountId, prepared.nextProfile)
+              const { nextProfile, ...rest } = prepared
+              profileUpdate = rest
+            }
+          } else {
+            profileUpdate = prepared
+          }
+          await mutateFeedback(accountId, sessionId, r => ({
+            ...r,
+            steps: { ...r.steps, profile: 'done' },
+            partial: { ...(r.partial || {}), profileUpdate },
+          }))
+        } else {
+          profileUpdate = record.partial?.profileUpdate || { applied: false, reason: '该步骤已在之前尝试中处理', changes: [] }
+        }
+
+        // 步骤 2：修订账本（对账补齐：画像已写但账本缺失的中间态在此恢复）
+        if (record.steps?.revision !== 'done') {
+          const existingRevisions = await listProfileRevisions(accountId, 20)
+          const hasRevision = existingRevisions.some(item => item.sessionId === sessionId)
+          const pendingRevision = record.pendingRevision || (profileUpdate.applied && profileUpdate.revision ? profileUpdate.revision : null)
+          if (!hasRevision && pendingRevision) {
+            await saveProfileRevision(accountId, pendingRevision)
+          }
+          await mutateFeedback(accountId, sessionId, r => ({ ...r, steps: { ...r.steps, revision: 'done' } }))
+        }
+
+        // 步骤 3：路径更新（同样的写前日志协议）
+        let pathUpdate
+        const record2 = (await getFeedbackState(accountId, sessionId)) || { steps: claim.steps, pathVersionAfter: null, partial: {} }
+        if (record2.steps?.path !== 'done') {
+          const prepared = await preparePathUpdate({ accountId, session: state.session, attempts })
+          if (prepared.applied) {
+            const currentPath = await getLatestKnowledgePath(accountId)
+            const alreadyApplied = record2.pathVersionAfter && (Number(currentPath?.version) || 1) >= record2.pathVersionAfter
+            if (alreadyApplied) {
+              pathUpdate = {
+                applied: true,
+                reason: '恢复对账：上次路径更新已生效，不重复应用',
+                version: Number(currentPath.version),
+                reconciled: true,
+              }
+            } else {
+              await mutateFeedback(accountId, sessionId, r => ({ ...r, pathVersionAfter: prepared.version }))
+              await commitPathUpdate(accountId, prepared.nextPath)
+              const { nextPath, ...rest } = prepared
+              pathUpdate = rest
+            }
+          } else {
+            pathUpdate = prepared
+          }
+          await mutateFeedback(accountId, sessionId, r => ({
+            ...r,
+            steps: { ...r.steps, path: 'done' },
+            partial: { ...(r.partial || {}), pathUpdate },
+          }))
+        } else {
+          pathUpdate = record2.partial?.pathUpdate || { applied: false, reason: '该步骤已在之前尝试中处理' }
+        }
+
+        const result = { assessment, feedback, profileUpdate, pathUpdate, rules: UPDATE_RULES }
+        await mutateFeedback(accountId, sessionId, r => ({
+          ...r,
+          status: 'completed',
+          finishedAt: new Date().toISOString(),
+          result,
+          error: null,
+        }))
+        sendJson(res, 200, result)
+      } catch (error) {
+        // 可恢复失败：记录状态，允许后续重试（重试时按意图对账）
+        console.error('[feedback] 处理失败:', error)
+        await mutateFeedback(accountId, sessionId, r => ({
+          ...r,
+          status: 'failed',
+          finishedAt: new Date().toISOString(),
+          error: error?.message || '反馈处理失败',
+        }))
+        sendJson(res, 500, { error: 'Internal Error', message: '反馈处理失败，可重试' })
+      }
       return
     }
 
