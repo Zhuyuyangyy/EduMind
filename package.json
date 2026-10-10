@@ -10,7 +10,7 @@
     "dev:client": "npm run tailwind && vite",
     "server": "node server/index.js",
     "dev:server": "node --watch server/index.js",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=4",
     "test:navigation": "node --test src/navigation-cleanup.test.mjs",
     "test:chat-api": "node --test server/chat-api.test.mjs",
     "experiment:anomaly": "node experiments/run-anomaly-tests.mjs",

@@ -227,8 +227,10 @@ async function main() {
       const text = await cdp.bodyText()
       return text.includes('已作答') && text.includes('visited') ? text : null
     }, 20000)
-    report('S1 开始练习进入练习页（3 题）', Boolean(practiceReady) && cdp.eval("location.hash.includes('/study/session/')") !== false,
-      practiceReady ? '练习页加载，题干可见' : '练习页未就绪')
+    // P3.4：hash 必须 await 后判断（未 await 的 Promise 恒为 truthy，会造成假通过）
+    const practiceHash = await cdp.eval('location.hash')
+    report('S1 开始练习进入练习页（3 题）', Boolean(practiceReady) && practiceHash.includes('/study/session/'),
+      practiceReady ? `练习页加载（hash=${practiceHash}）` : '练习页未就绪')
     if (!practiceReady) throw new Error('练习页未就绪，后续场景无法继续')
     sessionId = await cdp.eval("location.hash.match(/study\\/session\\/([A-Za-z0-9-]+)/)[1]")
 

@@ -39,17 +39,24 @@
         </article>
       </div>
 
-      <!-- AI 反馈（来源如实标注） -->
+      <!-- AI 反馈（来源如实标注；失败不影响上方权威评分） -->
       <h2 class="m-section-title">AI 反馈</h2>
       <div class="m-card">
-        <div class="result__fb-head">
-          <span class="m-badge" :class="feedback?.source === 'model' ? 'm-badge--success' : 'm-badge--warn'">
-            {{ feedback?.source === 'model' ? '模型生成' : '规则降级' }}
-          </span>
-          <span v-if="feedback?.degraded" class="result__fb-note">模型暂不可用，反馈由规则模板生成</span>
+        <template v-if="feedback">
+          <div class="result__fb-head">
+            <span class="m-badge" :class="feedback.source === 'model' ? 'm-badge--success' : 'm-badge--warn'">
+              {{ feedback.source === 'model' ? '模型生成' : '规则降级' }}
+            </span>
+            <span v-if="feedback.degraded" class="result__fb-note">模型暂不可用，反馈由规则模板生成</span>
+          </div>
+          <p class="result__fb-text">{{ feedback.text }}</p>
+          <p class="result__fb-disclaimer">反馈为解释性文字；上面的评分数字以服务端记录为准。</p>
+        </template>
+        <div v-else class="result__fb-fail">
+          <b>反馈暂未加载</b>
+          <span class="result__fb-note">{{ feedbackError || '可稍后重试，评分与逐题回顾不受影响。' }}</span>
+          <button class="m-btn m-btn--ghost m-btn--sm" @click="reloadFeedback">重试反馈</button>
         </div>
-        <p class="result__fb-text">{{ feedback?.text || '反馈生成中或失败，可稍后重试。' }}</p>
-        <p class="result__fb-disclaimer">反馈为解释性文字；上面的评分数字以服务端记录为准。</p>
       </div>
 
       <!-- 画像与路径（未更新也是合法结果） -->
@@ -101,11 +108,13 @@ const fatal = ref('')
 const exercises = ref<StudyExercise[]>([])
 const answered = ref<Array<{ exerciseId: string; correct: boolean; submitted: unknown }>>([])
 const feedbackResult = ref<FeedbackResult | null>(null)
+// P3.4：权威评分来自会话记录（独立于 AI 反馈）；反馈失败不影响评分展示
+const assessment = ref<{ total: number; correct: number; correctRate: number | null }>({ total: 0, correct: 0, correctRate: null })
+const feedbackError = ref('')
 
-const assessment = computed(() => feedbackResult.value?.assessment || { total: 0, correct: 0, correctRate: null })
 const feedback = computed(() => feedbackResult.value?.feedback || null)
-const profileUpdate = computed(() => feedbackResult.value?.profileUpdate || { applied: false, reason: '加载中', changes: [] })
-const pathUpdate = computed(() => feedbackResult.value?.pathUpdate || { applied: false, reason: '加载中' })
+const profileUpdate = computed(() => feedbackResult.value?.profileUpdate || { applied: false, reason: '反馈加载中或失败，档案变化状态以重新加载后为准', changes: [] })
+const pathUpdate = computed(() => feedbackResult.value?.pathUpdate || { applied: false, reason: '反馈加载中或失败' })
 
 const correctRateLabel = computed(() => {
   const rate = assessment.value.correctRate
@@ -132,6 +141,7 @@ const questionRows = computed(() => {
 
 onMounted(async () => {
   document.title = '练习结果 · 智学星枢 Mobile'
+  // 评分与反馈解耦（P3.4）：会话记录先到先展示权威评分，反馈独立加载
   const [state, feedbackData] = await Promise.all([
     fetchSessionQuestions(sessionId),
     fetchFeedback(sessionId),
@@ -143,14 +153,30 @@ onMounted(async () => {
   }
   exercises.value = state.exercises
   answered.value = state.answered
+  // 权威评分：来自服务端已保存的作答记录
+  assessment.value = state.assessment || { total: 0, correct: 0, correctRate: null }
   if ('error' in feedbackData) {
-    // 反馈失败不影响评分展示（评分来自题目快照的作答记录）
+    // 反馈失败/409/超时：评分照常展示，反馈区显示可重试状态
     feedbackResult.value = null
+    feedbackError.value = feedbackData.message || '反馈加载失败'
   } else {
     feedbackResult.value = feedbackData
+    feedbackError.value = ''
   }
   loading.value = false
 })
+
+async function reloadFeedback() {
+  feedbackError.value = ''
+  const feedbackData = await fetchFeedback(sessionId)
+  if ('error' in feedbackData) {
+    feedbackResult.value = null
+    feedbackError.value = feedbackData.message || '反馈加载失败'
+  } else {
+    feedbackResult.value = feedbackData
+    feedbackError.value = ''
+  }
+}
 </script>
 
 <style scoped>
@@ -291,5 +317,16 @@ onMounted(async () => {
   flex-direction: column;
   gap: var(--m-space-3);
   margin-top: var(--m-space-6);
+}
+</style>
+
+<style scoped>
+.result__fb-fail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--m-space-2);
+  font-size: var(--m-text-md);
+  color: var(--m-text-dim);
 }
 </style>

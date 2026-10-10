@@ -134,12 +134,15 @@ export async function fetchStudySession(sessionId: string): Promise<{
   }
 }
 
-/** 会话恢复：题目快照 + 已答状态；revealed=true 时含答案（已完成会话） */
+/** 会话恢复：题目快照 + 已答状态 + 权威评分；revealed=true 时含答案（已完成会话） */
 export async function fetchSessionQuestions(sessionId: string): Promise<{
   session: StudySession
   exercises: StudyExercise[]
   answered: Array<{ exerciseId: string; correct: boolean; submitted: unknown }>
   revealed: boolean
+  assessment: { total: number; correct: number; correctRate: number | null }
+  bankVersion: number | null
+  fromSnapshot: boolean
 } | null> {
   const epoch = currentEpoch()
   try {
@@ -148,6 +151,9 @@ export async function fetchSessionQuestions(sessionId: string): Promise<{
       exercises: StudyExercise[]
       answered: Array<{ exerciseId: string; correct: boolean; submitted: unknown }>
       revealed: boolean
+      assessment: { total: number; correct: number; correctRate: number | null }
+      bankVersion: number | null
+      fromSnapshot: boolean
     }>(`/api/study/sessions/${sessionId}/questions`)
     return isCurrent(epoch) ? result : null
   } catch {

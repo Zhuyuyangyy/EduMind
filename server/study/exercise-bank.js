@@ -7,7 +7,9 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
-const bankPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'exercise-bank.json')
+const bankPath = process.env.ZHIXUE_EXERCISE_BANK_PATH
+  ? path.resolve(process.env.ZHIXUE_EXERCISE_BANK_PATH)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'exercise-bank.json')
 
 let cached = null
 

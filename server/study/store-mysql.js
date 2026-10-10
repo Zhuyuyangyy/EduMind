@@ -27,9 +27,19 @@ export async function ensureStudySchema() {
       exercise_ids JSON NOT NULL,
       created_at DATETIME(3) NOT NULL,
       completed_at DATETIME(3) NULL,
+      bank_version INT NOT NULL DEFAULT 1,
+      exercise_snapshot_json JSON NOT NULL,
       KEY study_sessions_account (account_id, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `)
+  // P3.4 迁移：既有表补题目快照列（幂等）
+  for (const [column, definition] of [['bank_version', 'INT NOT NULL DEFAULT 1'], ['exercise_snapshot_json', 'JSON NOT NULL']]) {
+    try {
+      await db.query(`ALTER TABLE study_sessions ADD COLUMN ${column} ${definition}`)
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME' && !/Duplicate column/i.test(error?.message || '')) throw error
+    }
+  }
   await db.query(`
     CREATE TABLE IF NOT EXISTS answer_submissions (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -99,6 +109,7 @@ function publicSession(row) {
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     completedAt: row.completed_at ? (row.completed_at instanceof Date ? row.completed_at.toISOString() : row.completed_at) : null,
     timezone: row.timezone,
+    bankVersion: row.bank_version ?? null,
   }
 }
 
@@ -132,14 +143,17 @@ export async function createStudySession(accountId, { topicId, topicIds, phaseId
     timezone: timezone || 'Asia/Shanghai',
     status: 'active',
     exerciseIds: exercises.map(item => item.id),
+    // P3.4：题目快照（含题库版本），历史恢复读快照
+    bankVersion: bank.version,
+    exerciseSnapshot: exercises.map(item => ({ ...item })),
     createdAt: nowIso(),
     completedAt: null,
   }
   const db = getMySqlPool()
   await db.query(
-    `INSERT INTO study_sessions (id, account_id, topic_id, phase_id, timezone, status, exercise_ids, created_at)
-     VALUES (?, ?, ?, ?, ?, 'active', CAST(? AS JSON), ?)`,
-    [session.id, accountId, session.topicId, session.phaseId, session.timezone, JSON.stringify(session.exerciseIds), session.createdAt],
+    `INSERT INTO study_sessions (id, account_id, topic_id, phase_id, timezone, status, exercise_ids, created_at, bank_version, exercise_snapshot_json)
+     VALUES (?, ?, ?, ?, ?, 'active', CAST(? AS JSON), ?, ?, CAST(? AS JSON))`,
+    [session.id, accountId, session.topicId, session.phaseId, session.timezone, JSON.stringify(session.exerciseIds), session.createdAt, session.bankVersion, JSON.stringify(session.exerciseSnapshot)],
   )
   await db.query(
     `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'session-start', CAST(? AS JSON), ?)`,
@@ -174,6 +188,11 @@ export async function getStudySession(accountId, sessionId) {
       submitted: a.submitted_json ? (typeof a.submitted_json === 'string' ? JSON.parse(a.submitted_json) : a.submitted_json) : null,
       submittedAt: a.submitted_at instanceof Date ? a.submitted_at.toISOString() : a.submitted_at,
     })),
+    // P3.4：题目快照（旧会话无快照列数据时回退当前题库，由调用方标注）
+    snapshot: row.exercise_snapshot_json
+      ? (typeof row.exercise_snapshot_json === 'string' ? JSON.parse(row.exercise_snapshot_json) : row.exercise_snapshot_json)
+      : null,
+    bankVersion: row.bank_version ?? null,
   }
 }
 
@@ -214,6 +233,11 @@ export async function recordAnswer(accountId, sessionId, { exerciseId, submitted
       await connection.rollback()
       return { ok: false, code: 'invalid-exercise', message: `题目不存在: ${exerciseId}` }
     }
+    // P3.4：判分优先用会话快照的题目（题库升级不改变本会话的对错含义）
+    const snapshot = row.exercise_snapshot_json
+      ? (typeof row.exercise_snapshot_json === 'string' ? JSON.parse(row.exercise_snapshot_json) : row.exercise_snapshot_json)
+      : null
+    const scoringExercise = Array.isArray(snapshot) ? (snapshot.find(item => item.id === exerciseId) || exercise) : exercise
     const exerciseIds = typeof row.exercise_ids === 'string' ? JSON.parse(row.exercise_ids) : row.exercise_ids
     if (!exerciseIds.includes(exerciseId)) {
       await connection.rollback()
@@ -235,15 +259,15 @@ export async function recordAnswer(accountId, sessionId, { exerciseId, submitted
     }
 
     // 服务端确定性判分
-    const { correct, reason } = scoreAnswer(exercise, submitted)
+    const { correct, reason } = scoreAnswer(scoringExercise, submitted)
     await connection.query(
       `INSERT INTO answer_submissions (session_id, account_id, exercise_id, exercise_version, correct, reason, submitted_json, idempotency_key, submitted_at)
        VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?)`,
-      [sessionId, accountId, exerciseId, exercise.version, correct ? 1 : 0, reason, JSON.stringify(submitted ?? null), idempotencyKey, nowIso()],
+      [sessionId, accountId, exerciseId, scoringExercise.version, correct ? 1 : 0, reason, JSON.stringify(submitted ?? null), idempotencyKey, nowIso()],
     )
     await connection.query(
       `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'answer-submit', CAST(? AS JSON), ?)`,
-      [newId('event'), accountId, sessionId, JSON.stringify({ exerciseId, exerciseVersion: exercise.version, correct }), nowIso()],
+      [newId('event'), accountId, sessionId, JSON.stringify({ exerciseId, exerciseVersion: scoringExercise.version, correct }), nowIso()],
     )
     await connection.commit()
     return { ok: true, correct, reason, duplicate: false, ...(await progressOf(db, sessionId)) }
@@ -312,28 +336,20 @@ export async function getStudyStats(accountId) {
      WHERE a.account_id = ? AND s.status = 'completed'`,
     [accountId],
   )
-  const { naturalDay } = await import('./store.js')
+  const { naturalDay, computeStreak } = await import('./store.js')
   const daySet = new Set()
+  let accountTimezone = 'Asia/Shanghai'
   for (const row of sessionRows) {
     const at = row.completed_at instanceof Date ? row.completed_at.toISOString() : row.completed_at
     if (at) daySet.add(naturalDay(at, row.timezone))
-  }
-  let streak = 0
-  if (daySet.size > 0) {
-    const days = [...daySet].sort()
-    const cursor = new Date(`${days[days.length - 1]}T00:00:00Z`)
-    for (;;) {
-      if (!daySet.has(cursor.toISOString().slice(0, 10))) break
-      streak += 1
-      cursor.setUTCDate(cursor.getUTCDate() - 1)
-    }
+    accountTimezone = row.timezone || accountTimezone
   }
   return {
     completedSessions: sessionRows.length,
     totalAnswers: attemptRows.length,
     correctAnswers: attemptRows.filter(a => Boolean(a.correct)).length,
     studyDays: daySet.size,
-    streakDays: streak,
+    streakDays: computeStreak(daySet, accountTimezone),
   }
 }
 

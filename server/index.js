@@ -78,6 +78,26 @@ import {
 } from './study/profile-updater.js'
 import { claimFeedback, mutateFeedback, getFeedbackState } from './study/feedback-state.js'
 
+/**
+ * 故障注入（P3.4 测试脚手架，默认关闭）。
+ * 设置 ZHIXUE_FAULT_INJECT=<point> 后，feedback 流程在指定点抛出
+ * FaultInjection 错误，由 catch 记录 failed 状态——模拟真实崩溃窗口。
+ * point: after-profile-write | before-revision-write | after-path-write
+ */
+class FaultInjection extends Error {
+  constructor(point) {
+    super(`FAULT_INJECTION:${point}`)
+    this.name = 'FaultInjection'
+    this.faultPoint = point
+  }
+}
+
+function injectFault(point) {
+  if (process.env.ZHIXUE_FAULT_INJECT === point) {
+    throw new FaultInjection(point)
+  }
+}
+
 const PORT = Number(process.env.PORT || 8788)
 const MAX_BODY_SIZE = 1024 * 1024
 
@@ -643,6 +663,8 @@ const server = http.createServer(async (req, res) => {
 
     // P3-3A 会话恢复契约：题目快照。未完成会话不返回答案/解析；
     // 已完成会话（允许公开答案的阶段）返回完整内容供结果页展示。
+    // P3.4：题目内容来自会话创建时的快照（含题库版本），题库升级不改变
+    // 历史练习的题目/答案/解析含义；旧会话无快照时回退当前题库并标注。
     const questionsMatch = pathname.match(/^\/api\/study\/sessions\/([A-Za-z0-9-]+)\/questions$/)
     if (req.method === 'GET' && questionsMatch) {
       const accountId = accountIdOf(req)
@@ -652,15 +674,27 @@ const server = http.createServer(async (req, res) => {
         return
       }
       const revealed = state.session.status === 'completed'
+      const resolveExercise = (id) => {
+        if (Array.isArray(state.snapshot)) {
+          const hit = state.snapshot.find(item => item.id === id)
+          if (hit) return hit
+        }
+        return findExercise(id)
+      }
       const exercises = state.session.exerciseIds
-        .map(id => findExercise(id))
+        .map(id => resolveExercise(id))
         .filter(Boolean)
         .map(exercise => (revealed ? exercise : (({ answer, explanation, ...rest }) => rest)(exercise)))
+      // 权威评分：由已保存的作答记录确定性计算，独立于 AI 反馈
+      const assessment = summarizeAttempts(state.attempts)
       sendJson(res, 200, {
         session: state.session,
         exercises,
         answered: state.attempts.map(a => ({ exerciseId: a.exerciseId, correct: a.correct, submitted: a.submitted ?? null })),
         revealed,
+        assessment,
+        bankVersion: state.bankVersion,
+        fromSnapshot: Array.isArray(state.snapshot),
       })
       return
     }
@@ -717,9 +751,19 @@ const server = http.createServer(async (req, res) => {
         return
       }
 
+      // 状态变更助手：携带 fencing token；旧执行器（代际过期）被拒绝时
+      // 立即中止本次处理，绝不在失去所有权后继续提交任何更新
+      const commitState = async mutate => {
+        const res = await mutateFeedback(accountId, sessionId, claim.attempt, mutate)
+        if (!res.ok) {
+          throw new Error(`STATE_CONFLICT:${res.code}`)
+        }
+        return res.record
+      }
+
       const state = await getStudySession(accountId, sessionId)
       if (!state) {
-        await mutateFeedback(accountId, sessionId, record => ({
+        await commitState(record => ({
           ...record,
           status: 'failed',
           finishedAt: new Date().toISOString(),
@@ -729,7 +773,7 @@ const server = http.createServer(async (req, res) => {
         return
       }
       if (state.session.status !== 'completed') {
-        await mutateFeedback(accountId, sessionId, record => ({
+        await commitState(record => ({
           ...record,
           status: 'failed',
           finishedAt: new Date().toISOString(),
@@ -742,7 +786,15 @@ const server = http.createServer(async (req, res) => {
       const attempts = state.attempts
       // 权威评分：只读已保存的 AnswerSubmission，LLM 无权修改
       const assessment = summarizeAttempts(attempts)
-      const wrongItems = buildWrongItems(attempts, findExercise)
+      // P3.4：题目解析优先用会话快照（题库升级不改变历史练习含义）
+      const exerciseResolver = (id) => {
+        if (Array.isArray(state.snapshot)) {
+          const hit = state.snapshot.find(item => item.id === id)
+          if (hit) return hit
+        }
+        return findExercise(id)
+      }
+      const wrongItems = buildWrongItems(attempts, exerciseResolver)
 
       try {
         // 步骤 0：AI 反馈（不持有任何事务；失败只影响 feedback，不影响评分）
@@ -752,7 +804,7 @@ const server = http.createServer(async (req, res) => {
         let profileUpdate
         const record = (await getFeedbackState(accountId, sessionId)) || { steps: claim.steps, profileAfterValues: null, pendingRevision: null, partial: {} }
         if (record.steps?.profile !== 'done') {
-          const prepared = await prepareProfileUpdate({ accountId, session: state.session, attempts })
+          const prepared = await prepareProfileUpdate({ accountId, session: state.session, attempts, exerciseResolver })
           if (prepared.applied) {
             // 恢复对账：当前画像已等于意图目标值 → 上次写入已生效，跳过落库
             const currentProfile = await getLatestProfileResult(accountId)
@@ -770,19 +822,21 @@ const server = http.createServer(async (req, res) => {
               }
             } else {
               // 意图先落盘（崩溃后可对账），再执行唯一写操作
-              await mutateFeedback(accountId, sessionId, r => ({
+              await commitState(r => ({
                 ...r,
                 profileAfterValues: prepared.profileAfter,
                 pendingRevision: prepared.revision,
               }))
               await commitProfileUpdate(accountId, prepared.nextProfile)
+              // 故障注入（测试脚手架，默认关闭）：画像已写、步骤未标记时崩溃
+              injectFault('after-profile-write')
               const { nextProfile, ...rest } = prepared
               profileUpdate = rest
             }
           } else {
             profileUpdate = prepared
           }
-          await mutateFeedback(accountId, sessionId, r => ({
+          await commitState(r => ({
             ...r,
             steps: { ...r.steps, profile: 'done' },
             partial: { ...(r.partial || {}), profileUpdate },
@@ -796,17 +850,19 @@ const server = http.createServer(async (req, res) => {
           const existingRevisions = await listProfileRevisions(accountId, 20)
           const hasRevision = existingRevisions.some(item => item.sessionId === sessionId)
           const pendingRevision = record.pendingRevision || (profileUpdate.applied && profileUpdate.revision ? profileUpdate.revision : null)
+          // 故障注入（测试脚手架，默认关闭）：画像已写、修订账本未写时崩溃
+          if (!hasRevision && pendingRevision) injectFault('before-revision-write')
           if (!hasRevision && pendingRevision) {
             await saveProfileRevision(accountId, pendingRevision)
           }
-          await mutateFeedback(accountId, sessionId, r => ({ ...r, steps: { ...r.steps, revision: 'done' } }))
+          await commitState(r => ({ ...r, steps: { ...r.steps, revision: 'done' } }))
         }
 
         // 步骤 3：路径更新（同样的写前日志协议）
         let pathUpdate
         const record2 = (await getFeedbackState(accountId, sessionId)) || { steps: claim.steps, pathVersionAfter: null, partial: {} }
         if (record2.steps?.path !== 'done') {
-          const prepared = await preparePathUpdate({ accountId, session: state.session, attempts })
+          const prepared = await preparePathUpdate({ accountId, session: state.session, attempts, exerciseResolver })
           if (prepared.applied) {
             const currentPath = await getLatestKnowledgePath(accountId)
             const alreadyApplied = record2.pathVersionAfter && (Number(currentPath?.version) || 1) >= record2.pathVersionAfter
@@ -818,15 +874,17 @@ const server = http.createServer(async (req, res) => {
                 reconciled: true,
               }
             } else {
-              await mutateFeedback(accountId, sessionId, r => ({ ...r, pathVersionAfter: prepared.version }))
+              await commitState(r => ({ ...r, pathVersionAfter: prepared.version }))
               await commitPathUpdate(accountId, prepared.nextPath)
+              // 故障注入（测试脚手架，默认关闭）：路径已写、步骤未标记时崩溃
+              injectFault('after-path-write')
               const { nextPath, ...rest } = prepared
               pathUpdate = rest
             }
           } else {
             pathUpdate = prepared
           }
-          await mutateFeedback(accountId, sessionId, r => ({
+          await commitState(r => ({
             ...r,
             steps: { ...r.steps, path: 'done' },
             partial: { ...(r.partial || {}), pathUpdate },
@@ -836,7 +894,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         const result = { assessment, feedback, profileUpdate, pathUpdate, rules: UPDATE_RULES }
-        await mutateFeedback(accountId, sessionId, r => ({
+        await commitState(r => ({
           ...r,
           status: 'completed',
           finishedAt: new Date().toISOString(),
@@ -847,7 +905,7 @@ const server = http.createServer(async (req, res) => {
       } catch (error) {
         // 可恢复失败：记录状态，允许后续重试（重试时按意图对账）
         console.error('[feedback] 处理失败:', error)
-        await mutateFeedback(accountId, sessionId, r => ({
+        await commitState(r => ({
           ...r,
           status: 'failed',
           finishedAt: new Date().toISOString(),

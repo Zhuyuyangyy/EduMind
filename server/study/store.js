@@ -69,6 +69,38 @@ export function naturalDay(atIso, timeZone = 'Asia/Shanghai') {
   }
 }
 
+/**
+ * 时区内回退一天（P3.4）。
+ * dayStr 为「该时区的自然日」字符串；取 UTC 正午为锚点避开夏令时边界，
+ * 再按目标时区格式化，保证回退结果仍是同一时区的合法自然日。
+ */
+export function previousDayInZone(dayStr, timeZone = 'Asia/Shanghai') {
+  const anchor = new Date(`${dayStr}T12:00:00Z`)
+  if (Number.isNaN(anchor.getTime())) return dayStr
+  anchor.setUTCDate(anchor.getUTCDate() - 1)
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(anchor)
+  } catch {
+    return anchor.toISOString().slice(0, 10)
+  }
+}
+
+/** 计算连续学习天数：只在时区自然日上回溯，陈旧记录不会误判为仍在连续 */
+export function computeStreak(daySet, timeZone = 'Asia/Shanghai') {
+  if (daySet.size === 0) return 0
+  const days = [...daySet].sort()
+  let streak = 0
+  let cursor = days[days.length - 1]
+  for (;;) {
+    if (!daySet.has(cursor)) break
+    streak += 1
+    cursor = previousDayInZone(cursor, timeZone)
+    // 防御：异常时区数据导致死循环
+    if (streak > 3650) break
+  }
+  return streak
+}
+
 /* ———————————— 会话 ———————————— */
 
 export function createStudySession(accountId, { topicId, topicIds, phaseId, timezone, exerciseCount } = {}) {
@@ -97,6 +129,10 @@ export function createStudySession(accountId, { topicId, topicIds, phaseId, time
     timezone: timezone || 'Asia/Shanghai',
     status: 'active',
     exerciseIds: exercises.map(item => item.id),
+    // P3.4：题目快照（含题库版本）。历史练习恢复读快照，
+    // 题库升级不改变历史练习的题目/答案/解析含义
+    bankVersion: bank.version,
+    exerciseSnapshot: exercises.map(item => ({ ...item })),
     createdAt: nowIso(),
     completedAt: null,
   }
@@ -117,7 +153,13 @@ export function getStudySession(accountId, sessionId) {
   const session = store.studySessions[sessionId]
   if (!session || session.accountId !== accountId) return null // 跨账号不泄露存在性
   const attempts = store.studyAttempts[sessionId] || []
-  return { session: publicSession(session), attempts }
+  return {
+    session: publicSession(session),
+    attempts,
+    // P3.4：题目快照（旧会话无快照时回退当前题库，由调用方标注）
+    snapshot: Array.isArray(session.exerciseSnapshot) ? session.exerciseSnapshot : null,
+    bankVersion: session.bankVersion ?? null,
+  }
 }
 
 function publicSession(session) {
@@ -130,6 +172,7 @@ function publicSession(session) {
     createdAt: session.createdAt,
     completedAt: session.completedAt,
     timezone: session.timezone,
+    bankVersion: session.bankVersion ?? null,
   }
 }
 
@@ -167,6 +210,11 @@ export function recordAnswer(accountId, sessionId, { exerciseId, submitted, idem
   if (!session.exerciseIds.includes(exerciseId)) {
     return { ok: false, code: 'exercise-not-in-session', message: '该题目不属于本会话' }
   }
+  // P3.4：判分优先用会话快照的题目（题库升级不改变本会话的对错含义）
+  const snapshotExercise = Array.isArray(session.exerciseSnapshot)
+    ? session.exerciseSnapshot.find(item => item.id === exerciseId)
+    : null
+  const scoringExercise = snapshotExercise || exercise
 
   // 幂等 1：同一幂等键直接返回首次结果
   const seen = store.studyIdempotency[idempotencyKey]
@@ -183,10 +231,10 @@ export function recordAnswer(accountId, sessionId, { exerciseId, submitted, idem
   }
 
   // 服务端确定性判分
-  const { correct, reason } = scoreAnswer(exercise, submitted)
+  const { correct, reason } = scoreAnswer(scoringExercise, submitted)
   const attempt = {
     exerciseId,
-    exerciseVersion: exercise.version,
+    exerciseVersion: scoringExercise.version,
     correct,
     reason,
     submitted: submitted ?? null,
@@ -199,7 +247,7 @@ export function recordAnswer(accountId, sessionId, { exerciseId, submitted, idem
     accountId,
     sessionId,
     type: 'answer-submit',
-    ref: { exerciseId, exerciseVersion: exercise.version, correct },
+    ref: { exerciseId, exerciseVersion: scoringExercise.version, correct },
   })
   writeStore(store)
 
@@ -257,21 +305,10 @@ export function getStudyStats(accountId) {
 
   // 有效学习日：来自 completed 会话（页面访问不计入）
   const daySet = new Set()
+  let accountTimezone = 'Asia/Shanghai'
   for (const session of completed) {
     daySet.add(naturalDay(session.completedAt, session.timezone))
-  }
-
-  let streak = 0
-  if (daySet.size > 0) {
-    const days = [...daySet].sort()
-    const cursor = new Date(`${days[days.length - 1]}T00:00:00Z`)
-    // 以账号时区近似：用 UTC 日回退连续天数（时区偏移不影响连续性判断的单调性）
-    for (;;) {
-      const key = cursor.toISOString().slice(0, 10)
-      if (!daySet.has(key)) break
-      streak += 1
-      cursor.setUTCDate(cursor.getUTCDate() - 1)
-    }
+    accountTimezone = session.timezone || accountTimezone
   }
 
   return {
@@ -279,7 +316,7 @@ export function getStudyStats(accountId) {
     totalAnswers: attempts.length,
     correctAnswers: attempts.filter(a => a.correct).length,
     studyDays: daySet.size,
-    streakDays: streak,
+    streakDays: computeStreak(daySet, accountTimezone),
   }
 }
 

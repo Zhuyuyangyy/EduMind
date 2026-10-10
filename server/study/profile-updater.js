@@ -32,11 +32,12 @@ export const UPDATE_RULES = {
   PATH_STEP: 0.3,
 }
 
-/** 按画像维度汇总练习证据（确定性） */
-export function collectDimensionEvidence(attempts) {
+/** 按画像维度汇总练习证据（确定性；exerciseResolver 支持会话快照归因） */
+export function collectDimensionEvidence(attempts, exerciseResolver = null) {
+  const resolve = exerciseResolver || findExercise
   const byDimension = new Map()
   for (const attempt of attempts) {
-    const exercise = findExercise(attempt.exerciseId)
+    const exercise = resolve(attempt.exerciseId)
     const dimension = exercise?.profileDimension
     if (!dimension) continue
     if (!byDimension.has(dimension)) byDimension.set(dimension, { correct: 0, total: 0 })
@@ -86,7 +87,8 @@ export function withDerivedFields(profile) {
  * 准备画像更新（只读、确定性、无副作用）。
  * 返回 { applied, reason, changes, skippedDimensions, nextProfile?, revision?, profileAfter? }
  */
-export async function prepareProfileUpdate({ accountId, session, attempts }) {
+export async function prepareProfileUpdate({ accountId, session, attempts, exerciseResolver = null }) {
+  const resolve = exerciseResolver || findExercise
   if (attempts.length < UPDATE_RULES.MIN_QUESTIONS) {
     return {
       applied: false,
@@ -100,7 +102,7 @@ export async function prepareProfileUpdate({ accountId, session, attempts }) {
     return { applied: false, reason: '无服务端画像基线，不更新', changes: [] }
   }
 
-  const evidence = collectDimensionEvidence(attempts)
+  const evidence = collectDimensionEvidence(attempts, resolve)
   const skippedDimensions = []
   const changes = []
   const nextDimensions = profile.dimensions.map(dimension => {
@@ -184,7 +186,8 @@ export async function applyEvidenceToProfile({ accountId, session, attempts }) {
 /**
  * 准备路径更新（只读、确定性）。知识点 ID 保持不变，版本递增。
  */
-export async function preparePathUpdate({ accountId, session, attempts }) {
+export async function preparePathUpdate({ accountId, session, attempts, exerciseResolver = null }) {
+  const resolvePath = exerciseResolver || findExercise
   if (attempts.length === 0) {
     return { applied: false, reason: '无作答证据，不调整路径' }
   }
