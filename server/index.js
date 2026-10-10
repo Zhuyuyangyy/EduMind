@@ -581,9 +581,16 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && pathname === '/api/learning-cycles/update') {
+      // P3-0 证据边界（旧版演示闭环）：
+      // - 忽略客户端提交的 profile：画像只能来自服务端按账号存储的记录，
+      //   防止客户端伪造基线给自己刷分；
+      // - exerciseResults 视为「未核验的演示输入」：返回的闭环结果仅用于
+      //   演示智能体协作流程，标记 evidence='unverified'，
+      //   **不写入真实画像与学习成绩**；
+      // - 真实学习闭环走 P3-1 的 /api/study/* 事件接口（服务端判分）。
       const body = await readJson(req)
       const accountId = accountIdOf(req)
-      const profile = body.profile || await getLatestProfileResult(accountId)
+      const profile = await getLatestProfileResult(accountId)
       if (!profile) {
         sendJson(res, 400, { error: 'Bad Request', message: '缺少可更新的学生画像。' })
         return
@@ -596,9 +603,17 @@ const server = http.createServer(async (req, res) => {
         exerciseResults: body.exerciseResults,
         learningHistory,
       })
-      await saveProfileResult(result.profile, accountId)
-      await saveLearningCycle(accountId, result)
-      sendJson(res, 200, result)
+      // 旧演示闭环：只保存带未核验标记的闭环记录，不持久化画像变化
+      await saveLearningCycle(accountId, {
+        ...result,
+        evidence: 'unverified-client-input',
+      })
+      sendJson(res, 200, {
+        ...result,
+        evidence: 'unverified-client-input',
+        verified: false,
+        notice: '演示闭环：结果未经真实作答核验，未写入真实画像与学习成绩。',
+      })
       return
     }
 

@@ -22,6 +22,7 @@
  */
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -137,6 +138,19 @@ async function apiLogin(creds) {
 }
 
 async function main() {
+  // 端口预检：本脚本会自己 spawn API 服务器；若端口已被占用，打到的将是
+  // 另一个服务器（数据不符导致误报），必须快速失败而不是跑出假结果。
+  const apiPort = new URL(API_URL).port
+  const portInUse = await new Promise(resolve => {
+    const socket = net.connect(Number(apiPort), '127.0.0.1')
+    socket.on('connect', () => { socket.destroy(); resolve(true) })
+    socket.on('error', () => resolve(false))
+  })
+  if (portInUse) {
+    console.error(`[mobile-e2e-data] 端口 ${apiPort} 已被占用。本脚本会自行启动 API 服务器，请先释放该端口（不要与其他测试服务并行）。`)
+    process.exit(1)
+  }
+
   // —— 预置账号 A 的数据（直接写服务端 store，模拟真实学习记录） ——
   const seed = {
     profiles: {

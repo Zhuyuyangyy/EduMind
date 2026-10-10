@@ -134,10 +134,15 @@ async function loadHistory() {
   historyLoading.value = true
   historyError.value = ''
   try {
-    const items = await fetchTutoringHistoryItems()
-    if (items === null) return // 过期响应（切号/退出），丢弃
+    const result = await fetchTutoringHistoryItems()
+    if (result.stale) return // 过期响应（切号/退出），丢弃
+    if (result.error || result.items === null) {
+      // P3-0：历史加载失败与「没有历史」是两件事，分别提示
+      historyError.value = result.error || '加载失败'
+      return
+    }
     // 服务端为唯一事实来源：整体替换，避免与本地追加重复展示
-    messages.value = historyToMessages(items)
+    messages.value = historyToMessages(result.items)
   } catch (err) {
     historyError.value = err instanceof Error ? err.message : '未知错误'
   } finally {

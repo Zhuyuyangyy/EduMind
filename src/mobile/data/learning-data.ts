@@ -44,28 +44,77 @@ export interface AccountData {
 }
 
 /**
- * 拉取当前账号的学习数据。返回 null 表示响应已过期（切号/退出），调用方应丢弃。
+ * 拉取结果（P3-0：区分三种状态，避免把服务器异常解释成「账号无数据」）：
+ * - stale：响应已过期（切号/退出），调用方必须丢弃；
+ * - error：至少一个接口失败（failed 列出接口），data 为已成功的部分（可能为 null）；
+ * - ok：全部成功，data 中的 null 是真实的「账号无此项数据」。
  */
-export async function fetchAccountData(): Promise<AccountData | null> {
+export interface AccountDataResult {
+  stale: boolean
+  error: string | null
+  failed: string[]
+  data: AccountData | null
+}
+
+export async function fetchAccountData(): Promise<AccountDataResult> {
   const epoch = currentEpoch()
-  const [profile, knowledgePath, learningCycle] = await Promise.all([
-    apiGet<{ result: LearnerProfile | null }>('/api/profile/latest').catch(() => null),
-    apiGet<{ result: KnowledgePath | null }>('/api/knowledge-path/latest').catch(() => null),
-    apiGet<{ result: LearningCycle | null }>('/api/learning-cycles/latest').catch(() => null),
+  const failed: string[] = []
+
+  const [profileRes, pathRes, cycleRes] = await Promise.allSettled([
+    apiGet<{ result: LearnerProfile | null }>('/api/profile/latest'),
+    apiGet<{ result: KnowledgePath | null }>('/api/knowledge-path/latest'),
+    apiGet<{ result: LearningCycle | null }>('/api/learning-cycles/latest'),
   ])
-  if (!isCurrent(epoch)) return null
+
+  if (!isCurrent(epoch)) return { stale: true, error: null, failed: [], data: null }
+
+  const settle = <T>(res: PromiseSettledResult<T>, name: string): T | null => {
+    if (res.status === 'fulfilled') return res.value
+    failed.push(name)
+    return null
+  }
+
+  const profile = settle(profileRes, '/api/profile/latest')
+  const knowledgePath = settle(pathRes, '/api/knowledge-path/latest')
+  const learningCycle = settle(cycleRes, '/api/learning-cycles/latest')
+
+  if (failed.length > 0) {
+    return {
+      stale: false,
+      error: `以下接口请求失败：${failed.join('、')}`,
+      failed,
+      data: null,
+    }
+  }
+
   return {
-    profile: profile?.result ?? null,
-    knowledgePath: knowledgePath?.result ?? null,
-    learningCycle: learningCycle?.result ?? null,
+    stale: false,
+    error: null,
+    failed: [],
+    data: {
+      profile: profile?.result ?? null,
+      knowledgePath: knowledgePath?.result ?? null,
+      learningCycle: learningCycle?.result ?? null,
+    },
   }
 }
 
-export async function fetchTutoringHistoryItems(): Promise<TutoringHistoryItem[] | null> {
+export interface TutoringHistoryResult {
+  stale: boolean
+  error: string | null
+  items: TutoringHistoryItem[] | null
+}
+
+export async function fetchTutoringHistoryItems(): Promise<TutoringHistoryResult> {
   const epoch = currentEpoch()
-  const data = await apiGet<{ items: TutoringHistoryItem[] }>('/api/tutoring/history').catch(() => null)
-  if (!isCurrent(epoch)) return null
-  return Array.isArray(data?.items) ? data.items : []
+  try {
+    const data = await apiGet<{ items: TutoringHistoryItem[] }>('/api/tutoring/history')
+    if (!isCurrent(epoch)) return { stale: true, error: null, items: null }
+    return { stale: false, error: null, items: Array.isArray(data?.items) ? data.items : [] }
+  } catch (err) {
+    if (!isCurrent(epoch)) return { stale: true, error: null, items: null }
+    return { stale: false, error: err instanceof Error ? err.message : '未知错误', items: null }
+  }
 }
 
 /* ———————————— 画像适配（dimensions / radarPoints 双格式） ———————————— */

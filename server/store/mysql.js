@@ -128,10 +128,27 @@ export async function ensureMySqlSchema() {
           reflection_json JSON NOT NULL,
           trace_json JSON NOT NULL,
           created_at DATETIME(3) NOT NULL,
+          profile_before_json JSON NULL,
+          profile_changes_json JSON NULL,
+          evidence VARCHAR(64) NULL,
           UNIQUE KEY learning_cycles_workflow_id (workflow_id),
           KEY learning_cycles_account_created_at (account_id, created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `)
+      // P3-0 迁移：为既有表补齐证据保真列（幂等，忽略已存在的列）
+      const cycleAlterColumns = [
+        ['profile_before_json', 'JSON NULL'],
+        ['profile_changes_json', 'JSON NULL'],
+        ['evidence', 'VARCHAR(64) NULL'],
+      ]
+      for (const [column, definition] of cycleAlterColumns) {
+        try {
+          await db.query(`ALTER TABLE learning_cycles ADD COLUMN ${column} ${definition}`)
+        } catch (error) {
+          // 1060 = Duplicate column name，属预期；其他错误直接抛出
+          if (error?.code !== 'ER_DUP_FIELDNAME' && !/Duplicate column/i.test(error?.message || '')) throw error
+        }
+      }
     })().catch(error => {
       schemaReady = undefined
       throw error
@@ -312,8 +329,9 @@ export async function saveLearningCycle(accountId = 'default', cycle) {
   await getMySqlPool().query(
     `INSERT INTO learning_cycles (
        account_id, workflow_id, profile_json, resource_json, tutoring_json,
-       evaluation_json, path_json, reflection_json, trace_json, created_at
-     ) VALUES (?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?)`,
+       evaluation_json, path_json, reflection_json, trace_json, created_at,
+       profile_before_json, profile_changes_json, evidence
+     ) VALUES (?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), CAST(? AS JSON), ?)`,
     [
       accountId,
       cycle.workflowId,
@@ -325,6 +343,10 @@ export async function saveLearningCycle(accountId = 'default', cycle) {
       JSON.stringify(cycle.reflection || {}),
       JSON.stringify(cycle.trace || {}),
       createdAt,
+      // P3-0 证据保真：画像前后快照与变化原因真实持久化（不再读取时补 null）
+      JSON.stringify(cycle.profileBefore || null),
+      JSON.stringify(Array.isArray(cycle.profileChanges) ? cycle.profileChanges : []),
+      typeof cycle.evidence === 'string' ? cycle.evidence : null,
     ],
   )
   return { workflowId: cycle.workflowId, accountId, createdAt: createdAt.toISOString() }
@@ -343,6 +365,9 @@ export function normalizeLearningCycle(raw) {
     workflowId: raw.workflowId ?? null,
     accountId: raw.accountId ?? null,
     createdAt: raw.createdAt ?? null,
+    // 证据标记：'unverified-client-input' = 旧演示闭环（未核验）；
+    // P3-1 起真实闭环带评分事件 ID 列表
+    evidence: typeof raw.evidence === 'string' ? raw.evidence : null,
     // 画像（更新后）与更新痕迹
     profile: raw.profile ?? null,
     profileBefore: raw.profileBefore ?? null,
@@ -384,6 +409,10 @@ export async function getLatestLearningCycle(accountId = 'default') {
     path: parseJsonColumn(row.path_json),
     reflection: parseJsonColumn(row.reflection_json),
     trace: parseJsonColumn(row.trace_json),
+    // P3-0：证据列真实读取（旧行为是读取时补 null/[]，无法重放历史）
+    profileBefore: parseJsonColumn(row.profile_before_json),
+    profileChanges: parseJsonColumn(row.profile_changes_json) || [],
+    evidence: row.evidence,
     createdAt: row.created_at,
   })
 }

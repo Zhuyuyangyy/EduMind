@@ -10,7 +10,7 @@ import { normalizeLearningCycle } from './store/mysql.js'
  */
 
 const CANONICAL_KEYS = [
-  'workflowId', 'accountId', 'createdAt',
+  'workflowId', 'accountId', 'createdAt', 'evidence',
   'profile', 'profileBefore', 'profileChanges',
   'resourcePackage', 'tutoring', 'evaluation', 'path', 'reflection',
   'trace', 'agentResults',

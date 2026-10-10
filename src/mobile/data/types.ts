@@ -56,6 +56,8 @@ export interface LearningCycle {
   workflowId: string | null
   accountId: string | null
   createdAt: string | null
+  /** 证据标记：'unverified-client-input' = 旧演示闭环（未核验）；真实闭环带评分事件 ID */
+  evidence: string | null
   profile: LearnerProfile | null
   profileBefore: LearnerProfile | null
   profileChanges: Array<{ dimension?: string; before?: number; after?: number; reason?: string }>

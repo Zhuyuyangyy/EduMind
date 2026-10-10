@@ -58,6 +58,12 @@ const session = await createExperimentSession(baseUrl)
 
 const results = []
 for (const item of cases) {
+  // P3-0：画像基线必须经服务端正规通道保存（learning-cycles/update 不再接受
+  // 客户端 profile）。实验账号独立，先建档再跑闭环。
+  await post('/api/profile/save', {
+    ...item.profile,
+    source: 'experiment-baseline',
+  })
   const initialPathResult = await post('/api/agents/path-replan', {
     profile: item.profile,
     evaluation: {},

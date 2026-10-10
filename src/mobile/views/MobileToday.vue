@@ -160,17 +160,19 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const data = await fetchAccountData()
-    if (!data) {
-      // 响应已过期（切号/退出）：不渲染旧账号数据
+    const result = await fetchAccountData()
+    if (result.stale) return // 过期响应（切号/退出），不渲染旧账号数据
+    if (result.error || !result.data) {
+      // P3-0：接口失败 ≠ 账号无数据，明确报错 + 重试，不回退演示数据
+      loadError.value = result.error || '加载失败'
       return
     }
     // 二次校验：渲染前确认仍是当前账号的数据
-    if (data.learningCycle?.accountId && data.learningCycle.accountId !== currentAccount()) {
+    if (result.data.learningCycle?.accountId && result.data.learningCycle.accountId !== currentAccount()) {
       return
     }
-    profile.value = data.profile
-    path.value = data.knowledgePath
+    profile.value = result.data.profile
+    path.value = result.data.knowledgePath
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : '未知错误'
   } finally {

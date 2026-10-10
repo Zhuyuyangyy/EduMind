@@ -133,8 +133,10 @@ const profileSourceLabel = computed(() => {
 
 const cycleSourceLabel = computed(() => {
   if (!cycle.value) return '暂无记录'
+  // P3-0：旧演示闭环带未核验标记，必须与真实评估区分
+  if (cycle.value.evidence === 'unverified-client-input') return '演示闭环（未核验，未写入真实画像）'
   const trace = cycle.value.trace as { fallbackUsed?: boolean } | null
-  return trace?.fallbackUsed ? '规则降级生成' : '智能体评估'
+  return trace?.fallbackUsed ? '智能体评估（规则降级）' : '智能体评估'
 })
 
 const cycleTime = computed(() => {
@@ -155,7 +157,11 @@ const masteryItems = computed<MasteryItem[]>(() => {
     .map(item => ({ name: item.name, level: Math.max(0, Math.min(100, item.level)) }))
 })
 
-const profileChanges = computed(() => cycle.value?.profileChanges ?? [])
+const profileChanges = computed(() => {
+  // P3-0：未核验的演示闭环，其「画像变化」不得作为真实进步展示
+  if (cycle.value?.evidence === 'unverified-client-input') return []
+  return cycle.value?.profileChanges ?? []
+})
 
 function masteryBadge(mastery: number): string {
   const { level } = masteryLabel(mastery)
@@ -171,12 +177,17 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const data = await fetchAccountData()
-    if (!data) return // 过期响应（切号/退出），丢弃
-    if (data.learningCycle?.accountId && data.learningCycle.accountId !== currentAccount()) return
-    profile.value = data.profile
-    path.value = data.knowledgePath
-    cycle.value = data.learningCycle
+    const result = await fetchAccountData()
+    if (result.stale) return // 过期响应（切号/退出），丢弃
+    if (result.error || !result.data) {
+      // P3-0：接口失败明确报错，不把异常解释成「无数据」
+      loadError.value = result.error || '加载失败'
+      return
+    }
+    if (result.data.learningCycle?.accountId && result.data.learningCycle.accountId !== currentAccount()) return
+    profile.value = result.data.profile
+    path.value = result.data.knowledgePath
+    cycle.value = result.data.learningCycle
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : '未知错误'
   } finally {
