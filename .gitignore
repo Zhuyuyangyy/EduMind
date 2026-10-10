@@ -24,3 +24,12 @@ Thumbs.db
 *.zip
 *.tgz
 !vendor/*.tgz
+
+# Mobile P1 (feat/mobile-v1)
+dist-mobile/
+.dist-prev-*
+.dist-mobile-prev-*
+.trash-dist-mobile
+
+# Capacitor / Android 本地配置（SDK 路径，含本机绝对路径，禁止提交）
+android/local.properties

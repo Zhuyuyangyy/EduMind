@@ -69,6 +69,13 @@ export interface ChatHistoryItem {
 export interface TutoringReply {
   answer: string
   time: string
+  /** 触发降级的智能体列表（空数组表示全程真实模型） */
+  fallbackAgents?: string[]
+  /** 提示注入等安全拦截标记 */
+  securityRefused?: boolean
+  riskFlags?: string[]
+  /** 支架式教学元数据 */
+  scaffolding?: unknown
 }
 
 export interface TutoringHistoryItem {

@@ -34,7 +34,7 @@ import {
   orchestrateLearningUpdate,
   runResourceGeneration,
 } from './agents/orchestrator.js'
-import { getTraces, getTraceSummary, buildTrace, recordTrace, setTraceRecordedHook, runWithAccount } from './evidence/recorder.js'
+import { getTraces, getTraceSummary, buildTrace, recordTrace, runWithAccount } from './evidence/recorder.js'
 import { isLlmAvailable, getLlmConfig } from './llm/provider.js'
 import { getKnowledgeBaseStats, searchKnowledgeBase } from './knowledge-base/vector-store.js'
 import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, getStorageBackend, saveAccountSettings, saveLearningCycle } from './store/mysql.js'
@@ -48,13 +48,12 @@ import {
   getSession,
 } from './auth.js'
 import {
-  getCollaborationByDay,
   saveCollaboration,
   listDays,
   hasAnyCollaboration,
 } from './store/agent-collaboration.js'
-import { generateDailyCollaboration, seedAllDays } from './collaboration-data.js'
-import { syncTracesToCollaboration, getCollaborationForDay } from './collaboration-sync.js'
+import { seedAllDays } from './collaboration-data.js'
+import { getCollaborationForDay } from './collaboration-sync.js'
 
 const PORT = Number(process.env.PORT || 8788)
 const MAX_BODY_SIZE = 1024 * 1024
@@ -603,15 +602,8 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && pathname === '/api/agent-collaboration') {
       const day = searchParams.get('day') || 'monday'
-      let data = await getCollaborationForDay(day)
-      if (!data) {
-        data = await getCollaborationByDay(day)
-      }
-      if (!data) {
-        const { index } = (await import('./store/agent-collaboration.js')).resolveDay(day)
-        const payload = generateDailyCollaboration(index)
-        data = await saveCollaboration(day, payload)
-      }
+      // 产品边界：系统演示数据（全局模板）+ 当前账号自己的真实活动，互不串台
+      const data = await getCollaborationForDay(day, accountIdOf(req))
       sendJson(res, 200, data)
       return
     }
@@ -664,8 +656,8 @@ server.listen(PORT, async () => {
       await seedAllDays(saveCollaboration)
       console.log(`[agent-collaboration] seeded 7 days into ${getStorageBackend()}`)
     }
-    await syncTracesToCollaboration()
-    setTraceRecordedHook(() => { void syncTracesToCollaboration() })
+    // 协作看板改为「演示数据 + 当前账号真实活动」按请求实时合并，
+    // 不再启动全局 sync、不再注册 trace hook（消除未处理 Promise rejection 风险）。
     console.log(`API server listening on http://localhost:${PORT}`)
   } catch (error) {
     console.error('[mysql] initialization failed:', error)

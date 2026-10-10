@@ -1,5 +1,5 @@
-import { readTraces } from './evidence/recorder.js'
-import { saveCollaboration, resolveDay, getCollaborationByDay } from './store/agent-collaboration.js'
+import { readTracesForAccount } from './evidence/recorder.js'
+import { resolveDay } from './store/agent-collaboration.js'
 import { AGENT_DEFS, MODULE_DEFS, generateDailyCollaboration } from './collaboration-data.js'
 
 const AGENT_NAME_TO_MODULE = {
@@ -144,16 +144,16 @@ export function buildCollaborationFromTraces(traces) {
   return resultByDay
 }
 
-export async function syncTracesToCollaboration() {
-  const traces = readTraces()
-  const byDay = buildCollaborationFromTraces(traces)
-  if (!byDay) return false
-
-  for (const [dayIndex, payload] of byDay) {
-    const { name } = resolveDay(dayIndex)
-    await saveCollaboration(name, payload)
-  }
-  return true
+/**
+ * 产品边界（P0.3 · feat/mobile-v1）：
+ * 协作看板 = 系统演示数据（全局、模板生成）+ 当前账号自己的真实智能体活动。
+ * - 真实事件只从该账号的 trace 构建，不再把任何用户的 trace 写进全局存储；
+ * - 全局 store 仅保留启动时种子写入的演示数据，不再被用户请求污染。
+ */
+export async function getCollaborationForDay(dayParam, accountId) {
+  const traces = readTracesForAccount(accountId)
+  const merged = buildCollaborationForDay(dayParam, traces)
+  return merged
 }
 
 function filterTracesByDay(traces, dayParam) {
@@ -219,15 +219,4 @@ export function buildCollaborationForDay(dayParam, traces) {
   const { index } = resolveDay(dayParam)
   const real = byDay?.get(index) || null
   return mergeWithSimulated(real, index)
-}
-
-export async function getCollaborationForDay(dayParam) {
-  const traces = readTraces()
-  const merged = buildCollaborationForDay(dayParam, traces)
-  if (merged && merged.totalEvents > 0) {
-    const { name } = resolveDay(dayParam)
-    await saveCollaboration(name, merged)
-    return merged
-  }
-  return null
 }

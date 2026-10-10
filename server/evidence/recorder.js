@@ -69,7 +69,11 @@ export function recordTrace(trace) {
   writeTraces(kept)
   if (typeof traceHook === 'function') {
     try {
-      traceHook(stamped)
+      // hook 可能返回 Promise；同步 try/catch 抓不到异步 rejection，必须显式 catch
+      const result = traceHook(stamped)
+      if (result && typeof result.catch === 'function') {
+        result.catch(err => console.error('[traceHook] async failed:', err))
+      }
     } catch (err) {
       console.error('[traceHook] failed:', err)
     }

@@ -32,6 +32,7 @@ import type {
 import type { ProfileResult } from '@/composables/useProfileSurvey'
 import { useAppStore } from '@/store'
 import { clearAuthSession, getAuthSession, getAuthToken } from '@/lib/auth'
+import { isMobileApp, resolveApiUrl } from '@/lib/api-config'
 
 function currentAccountId() {
   return getAuthSession()?.account || 'default'
@@ -106,15 +107,25 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
 
   try {
     const token = getAuthToken()
-    const response = await fetch(input, {
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(init?.headers || {}),
-      },
-      ...init,
-    })
+    // 统一超时（默认 60s，可用 VITE_API_TIMEOUT_MS 覆盖），超时走 AbortError → 友好提示
+    const timeoutMs = Number(import.meta.env.VITE_API_TIMEOUT_MS) > 0 ? Number(import.meta.env.VITE_API_TIMEOUT_MS) : 60000
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    let response: Response
+    try {
+      response = await fetch(resolveApiUrl(input), {
+        credentials: 'include',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(init?.headers || {}),
+        },
+        ...init,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
 
     if (!response.ok) {
       if (isAiRequest) {
@@ -125,7 +136,8 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
       if (response.status === 401 && !input.startsWith('/api/auth/')) {
         clearAuthSession()
         if (typeof window !== 'undefined') {
-          window.location.assign('/login')
+          // 移动端用 hash 路由，网页版用 history 路由
+          window.location.assign(isMobileApp() ? '#/login' : '/login')
         }
       }
       throw new Error(`Request failed: ${response.status}`)

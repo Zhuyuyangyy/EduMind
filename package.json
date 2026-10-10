@@ -18,10 +18,16 @@
     "experiment:learning-cycle": "node experiments/run-learning-cycle-cases.mjs",
     "experiment:rag-contest": "node experiments/run-rag-contest.mjs",
     "experiment:deepseek-contest": "node experiments/run-deepseek-contest.mjs",
-    "build": "npm run tailwind && vue-tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "build": "npm run tailwind && vue-tsc --noEmit && node scripts/build.mjs",
+    "preview": "vite preview",
+    "build:mobile": "vue-tsc --noEmit && node scripts/build-mobile.mjs",
+    "android:build": "node scripts/android-build.mjs",
+    "cap:sync": "npx cap sync android"
   },
   "dependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
     "@dgreenheck/ez-tree": "file:vendor/dgreenheck-ez-tree-1.1.0.tgz",
     "@lucide/vue": "^1.16.0",
     "@pixi/app": "^6.5.10",
@@ -37,7 +43,6 @@
     "@pixi/sprite": "^6.5.10",
     "@pixi/ticker": "^6.5.10",
     "@pixi/utils": "^6.5.10",
-    
     "@vueuse/motion": "^2.2.6",
     "dotenv": "^17.4.2",
     "echarts": "^6.1.0",

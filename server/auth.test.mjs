@@ -334,3 +334,68 @@ test('知识路径按账号隔离', async () => {
     assert.equal((await studentLatest.json()).result, null, 'student must not see reviewer knowledge path')
   })
 })
+
+test('交错并发产生 trace 时严格归属各自账号（非压测，交错发起）', async () => {
+  await withApiServer(async () => {
+    const reviewer = await login('reviewer', 'Zhixue2026!')
+    const student = await login('student', 'student123')
+    const rounds = 5
+
+    for (let i = 0; i < rounds; i++) {
+      const rMarker = `concurrent-r-${i}-${Date.now()}`
+      const sMarker = `concurrent-s-${i}-${Date.now()}`
+      // 两个账号的请求在时间上重叠发起，考验账号上下文在并发下不串台
+      const [rRes, sRes] = await Promise.all([
+        fetch(`${BASE_URL}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: reviewer.cookie },
+          body: JSON.stringify({ message: rMarker }),
+        }),
+        fetch(`${BASE_URL}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: student.cookie },
+          body: JSON.stringify({ message: sMarker }),
+        }),
+      ])
+      assert.equal(rRes.status, 200)
+      assert.equal(sRes.status, 200)
+    }
+
+    const rData = await (await fetch(`${BASE_URL}/api/evidence/traces?limit=100`, { headers: { Cookie: reviewer.cookie } })).json()
+    const sData = await (await fetch(`${BASE_URL}/api/evidence/traces?limit=100`, { headers: { Cookie: student.cookie } })).json()
+    const rOwn = rData.items.filter(t => (t.inputsSummary || '').includes('concurrent-r-')).length
+    const sOwn = sData.items.filter(t => (t.inputsSummary || '').includes('concurrent-s-')).length
+    assert.equal(rOwn, rounds, 'reviewer 应看到自己全部 trace')
+    assert.equal(sOwn, rounds, 'student 应看到自己全部 trace')
+    assert.ok(!JSON.stringify(rData.items).includes('concurrent-s-'), 'reviewer 视图不得出现 student 的 trace')
+    assert.ok(!JSON.stringify(sData.items).includes('concurrent-r-'), 'student 视图不得出现 reviewer 的 trace')
+  })
+})
+
+test('协作看板只聚合当前账号的真实活动（元数据也不跨账号）', async () => {
+  await withApiServer(async () => {
+    const reviewer = await login('reviewer', 'Zhixue2026!')
+    const student = await login('student', 'student123')
+
+    // reviewer 产生 1 次 tutor trace，student 产生 3 次（主 agent 均为 ProfileAgent → profile-module）
+    const askTutor = (session, question) => fetch(`${BASE_URL}/api/agents/tutor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: session.cookie },
+      body: JSON.stringify({ question, mode: 'qa' }),
+    })
+    assert.equal((await askTutor(reviewer, 'reviewer 的提问')).status, 200)
+    for (const q of ['student 提问一', 'student 提问二', 'student 提问三']) {
+      assert.equal((await askTutor(student, q)).status, 200)
+    }
+
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+    const today = dayNames[new Date().getDay()]
+    const board = await (await fetch(`${BASE_URL}/api/agent-collaboration?day=${today}`, { headers: { Cookie: reviewer.cookie } })).json()
+
+    const profileChain = board.chains.find(c => c.id === 'profile-module')
+    assert.ok(profileChain, '应有画像模块链路')
+    // reviewer 只发起 1 次：若把 student 的 3 次也算进来就会是 4
+    assert.equal(profileChain.eventIds.length, 1, '看板只能统计当前账号的真实活动')
+    assert.ok(!JSON.stringify(board).includes('提问'), '看板不得包含任何账号的提问内容')
+  })
+})
