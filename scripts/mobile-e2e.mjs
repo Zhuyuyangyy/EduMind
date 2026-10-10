@@ -199,7 +199,8 @@ async function main() {
     const backToLogin = await waitFor(() => cdp.eval("Boolean(document.querySelector('.login'))"))
     report('E 退出登录回到登录页', Boolean(backToLogin))
 
-    // F. 会话失效：登录后用 App 内的 Bearer token 调服务端注销，再发起请求应被 401 打回登录页
+    // F. 会话失效：登录后用 App 内的 Bearer token 调服务端注销，
+    //    再进入 AI 导师（历史请求即 401）应被自动打回登录页
     const onTutor2 = await login(cdp)
     let logoutStatus = 0
     if (onTutor2) {
@@ -211,11 +212,8 @@ async function main() {
         }).catch(() => null)
         logoutStatus = res?.status || 0
       }
-      // 确保在 AI 导师页再提问（登录后可能落在今日页）
+      // 进入导师页：按账号拉取历史 → 401 → 自动回登录页
       await cdp.eval("document.querySelectorAll('.tab')[1].click()")
-      await waitFor(() => cdp.eval("Boolean(document.querySelector('.tutor__composer'))"))
-      await cdp.type('.tutor__composer textarea', '会话失效后的提问')
-      await cdp.eval("document.querySelector('.tutor__send').click()")
     }
     const reauth = await waitFor(() => cdp.eval("Boolean(document.querySelector('.login'))"), 20000)
     report('F 会话失效后请求被 401 打回登录页', Boolean(reauth) && logoutStatus === 200,

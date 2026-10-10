@@ -63,7 +63,7 @@
           <span>掌握估计 {{ Math.round(todayTopic.masteryEstimate * 100) }}%</span>
           <span>知识点 #{{ todayTopic.topicId }}</span>
         </div>
-        <RouterLink :to="`/tutor?topic=${encodeURIComponent(todayTopic.topicId)}`" class="m-btn m-btn--primary m-btn--block">
+        <RouterLink :to="`/tutor?topic=${encodeURIComponent(todayTopic.topicId)}&name=${encodeURIComponent(todayTopic.topicName)}`" class="m-btn m-btn--primary m-btn--block">
           开始学习
         </RouterLink>
       </div>
