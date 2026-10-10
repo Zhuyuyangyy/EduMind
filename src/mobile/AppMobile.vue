@@ -2,14 +2,21 @@
   <div class="mobile-shell">
     <header class="mobile-header">
       <span class="mobile-logo">智学星枢</span>
-      <span class="mobile-sub">Mobile P1</span>
+      <span class="mobile-header__sub">{{ route.meta.title || 'Mobile' }}</span>
+      <span v-if="isDemoData" class="m-demo-tag mobile-header__demo">示例数据</span>
     </header>
     <main class="mobile-body">
-      <RouterView />
+      <RouterView v-slot="{ Component }">
+        <transition name="m-fade" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </RouterView>
     </main>
     <nav v-if="showTabs" class="mobile-tabs">
-      <RouterLink to="/tutor" class="tab">AI 导师</RouterLink>
-      <RouterLink to="/status" class="tab">状态</RouterLink>
+      <RouterLink v-for="tab in tabs" :key="tab.to" :to="tab.to" class="tab">
+        <span class="tab__icon" aria-hidden="true">{{ tab.icon }}</span>
+        <span class="tab__label">{{ tab.label }}</span>
+      </RouterLink>
     </nav>
   </div>
 </template>
@@ -20,7 +27,19 @@ import { useRoute } from 'vue-router'
 import { getAuthSession } from '@/lib/auth'
 
 const route = useRoute()
+
+const tabs = [
+  { to: '/today', label: '今日学习', icon: '◎' },
+  { to: '/tutor', label: 'AI 导师', icon: '✦' },
+  { to: '/growth', label: '学习成长', icon: '⌂' },
+  { to: '/profile', label: '我的', icon: '☰' },
+]
+
 const showTabs = computed(() => route.path !== '/login' && Boolean(getAuthSession()))
+
+// P2-1 规范：包含展示占位数据的页面，在顶栏显示统一「示例数据」标记
+const DEMO_ROUTES = ['/today', '/growth']
+const isDemoData = computed(() => DEMO_ROUTES.includes(route.path))
 </script>
 
 <style scoped>
@@ -29,54 +48,83 @@ const showTabs = computed(() => route.path !== '/login' && Boolean(getAuthSessio
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: #07111f;
-  color: #e9f4ff;
+  background: var(--m-bg);
+  color: var(--m-text);
 }
 
 .mobile-header {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: calc(env(safe-area-inset-top, 0px) + 14px) 18px 12px;
-  background: #0b1a2e;
-  border-bottom: 1px solid #1d3552;
+  align-items: center;
+  gap: var(--m-space-2);
+  padding: calc(var(--m-safe-top) + 14px) var(--m-space-4) var(--m-space-3);
+  background: var(--m-bg-elevated);
+  border-bottom: 1px solid var(--m-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .mobile-logo {
-  font-size: 17px;
+  font-size: var(--m-text-lg);
   font-weight: 700;
   letter-spacing: 0.5px;
 }
 
-.mobile-sub {
-  font-size: 11px;
-  color: #6f8ba6;
+.mobile-header__sub {
+  font-size: var(--m-text-sm);
+  color: var(--m-text-faint);
+}
+
+.mobile-header__demo {
+  margin-left: auto;
 }
 
 .mobile-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 16px 24px;
+  padding: var(--m-space-4) var(--m-space-4) var(--m-space-8);
 }
 
 .mobile-tabs {
   display: flex;
-  border-top: 1px solid #1d3552;
-  background: #0b1a2e;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid var(--m-border);
+  background: var(--m-bg-elevated);
+  padding-bottom: var(--m-safe-bottom);
 }
 
 .tab {
   flex: 1;
-  text-align: center;
-  padding: 12px 0 14px;
-  font-size: 13px;
-  color: #8ca8bd;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--m-space-2) 0 calc(var(--m-space-2) + 2px);
+  font-size: var(--m-text-xs);
+  color: var(--m-text-faint);
   text-decoration: none;
+  transition: color var(--m-duration) var(--m-ease);
+}
+
+.tab__icon {
+  font-size: 19px;
+  line-height: 1;
 }
 
 .tab.router-link-active {
-  color: #54d6ff;
+  color: var(--m-primary);
   font-weight: 600;
+}
+
+/* 页面切换动效（服务于导航反馈） */
+.m-fade-enter-active,
+.m-fade-leave-active {
+  transition: opacity var(--m-duration) var(--m-ease), transform var(--m-duration) var(--m-ease);
+}
+.m-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.m-fade-leave-to {
+  opacity: 0;
 }
 </style>

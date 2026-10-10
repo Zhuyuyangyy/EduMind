@@ -1,49 +1,73 @@
 <template>
   <section class="tutor">
-    <h1 class="title">问问 AI 老师</h1>
-    <p class="subtitle">把卡住的地方说清楚，AI 会按你的水平调整讲法。</p>
+    <div class="tutor__intro">
+      <h1 class="tutor__title">你卡在了哪一步？</h1>
+      <p class="tutor__subtitle">把问题说清楚，AI 会按你的掌握程度启发式讲解。</p>
+    </div>
 
-    <form class="ask-box" @submit.prevent="onAsk">
+    <!-- 对话区（真实数据） -->
+    <div class="tutor__thread">
+      <div v-if="!history.length && !loading" class="m-empty">
+        <span class="m-empty__icon">✦</span>
+        <p class="m-empty__text">还没有提问<br />先问我一个问题，例如「BFS 的 visited 什么时候标记？」</p>
+      </div>
+
+      <template v-for="item in orderedHistory" :key="item.id">
+        <div class="m-bubble m-bubble--user">{{ item.question }}</div>
+        <div class="tutor__ai">
+          <div class="m-bubble__meta">
+            <span>AI 导师</span>
+            <span v-if="item.fallback" class="m-badge m-badge--warn" title="模型服务不可用，本次为规则降级回答">降级回答</span>
+            <span v-if="item.securityRefused" class="m-badge m-badge--danger">安全拦截</span>
+            <span v-if="item.time">{{ item.time }}</span>
+          </div>
+          <div class="m-bubble m-bubble--ai">{{ item.answer }}</div>
+          <ul v-if="item.riskFlags.length" class="tutor__risks">
+            <li v-for="flag in item.riskFlags" :key="flag">风险标记：{{ flag }}</li>
+          </ul>
+        </div>
+      </template>
+
+      <!-- 思考中骨架（P2-1 加载态） -->
+      <div v-if="loading" class="tutor__ai">
+        <div class="m-bubble__meta"><span>AI 导师</span><span>思考中…</span></div>
+        <div class="m-bubble m-bubble--ai tutor__thinking">
+          <div class="m-skeleton m-skeleton--text" style="width: 88%" />
+          <div class="m-skeleton m-skeleton--text" style="width: 96%" />
+          <div class="m-skeleton m-skeleton--text" style="width: 64%; margin-bottom: 0" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 错误 + 重试 -->
+    <div v-if="error" class="m-error tutor__error" role="alert">
+      <b>{{ error.title }}</b>
+      <span class="m-error__detail">{{ error.detail }}</span>
+      <button class="m-btn m-btn--ghost m-btn--sm tutor__retry" @click="onAsk">重试</button>
+    </div>
+
+    <!-- 输入区（键盘弹出时保持可见） -->
+    <form class="tutor__composer" :class="{ 'tutor__composer--focused': focused }" @submit.prevent="onAsk">
       <textarea
         v-model="question"
-        rows="3"
+        class="m-textarea"
+        rows="2"
         placeholder="例如：BFS 的 visited 标记在入队时还是出队时打？"
         :disabled="loading"
+        @focus="focused = true"
+        @blur="focused = false"
       />
-      <button class="ask-btn" type="submit" :disabled="loading || !question.trim()">
-        {{ loading ? '思考中…' : '提问' }}
+      <button class="m-btn m-btn--primary tutor__send" type="submit" :disabled="loading || !question.trim()">
+        {{ loading ? '思考中' : '提问' }}
       </button>
     </form>
-
-    <p v-if="error" class="error" role="alert">{{ error }}</p>
-
-    <article v-if="current" class="answer">
-      <header class="answer-head">
-        <span class="who">AI 导师</span>
-        <span v-if="current.fallback" class="badge badge-warn" title="模型服务不可用，本次为规则降级回答">降级回答</span>
-        <span v-if="current.securityRefused" class="badge badge-danger">安全拦截</span>
-        <span class="time">{{ current.time }}</span>
-      </header>
-      <p class="answer-text">{{ current.answer }}</p>
-      <ul v-if="current.riskFlags.length" class="risks">
-        <li v-for="flag in current.riskFlags" :key="flag">风险标记：{{ flag }}</li>
-      </ul>
-    </article>
-
-    <section v-if="history.length" class="history">
-      <h2 class="history-title">本次会话记录</h2>
-      <article v-for="item in history" :key="item.id" class="history-item">
-        <p class="q">Q：{{ item.question }}</p>
-        <p class="a">A：{{ item.answer }}</p>
-      </article>
-    </section>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUpdated, ref } from 'vue'
 import { askTutoringQuestion } from '@/lib/api'
-import { toFriendlyError } from '../errors'
+import { toFriendlyError, type FriendlyError } from '../errors'
 
 interface QA {
   id: number
@@ -57,23 +81,32 @@ interface QA {
 
 const question = ref('')
 const loading = ref(false)
-const error = ref('')
+const focused = ref(false)
+const error = ref<FriendlyError | null>(null)
 const history = ref<QA[]>([])
+const thread = ref<HTMLElement | null>(null)
 
 onMounted(() => {
   document.title = 'AI 导师 · 智学星枢 Mobile'
 })
 
-const current = computed(() => history.value[0] ?? null)
+onUpdated(() => {
+  // 新消息滚动到底部
+  nextTick(() => {
+    if (thread.value) thread.value.scrollTop = thread.value.scrollHeight
+  })
+})
+
+const orderedHistory = computed(() => [...history.value].reverse())
 
 async function onAsk() {
   const text = question.value.trim()
-  if (!text) return
+  if (!text || loading.value) return
   loading.value = true
-  error.value = ''
+  error.value = null
   try {
     const reply = await askTutoringQuestion(text, 'qa')
-    history.value.unshift({
+    history.value.push({
       id: Date.now(),
       question: text,
       answer: reply.answer,
@@ -84,166 +117,93 @@ async function onAsk() {
     })
     question.value = ''
   } catch (err) {
-    error.value = formatError(err)
+    error.value = toFriendlyError(err)
   } finally {
     loading.value = false
   }
 }
-
-function formatError(err: unknown): string {
-  const friendly = toFriendlyError(err)
-  return `${friendly.title}：${friendly.detail}`
-}
 </script>
 
 <style scoped>
-.title {
-  font-size: 21px;
-  margin: 4px 0 4px;
-}
-
-.subtitle {
-  color: #6f8ba6;
-  font-size: 13px;
-  margin: 0 0 18px;
-}
-
-.ask-box {
+.tutor {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  min-height: calc(100dvh - 140px);
 }
 
-.ask-box textarea {
-  background: #0e2033;
-  border: 1px solid #285275;
-  border-radius: 12px;
-  padding: 12px 14px;
-  font-size: 15px;
-  color: #e9f4ff;
-  resize: none;
-  outline: none;
+.tutor__intro {
+  margin-bottom: var(--m-space-4);
 }
 
-.ask-box textarea:focus {
-  border-color: #54d6ff;
+.tutor__title {
+  font-size: var(--m-text-xl);
+  margin: 0 0 var(--m-space-1);
 }
 
-.ask-btn {
-  align-self: flex-end;
-  background: linear-gradient(135deg, #1f6feb, #54d6ff);
-  border: none;
-  border-radius: 10px;
-  padding: 10px 26px;
-  font-size: 15px;
-  font-weight: 600;
-  color: #04121f;
-  cursor: pointer;
-}
-
-.ask-btn:disabled {
-  opacity: 0.5;
-}
-
-.error {
-  background: #3a1620;
-  border: 1px solid #6b2233;
-  color: #ff9ca8;
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 13px;
-  margin: 14px 0 0;
-}
-
-.answer {
-  margin-top: 18px;
-  background: #0e2033;
-  border: 1px solid #285275;
-  border-radius: 14px;
-  padding: 14px 16px;
-}
-
-.answer-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.who {
-  font-size: 13px;
-  font-weight: 700;
-  color: #54d6ff;
-}
-
-.time {
-  margin-left: auto;
-  font-size: 11px;
-  color: #5f7d95;
-}
-
-.badge {
-  font-size: 11px;
-  border-radius: 999px;
-  padding: 2px 8px;
-}
-
-.badge-warn {
-  background: #4a3410;
-  color: #ffc857;
-}
-
-.badge-danger {
-  background: #4d2028;
-  color: #ff9ca8;
-}
-
-.answer-text {
+.tutor__subtitle {
+  font-size: var(--m-text-sm);
+  color: var(--m-text-faint);
   margin: 0;
-  font-size: 15px;
-  line-height: 1.75;
-  white-space: pre-wrap;
 }
 
-.risks {
-  margin: 10px 0 0;
-  padding-left: 18px;
-  font-size: 12px;
-  color: #ffc857;
+.tutor__thread {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+  overflow-y: auto;
+  padding-bottom: var(--m-space-4);
 }
 
-.history {
-  margin-top: 26px;
+.tutor__ai {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--m-space-1);
 }
 
-.history-title {
-  font-size: 14px;
-  color: #8ca8bd;
-  margin: 0 0 10px;
+.tutor__thinking {
+  min-width: 180px;
 }
 
-.history-item {
-  border-left: 2px solid #285275;
-  padding: 4px 0 4px 12px;
-  margin-bottom: 14px;
+.tutor__risks {
+  margin: 0;
+  padding-left: var(--m-space-4);
+  font-size: var(--m-text-xs);
+  color: var(--m-warn);
 }
 
-.q,
-.a {
-  margin: 0 0 4px;
-  font-size: 13px;
-  line-height: 1.6;
+.tutor__error {
+  margin-bottom: var(--m-space-3);
 }
 
-.q {
-  color: #9eb6ca;
+.tutor__retry {
+  align-self: flex-start;
+  margin-top: var(--m-space-2);
 }
 
-.a {
-  color: #cddce8;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+/* 输入区：sticky 在底部，键盘弹出时随视口上移（dvh + sticky） */
+.tutor__composer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: var(--m-space-2);
+  align-items: flex-end;
+  padding: var(--m-space-3) 0 var(--m-space-2);
+  background: var(--m-bg);
+  border-top: 1px solid var(--m-border);
+}
+
+.tutor__composer .m-textarea {
+  flex: 1;
+}
+
+.tutor__send {
+  flex: none;
+  padding: var(--m-space-3) var(--m-space-5);
+}
+
+.tutor__composer--focused {
+  border-top-color: var(--m-primary);
 }
 </style>

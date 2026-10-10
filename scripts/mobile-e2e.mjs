@@ -99,17 +99,18 @@ class CdpClient {
 }
 
 async function login(cdp) {
-  await cdp.type('.field input[type="text"]', DEMO_ACCOUNT)
-  await cdp.type('.field input[type="password"]', DEMO_PASSWORD)
-  await cdp.eval("document.querySelector('.submit').click()")
-  const ok = await waitFor(() => cdp.eval("location.hash.includes('#/tutor') && Boolean(document.querySelector('.tutor'))"), 20000)
+  await cdp.type('.m-field input[type="text"]', DEMO_ACCOUNT)
+  await cdp.type('.m-field input[type="password"]', DEMO_PASSWORD)
+  await cdp.eval("document.querySelector('.login__form .m-btn').click()")
+  // 登录成功标志：底部导航出现（hash 可能是 /today，也可能被 redirect 参数带回 /tutor）
+  const ok = await waitFor(() => cdp.eval("Boolean(document.querySelector('.mobile-tabs')) && location.hash !== '#/login'"), 20000)
   if (!ok) {
     // 失败时 dump 现场便于诊断
     const text = await cdp.bodyText()
     const err = await cdp.eval("document.querySelector('.error')?.textContent || ''")
     const vals = await cdp.eval(`JSON.stringify({
-      account: document.querySelector('.field input[type="text"]')?.value,
-      pwdLen: (document.querySelector('.field input[type="password"]')?.value || '').length,
+      account: document.querySelector('.m-field input[type="text"]')?.value,
+      pwdLen: (document.querySelector('.m-field input[type="password"]')?.value || '').length,
       hash: location.hash,
     })`)
     console.log(`[login 失败诊断] error="${err}" vals=${vals}\n[body] ${text.slice(0, 200)}`)
@@ -166,33 +167,35 @@ async function main() {
     report('B 登录成功进入 AI 导师页', Boolean(onTutor), onTutor ? '' : '未进入导师页')
 
     // C. 提问并得到回答（无 LLM 配置时应显示降级徽标）
-    await cdp.type('.ask-box textarea', 'BFS 的 visited 标记在入队时还是出队时打？')
-    await cdp.eval("document.querySelector('.ask-btn').click()")
+    await cdp.eval("document.querySelectorAll('.tab')[1].click()")
+    await waitFor(() => cdp.eval("Boolean(document.querySelector('.tutor__composer'))"))
+    await cdp.type('.tutor__composer textarea', 'BFS 的 visited 标记在入队时还是出队时打？')
+    await cdp.eval("document.querySelector('.tutor__send').click()")
     const answerState = await waitFor(async () => {
       return cdp.eval(`(() => {
-        const el = document.querySelector('.answer-text')
+        const el = document.querySelector('.m-bubble--ai')
         if (!el || (el.textContent || '').length < 5) return null
         return JSON.stringify({
           len: el.textContent.length,
-          fallbackBadge: Boolean(document.querySelector('.badge-warn')),
+          fallbackBadge: Boolean(document.querySelector('.m-badge--warn')),
         })
       })()`).then(v => (v ? JSON.parse(v) : null))
     }, 30000)
     report('C AI 提问返回真实回答', Boolean(answerState),
       answerState ? `回答 ${answerState.len} 字符，降级徽标=${answerState.fallbackBadge ? '显示(未配 LLM，符合预期)' : '未显示'}` : '未出现回答')
 
-    // D. 状态页
-    await cdp.eval("document.querySelectorAll('.tab')[1].click()")
+    // D. 「我的」页（账号 + 服务诊断）
+    await cdp.eval("document.querySelectorAll('.tab')[3].click()")
     const statusOk = await waitFor(async () => {
       const text = await cdp.bodyText()
-      return text.includes('当前账号') && (text.includes('正常') || text.includes('不可达'))
+      return text.includes('服务连接诊断') && (text.includes('正常') || text.includes('不可达'))
     })
     const statusText = statusOk ? await cdp.bodyText() : ''
-    report('D 状态页展示账号与服务状态', Boolean(statusOk),
-      statusOk ? `账号=${statusText.includes(DEMO_ACCOUNT) ? DEMO_ACCOUNT : '?'} 健康=${statusText.includes('正常') ? '正常' : '异常'}` : '状态页未就绪')
+    report('D 「我的」页展示账号与服务诊断', Boolean(statusOk),
+      statusOk ? `账号=${statusText.includes(DEMO_ACCOUNT) ? DEMO_ACCOUNT : '?'} 健康=${statusText.includes('正常') ? '正常' : '异常'}` : '页面未就绪')
 
     // E. 退出登录
-    await cdp.eval("document.querySelector('.logout').click()")
+    await cdp.eval("document.querySelector('.profile__logout').click()")
     const backToLogin = await waitFor(() => cdp.eval("Boolean(document.querySelector('.login'))"))
     report('E 退出登录回到登录页', Boolean(backToLogin))
 
@@ -208,8 +211,11 @@ async function main() {
         }).catch(() => null)
         logoutStatus = res?.status || 0
       }
-      await cdp.type('.ask-box textarea', '会话失效后的提问')
-      await cdp.eval("document.querySelector('.ask-btn').click()")
+      // 确保在 AI 导师页再提问（登录后可能落在今日页）
+      await cdp.eval("document.querySelectorAll('.tab')[1].click()")
+      await waitFor(() => cdp.eval("Boolean(document.querySelector('.tutor__composer'))"))
+      await cdp.type('.tutor__composer textarea', '会话失效后的提问')
+      await cdp.eval("document.querySelector('.tutor__send').click()")
     }
     const reauth = await waitFor(() => cdp.eval("Boolean(document.querySelector('.login'))"), 20000)
     report('F 会话失效后请求被 401 打回登录页', Boolean(reauth) && logoutStatus === 200,
@@ -217,9 +223,9 @@ async function main() {
 
     // G. 网络不可达：API 地址指向不存在端口，登录应给出清晰错误（而非白屏/无限转圈）
     await cdp.eval("localStorage.setItem('edumind-api-base', 'http://127.0.0.1:9999')")
-    await cdp.type('.field input[type="text"]', DEMO_ACCOUNT)
-    await cdp.type('.field input[type="password"]', DEMO_PASSWORD)
-    await cdp.eval("document.querySelector('.submit').click()")
+    await cdp.type('.m-field input[type="text"]', DEMO_ACCOUNT)
+    await cdp.type('.m-field input[type="password"]', DEMO_PASSWORD)
+    await cdp.eval("document.querySelector('.login__form .m-btn').click()")
     const netError = await waitFor(async () => {
       const text = await cdp.bodyText()
       return text.includes('网络') || text.includes('不可达') || text.includes('请求失败')

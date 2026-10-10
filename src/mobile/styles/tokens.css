@@ -1,0 +1,353 @@
+/* ============================================================
+   智学星枢 Mobile 设计 Token（P2-1 · feat/mobile-v1）
+   所有移动端页面只允许使用本文件定义的变量，不允许散落硬编码色值。
+   ============================================================ */
+
+:root {
+  /* —— 色彩：深空科技感 —— */
+  --m-bg: #07111f;
+  --m-bg-elevated: #0b1a2e;
+  --m-surface: #0e2033;
+  --m-surface-2: #14304d;
+  --m-border: #1d3552;
+  --m-border-strong: #285275;
+
+  --m-primary: #54d6ff;
+  --m-primary-deep: #1f6feb;
+  --m-primary-soft: rgba(84, 214, 255, 0.14);
+  --m-gradient-primary: linear-gradient(135deg, #1f6feb, #54d6ff);
+
+  --m-text: #e9f4ff;
+  --m-text-dim: #9eb6ca;
+  --m-text-faint: #5f7d95;
+
+  --m-success: #72f0bd;
+  --m-success-soft: rgba(114, 240, 189, 0.12);
+  --m-warn: #ffc857;
+  --m-warn-soft: rgba(255, 200, 87, 0.12);
+  --m-danger: #ff9ca8;
+  --m-danger-soft: rgba(255, 156, 168, 0.12);
+
+  /* —— 字体 —— */
+  --m-font: -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  --m-text-xs: 11px;
+  --m-text-sm: 12px;
+  --m-text-md: 13px;
+  --m-text-base: 15px;
+  --m-text-lg: 17px;
+  --m-text-xl: 21px;
+  --m-text-2xl: 26px;
+
+  /* —— 间距 —— */
+  --m-space-1: 4px;
+  --m-space-2: 8px;
+  --m-space-3: 12px;
+  --m-space-4: 16px;
+  --m-space-5: 20px;
+  --m-space-6: 24px;
+  --m-space-8: 32px;
+
+  /* —— 圆角 —— */
+  --m-radius-sm: 8px;
+  --m-radius-md: 12px;
+  --m-radius-lg: 16px;
+  --m-radius-xl: 20px;
+  --m-radius-full: 999px;
+
+  /* —— 安全区 —— */
+  --m-safe-top: env(safe-area-inset-top, 0px);
+  --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* —— 动效 —— */
+  --m-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --m-duration: 220ms;
+}
+
+/* ============================================================
+   基础组件（P2-1）
+   ============================================================ */
+
+/* 按钮 */
+.m-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-space-2);
+  border: none;
+  border-radius: var(--m-radius-md);
+  padding: 13px var(--m-space-5);
+  font-family: var(--m-font);
+  font-size: var(--m-text-base);
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: transform var(--m-duration) var(--m-ease), opacity var(--m-duration) var(--m-ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.m-btn:active {
+  transform: scale(0.97);
+}
+.m-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.m-btn--primary {
+  background: var(--m-gradient-primary);
+  color: #04121f;
+}
+.m-btn--ghost {
+  background: transparent;
+  border: 1px solid var(--m-border-strong);
+  color: var(--m-text-dim);
+}
+.m-btn--danger {
+  background: var(--m-danger-soft);
+  border: 1px solid rgba(255, 156, 168, 0.35);
+  color: var(--m-danger);
+}
+.m-btn--block {
+  width: 100%;
+}
+.m-btn--sm {
+  padding: 9px var(--m-space-4);
+  font-size: var(--m-text-md);
+}
+
+/* 卡片 */
+.m-card {
+  background: var(--m-surface);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius-lg);
+  padding: var(--m-space-4);
+}
+.m-card--accent {
+  background: linear-gradient(160deg, rgba(31, 111, 235, 0.16), var(--m-surface) 55%);
+  border-color: rgba(84, 214, 255, 0.25);
+}
+.m-card__title {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  font-size: var(--m-text-md);
+  font-weight: 700;
+  color: var(--m-primary);
+  margin: 0 0 var(--m-space-3);
+}
+.m-card__more {
+  margin-left: auto;
+  font-size: var(--m-text-sm);
+  font-weight: 400;
+  color: var(--m-text-faint);
+}
+
+/* 输入框 */
+.m-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
+  font-size: var(--m-text-md);
+  color: var(--m-text-dim);
+}
+.m-input,
+.m-textarea {
+  width: 100%;
+  background: var(--m-bg);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-radius-md);
+  padding: var(--m-space-3) 14px;
+  font-family: var(--m-font);
+  font-size: var(--m-text-base); /* ≥16px 避免 iOS 聚焦放大；15px 为安卓/桌面平衡 */
+  color: var(--m-text);
+  outline: none;
+  transition: border-color var(--m-duration) var(--m-ease);
+}
+.m-input:focus,
+.m-textarea:focus {
+  border-color: var(--m-primary);
+}
+.m-textarea {
+  resize: none;
+  line-height: 1.6;
+}
+
+/* 对话气泡 */
+.m-bubble {
+  max-width: 82%;
+  padding: var(--m-space-3) var(--m-space-4);
+  border-radius: var(--m-radius-lg);
+  font-size: var(--m-text-base);
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.m-bubble--ai {
+  align-self: flex-start;
+  background: var(--m-surface-2);
+  border: 1px solid var(--m-border);
+  border-bottom-left-radius: var(--m-space-1);
+  color: var(--m-text);
+}
+.m-bubble--user {
+  align-self: flex-end;
+  background: var(--m-gradient-primary);
+  border-bottom-right-radius: var(--m-space-1);
+  color: #04121f;
+}
+.m-bubble__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  margin-bottom: var(--m-space-1);
+  font-size: var(--m-text-xs);
+  color: var(--m-text-faint);
+}
+
+/* 徽标 */
+.m-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--m-radius-full);
+  padding: 2px 10px;
+  font-size: var(--m-text-xs);
+  font-weight: 600;
+  line-height: 1.6;
+}
+.m-badge--warn {
+  background: var(--m-warn-soft);
+  color: var(--m-warn);
+}
+.m-badge--danger {
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
+}
+.m-badge--success {
+  background: var(--m-success-soft);
+  color: var(--m-success);
+}
+.m-badge--info {
+  background: var(--m-primary-soft);
+  color: var(--m-primary);
+}
+
+/* 骨架屏 */
+.m-skeleton {
+  border-radius: var(--m-radius-sm);
+  background: linear-gradient(90deg, var(--m-surface) 25%, var(--m-surface-2) 50%, var(--m-surface) 75%);
+  background-size: 200% 100%;
+  animation: m-shimmer 1.4s infinite linear;
+}
+@keyframes m-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.m-skeleton--text {
+  height: 14px;
+  margin-bottom: var(--m-space-2);
+}
+.m-skeleton--block {
+  height: 72px;
+}
+
+/* 空状态 */
+.m-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--m-space-3);
+  padding: var(--m-space-8) var(--m-space-4);
+  text-align: center;
+  color: var(--m-text-faint);
+}
+.m-empty__icon {
+  font-size: 34px;
+  opacity: 0.6;
+}
+.m-empty__text {
+  font-size: var(--m-text-md);
+  line-height: 1.7;
+}
+
+/* 占位数据标记（P2-1 规范：示例数据必须可见地区分） */
+.m-demo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px dashed rgba(255, 200, 87, 0.45);
+  border-radius: var(--m-radius-full);
+  padding: 1px 9px;
+  font-size: var(--m-text-xs);
+  color: var(--m-warn);
+}
+
+/* 错误条 */
+.m-error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  background: var(--m-danger-soft);
+  border: 1px solid rgba(255, 156, 168, 0.3);
+  border-radius: var(--m-radius-md);
+  padding: var(--m-space-3) var(--m-space-4);
+  font-size: var(--m-text-md);
+  color: var(--m-danger);
+  line-height: 1.6;
+}
+.m-error__detail {
+  font-size: var(--m-text-sm);
+  opacity: 0.85;
+}
+
+/* 列表行 */
+.m-row {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-3);
+  padding: var(--m-space-3) 0;
+  font-size: var(--m-text-md);
+  color: var(--m-text-dim);
+  border-bottom: 1px solid var(--m-border);
+}
+.m-row:last-child {
+  border-bottom: none;
+}
+.m-row__value {
+  margin-left: auto;
+  color: var(--m-text);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
+}
+
+/* 进度条 */
+.m-progress {
+  height: 6px;
+  border-radius: var(--m-radius-full);
+  background: var(--m-surface-2);
+  overflow: hidden;
+}
+.m-progress__fill {
+  height: 100%;
+  border-radius: var(--m-radius-full);
+  background: var(--m-gradient-primary);
+  transition: width var(--m-duration) var(--m-ease);
+}
+
+/* 区块标题 */
+.m-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--m-space-2);
+  font-size: var(--m-text-lg);
+  font-weight: 700;
+  color: var(--m-text);
+  margin: var(--m-space-6) 0 var(--m-space-3);
+}
+.m-section-title:first-child {
+  margin-top: var(--m-space-2);
+}
+.m-section-title__sub {
+  font-size: var(--m-text-sm);
+  font-weight: 400;
+  color: var(--m-text-faint);
+}

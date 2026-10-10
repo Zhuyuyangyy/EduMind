@@ -1,3 +1,5 @@
+@import './styles/tokens.css';
+
 :root {
   color-scheme: dark;
 }
@@ -10,10 +12,11 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: #07111f;
-  color: #e9f4ff;
-  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  background: var(--m-bg);
+  color: var(--m-text);
+  font-family: var(--m-font);
   -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
 }
 
 #app {
@@ -25,6 +28,12 @@ button {
   font-family: inherit;
 }
 
-input {
+input,
+textarea {
   font-family: inherit;
+}
+
+/* 滚动平滑但不干扰原生回弹 */
+main {
+  -webkit-overflow-scrolling: touch;
 }

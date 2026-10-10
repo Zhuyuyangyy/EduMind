@@ -1,27 +1,36 @@
 <template>
   <section class="login">
-    <h1 class="title">进入智学星枢</h1>
-    <p class="hint">Android 最小原型 · P1</p>
+    <div class="login__brand">
+      <span class="login__logo">智学星枢</span>
+      <span class="login__tag">AI 个性化学习</span>
+    </div>
 
-    <form class="form" @submit.prevent="onSubmit">
-      <label class="field">
+    <h1 class="login__title">欢迎回来</h1>
+    <p class="login__subtitle">登录后继续你今天的学习</p>
+
+    <form class="login__form" @submit.prevent="onSubmit">
+      <label class="m-field">
         <span>账号</span>
-        <input v-model="account" type="text" autocomplete="username" placeholder="评审账号 reviewer" />
+        <input v-model="account" class="m-input" type="text" autocomplete="username" placeholder="评审账号 reviewer" />
       </label>
-      <label class="field">
+      <label class="m-field">
         <span>密码</span>
-        <input v-model="password" type="password" autocomplete="current-password" placeholder="演示密码" />
+        <input v-model="password" class="m-input" type="password" autocomplete="current-password" placeholder="演示密码" />
       </label>
 
-      <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <div v-if="error" class="m-error" role="alert">
+        <b>{{ error.title }}</b>
+        <span class="m-error__detail">{{ error.detail }}</span>
+      </div>
 
-      <button class="submit" type="submit" :disabled="loading">
+      <button class="m-btn m-btn--primary m-btn--block" type="submit" :disabled="loading">
         {{ loading ? '登录中…' : '登录' }}
       </button>
     </form>
 
-    <p class="footnote">
-      演示账号：reviewer / Zhixue2026!（学生端）。会话由服务端签发，有效期 7 天。
+    <p class="login__footnote">
+      演示账号：reviewer / Zhixue2026!（学生端）<br />
+      会话由服务端签发，有效期 7 天；退出或服务端失效后需重新登录。
     </p>
   </section>
 </template>
@@ -31,13 +40,13 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { setAuthSession } from '@/lib/auth'
 import { loginDemoAccount } from '@/lib/api'
-import { toFriendlyError } from '../errors'
+import { toFriendlyError, type FriendlyError } from '../errors'
 
 const router = useRouter()
 const account = ref('reviewer')
 const password = ref('')
 const loading = ref(false)
-const error = ref('')
+const error = ref<FriendlyError | null>(null)
 
 onMounted(() => {
   document.title = '登录 · 智学星枢 Mobile'
@@ -45,11 +54,11 @@ onMounted(() => {
 
 async function onSubmit() {
   if (!account.value.trim() || !password.value) {
-    error.value = '请输入账号和密码'
+    error.value = { title: '请输入账号和密码', detail: '两个字段都需要填写。', reauth: false }
     return
   }
   loading.value = true
-  error.value = ''
+  error.value = null
   try {
     const result = await loginDemoAccount(account.value.trim(), password.value, 'student')
     setAuthSession({
@@ -59,13 +68,14 @@ async function onSubmit() {
       loginAt: new Date().toISOString(),
     }, result.token)
     const redirect = router.currentRoute.value.query.redirect
-    await router.replace(typeof redirect === 'string' ? redirect : '/tutor')
+    await router.replace(typeof redirect === 'string' ? redirect : '/today')
   } catch (err) {
-    const friendly = toFriendlyError(err)
     // 登录接口的 401 是账号密码错误，给出可操作提示而不是“会话过期”
-    error.value = /Request failed: 401/.test(err instanceof Error ? err.message : '')
-      ? '账号或密码错误（演示账号见页面底部）'
-      : `${friendly.title}：${friendly.detail}`
+    if (err instanceof Error && /Request failed: 401/.test(err.message)) {
+      error.value = { title: '账号或密码错误', detail: '演示账号见页面底部。', reauth: false }
+    } else {
+      error.value = toFriendlyError(err)
+    }
   } finally {
     loading.value = false
   }
@@ -75,77 +85,52 @@ async function onSubmit() {
 <style scoped>
 .login {
   max-width: 420px;
-  margin: 6vh auto 0;
+  margin: 7vh auto 0;
 }
 
-.title {
-  font-size: 24px;
-  margin: 0 0 4px;
+.login__brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--m-space-2);
+  margin-bottom: var(--m-space-8);
 }
 
-.hint {
-  color: #6f8ba6;
-  font-size: 13px;
-  margin: 0 0 28px;
+.login__logo {
+  font-size: var(--m-text-2xl);
+  font-weight: 800;
+  letter-spacing: 1px;
+  background: var(--m-gradient-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-.form {
+.login__tag {
+  font-size: var(--m-text-sm);
+  color: var(--m-text-faint);
+}
+
+.login__title {
+  font-size: var(--m-text-2xl);
+  margin: 0 0 var(--m-space-1);
+}
+
+.login__subtitle {
+  color: var(--m-text-dim);
+  font-size: var(--m-text-md);
+  margin: 0 0 var(--m-space-6);
+}
+
+.login__form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--m-space-4);
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: #9eb6ca;
-}
-
-.field input {
-  background: #0e2033;
-  border: 1px solid #285275;
-  border-radius: 12px;
-  padding: 13px 14px;
-  font-size: 16px; /* 避免 iOS 聚焦自动放大 */
-  color: #e9f4ff;
-  outline: none;
-}
-
-.field input:focus {
-  border-color: #54d6ff;
-}
-
-.error {
-  background: #3a1620;
-  border: 1px solid #6b2233;
-  color: #ff9ca8;
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 13px;
-  margin: 0;
-}
-
-.submit {
-  background: linear-gradient(135deg, #1f6feb, #54d6ff);
-  border: none;
-  border-radius: 12px;
-  padding: 14px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #04121f;
-  cursor: pointer;
-}
-
-.submit:disabled {
-  opacity: 0.6;
-}
-
-.footnote {
-  margin-top: 28px;
-  font-size: 12px;
-  color: #5f7d95;
-  line-height: 1.7;
+.login__footnote {
+  margin-top: var(--m-space-8);
+  font-size: var(--m-text-xs);
+  color: var(--m-text-faint);
+  line-height: 1.9;
 }
 </style>
