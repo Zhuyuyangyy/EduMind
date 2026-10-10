@@ -11,6 +11,49 @@
 
 const STORAGE_KEY = 'edumind-api-base'
 
+function isDev(): boolean {
+  return import.meta.env.DEV === true
+}
+
+function isLocalHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]'
+}
+
+/**
+ * 校验 API Base 地址（P1.5 安全加固）。
+ * 规则：
+ * - 必须是合法的 http/https URL 且有主机名；
+ * - 正式构建（PROD）只允许 https 且非本机地址——防止把 Bearer Token 发往不可信服务；
+ * - 开发构建明确限定例外：仅 http://localhost 或 http://127.0.0.1 可用。
+ */
+export function validateApiBase(base: string): { ok: boolean; error?: string } {
+  const value = (base || '').trim().replace(/\/+$/, '')
+  if (!value) return { ok: true } // 空值 = 相对路径（仅网页版同源可用），合法
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return { ok: false, error: '不是合法的 URL（示例：https://yx.shushubiye.fun）' }
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { ok: false, error: '只支持 http:// 或 https:// 协议' }
+  }
+  if (!url.hostname) {
+    return { ok: false, error: '缺少主机名' }
+  }
+  if (!isDev()) {
+    if (url.protocol !== 'https:') {
+      return { ok: false, error: '正式版本只允许 HTTPS 地址（明文 HTTP 会暴露登录凭据）' }
+    }
+    if (isLocalHost(url.hostname)) {
+      return { ok: false, error: '正式版本不允许指向本机地址' }
+    }
+  } else if (url.protocol === 'http:' && !isLocalHost(url.hostname)) {
+    return { ok: false, error: '开发版本仅允许 http://localhost 或 http://127.0.0.1，其他地址请用 HTTPS' }
+  }
+  return { ok: true }
+}
+
 function readEnvBase(): string {
   const fromEnv = import.meta.env.VITE_API_BASE_URL
   return typeof fromEnv === 'string' ? fromEnv.trim() : ''
@@ -30,10 +73,14 @@ export function getApiBase(): string {
   return readStoredBase() || readEnvBase()
 }
 
-/** 运行时切换 API Base（设置页用）；传空字符串恢复默认。 */
+/** 运行时切换 API Base（设置页用）；传空字符串恢复默认。校验失败抛错，不落盘。 */
 export function setApiBase(base: string): void {
-  if (typeof window === 'undefined') return
   const value = (base || '').trim().replace(/\/+$/, '')
+  const check = validateApiBase(value)
+  if (!check.ok) {
+    throw new Error(check.error || 'API 地址不合法')
+  }
+  if (typeof window === 'undefined') return
   if (value) {
     window.localStorage.setItem(STORAGE_KEY, value)
   } else {

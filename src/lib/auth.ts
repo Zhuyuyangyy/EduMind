@@ -1,3 +1,5 @@
+import { resolveApiUrl } from './api-config'
+
 export type AuthRole = 'student' | 'admin'
 
 export interface AuthSession {
@@ -59,7 +61,8 @@ export async function restoreAuthSession(): Promise<AuthSession | null> {
 
   try {
     const token = getAuthToken()
-    const response = await fetch('/api/auth/session', {
+    // P1.5：必须走 resolveApiUrl——Capacitor WebView 里相对路径会打到 App 自身
+    const response = await fetch(resolveApiUrl('/api/auth/session'), {
       credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })

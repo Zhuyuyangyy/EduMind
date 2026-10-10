@@ -44,8 +44,8 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { clearAuthSession, getAuthSession } from '@/lib/auth'
-import { fetchCurrentSession, logout } from '@/lib/api'
-import { getApiBase, getDefaultApiBase, setApiBase } from '@/lib/api-config'
+import { fetchCurrentSession, logout, apiGet } from '@/lib/api'
+import { getApiBase, getDefaultApiBase, setApiBase, validateApiBase } from '@/lib/api-config'
 
 const router = useRouter()
 const session = ref(getAuthSession())
@@ -76,38 +76,29 @@ const effectiveBase = getApiBase()
 async function runChecks() {
   checking.value = true
   health.value = { ok: false, text: '检测中…' }
+  // P1.5：全部经共享 API 客户端（自动携带 Bearer + 401 统一处理），
+  // 不再裸 fetch——跨域 WebView 场景下不能依赖 Cookie。
   try {
-    const res = await fetch(`${getApiBase()}/api/health`, { credentials: 'include' })
-    if (res.ok) {
-      const data = await res.json()
-      health.value = { ok: true, text: '正常', storageBackend: data.storageBackend }
-    } else {
-      health.value = { ok: false, text: `HTTP ${res.status}` }
-    }
+    const data = await apiGet<{ ok: boolean; storageBackend?: string }>('/api/health')
+    health.value = { ok: true, text: '正常', storageBackend: data.storageBackend }
   } catch {
     health.value = { ok: false, text: '不可达' }
   }
 
   try {
-    const res = await fetch(`${getApiBase()}/api/llm/status`)
-    llm.value = res.ok ? await res.json() : { configured: false }
+    llm.value = await apiGet<{ configured: boolean; provider?: string; model?: string }>('/api/llm/status')
   } catch {
     llm.value = { configured: false }
   }
 
   try {
-    const res = await fetch(`${getApiBase()}/api/evidence/traces?limit=1`, { credentials: 'include' })
-    if (res.ok) {
-      const data = await res.json()
-      const latest = data.items?.[0]
-      latestTrace.value = latest
-        ? { fallbackUsed: Boolean(latest.fallbackUsed), text: latest.fallbackUsed ? '降级生成' : '模型生成' }
-        : { fallbackUsed: false, text: '暂无记录' }
-    } else {
-      latestTrace.value = { fallbackUsed: false, text: `HTTP ${res.status}` }
-    }
-  } catch {
-    latestTrace.value = { fallbackUsed: false, text: '不可达' }
+    const data = await apiGet<{ items?: Array<{ fallbackUsed?: boolean }> }>('/api/evidence/traces?limit=1')
+    const latest = data.items?.[0]
+    latestTrace.value = latest
+      ? { fallbackUsed: Boolean(latest.fallbackUsed), text: latest.fallbackUsed ? '降级生成' : '模型生成' }
+      : { fallbackUsed: false, text: '暂无记录' }
+  } catch (err) {
+    latestTrace.value = { fallbackUsed: false, text: err instanceof Error && /401/.test(err.message) ? '登录已过期' : '不可达' }
   }
   checking.value = false
 }
@@ -117,9 +108,9 @@ async function onSaveBase() {
   baseMsg.value = ''
   try {
     const value = baseInput.value.trim()
-    if (value && !/^https?:\/\//.test(value)) {
-      throw new Error('地址必须以 http:// 或 https:// 开头')
-    }
+    // 统一走共享校验（正式构建仅 HTTPS 可信地址，开发例外仅限 localhost）
+    const check = validateApiBase(value)
+    if (!check.ok) throw new Error(check.error)
     setApiBase(value)
     baseOk.value = true
     baseMsg.value = '已保存，正在重新检测…'

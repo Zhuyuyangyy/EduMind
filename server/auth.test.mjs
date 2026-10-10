@@ -399,3 +399,65 @@ test('协作看板只聚合当前账号的真实活动（元数据也不跨账�
     assert.ok(!JSON.stringify(board).includes('提问'), '看板不得包含任何账号的提问内容')
   })
 })
+
+test('CORS：白名单 Origin 预检放行（含 Authorization），陌生 Origin 被拒绝', async () => {
+  await withApiServer(async () => {
+    // Capacitor Android 的 WebView 源与本地开发源都应放行
+    for (const origin of ['http://localhost:5174', 'https://localhost', 'capacitor://localhost']) {
+      const preflight = await fetch(`${BASE_URL}/api/auth/login`, {
+        method: 'OPTIONS',
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'content-type,authorization',
+        },
+      })
+      assert.equal(preflight.status, 204, `${origin} 预检应 204`)
+      assert.equal(preflight.headers.get('access-control-allow-origin'), origin, `${origin} 应被反射`)
+      assert.equal(preflight.headers.get('access-control-allow-credentials'), 'true')
+      assert.match(preflight.headers.get('access-control-allow-headers') || '', /authorization/i)
+    }
+
+    // 陌生 Origin 不得拿到 CORS 许可
+    const evil = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://evil.example.com',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type',
+      },
+    })
+    assert.ok(!evil.headers.get('access-control-allow-origin'), '陌生 Origin 不得拿到 CORS 许可')
+
+    // 陌生 Origin 的实际请求也应被浏览器拦截（服务端不下发 ACAO）
+    const cross = await fetch(`${BASE_URL}/api/evidence/traces`, {
+      headers: { Origin: 'https://evil.example.com' },
+    })
+    assert.ok(!cross.headers.get('access-control-allow-origin'))
+  })
+})
+
+test('跨 Origin 场景：Bearer Token 可完成业务请求（Cookie 不可依赖）', async () => {
+  await withApiServer(async () => {
+    // 模拟 Capacitor WebView：源是 https://localhost，不带 Cookie，只带 Bearer
+    const login = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://localhost' },
+      body: JSON.stringify({ account: 'reviewer', password: 'Zhixue2026!' }),
+    })
+    assert.equal(login.status, 200)
+    assert.equal(login.headers.get('access-control-allow-origin'), 'https://localhost')
+    const { token } = await login.json()
+
+    const traces = await fetch(`${BASE_URL}/api/evidence/traces`, {
+      headers: { Origin: 'https://localhost', Authorization: `Bearer ${token}` },
+    })
+    assert.equal(traces.status, 200, 'Bearer 通道在跨域下应放行')
+
+    // 过期/乱码 token 在跨域下同样 401
+    const expired = await fetch(`${BASE_URL}/api/evidence/traces`, {
+      headers: { Origin: 'https://localhost', Authorization: 'Bearer not-a-real-token' },
+    })
+    assert.equal(expired.status, 401)
+  })
+})

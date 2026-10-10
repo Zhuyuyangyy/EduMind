@@ -86,6 +86,14 @@ export async function saveAccountSettings(displayName: string) {
   return data.result
 }
 
+/**
+ * 通用 JSON 请求（P1.5 导出供移动端状态页等使用）。
+ * 自动携带 Bearer + Cookie、统一 401 处理与超时；调用方需自行 try/catch。
+ */
+export async function apiGet<T>(input: string, init?: RequestInit): Promise<T> {
+  return requestJson<T>(input, init)
+}
+
 async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
   const appStore = useAppStore()
   const method = (init?.method ?? 'GET').toUpperCase()

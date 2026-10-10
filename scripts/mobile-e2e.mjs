@@ -21,6 +21,9 @@ const CHROME = process.argv[4] || 'D:/cloakbrowser-windows-x64/chrome.exe'
 const CDP_PORT = 9333
 const DEMO_ACCOUNT = process.env.DEMO_STUDENT_ACCOUNT || 'reviewer'
 const DEMO_PASSWORD = process.env.DEMO_STUDENT_PASSWORD || 'Zhixue2026!'
+// CROSS_ORIGIN=1：模拟 Capacitor 真机场景——页面与 API 不同源，
+// 预置 localStorage 绝对 API 地址，不走本地 /api 代理，验证 CORS + Bearer 全链路
+const CROSS_ORIGIN = process.env.CROSS_ORIGIN === '1'
 
 const results = []
 function report(name, ok, detail) {
@@ -145,6 +148,14 @@ async function main() {
     await cdp.send('Page.enable')
     await cdp.send('Runtime.enable')
 
+    if (CROSS_ORIGIN) {
+      // 在页面脚本执行前预置绝对 API 地址（等价于真机上配置远程后端）
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `try { window.localStorage.setItem('edumind-api-base', ${JSON.stringify(API_URL)}) } catch (e) {}`,
+      })
+      console.log(`[cross-origin] 页面 ${WEB_URL} → API ${API_URL}（不走代理，验证 CORS+Bearer）`)
+    }
+
     // A. 未登录直接访问 → 登录页
     await cdp.goto(`${WEB_URL}/#/tutor`)
     const loginVisible = await waitFor(() => cdp.eval("Boolean(document.querySelector('.login'))"))
@@ -227,7 +238,7 @@ async function main() {
   }
 
   const failed = results.filter(r => !r.ok)
-  console.log(`\nE2E 汇总: ${results.length - failed.length}/${results.length} 通过`)
+  console.log(`\nE2E 汇总${CROSS_ORIGIN ? '（跨 Origin → 远程 API 模式）' : '（同源代理模式）'}: ${results.length - failed.length}/${results.length} 通过`)
   if (failed.length > 0) process.exitCode = 1
 }
 
