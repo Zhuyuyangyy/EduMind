@@ -65,6 +65,7 @@ import { useRouter } from 'vue-router'
 import { clearAuthSession, getAuthSession } from '@/lib/auth'
 import { fetchCurrentSession, logout, apiGet } from '@/lib/api'
 import { getApiBase, getDefaultApiBase, setApiBase, validateApiBase } from '@/lib/api-config'
+import { bumpDataEpoch } from '@/mobile/data/learning-data'
 
 const router = useRouter()
 const session = ref(getAuthSession())
@@ -132,6 +133,8 @@ async function onSaveBase() {
     setApiBase(value)
     baseOk.value = true
     baseMsg.value = '已保存，正在重新检测…'
+    // API 地址变化：数据纪元 +1，各页下次进入时按新地址重新拉取
+    bumpDataEpoch()
     await runChecks()
     baseMsg.value = health.value.ok ? '已保存，服务连接正常' : '已保存，但服务不可达，请检查地址'
     baseOk.value = health.value.ok
@@ -155,6 +158,8 @@ async function onLogout() {
     await logout()
   } finally {
     clearAuthSession()
+    // 退出即失效纪元：在途响应全部丢弃，下一账号从干净状态开始
+    bumpDataEpoch()
     await router.replace('/login')
   }
 }

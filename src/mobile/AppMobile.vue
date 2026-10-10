@@ -37,8 +37,9 @@ const tabs = [
 
 const showTabs = computed(() => route.path !== '/login' && Boolean(getAuthSession()))
 
-// P2-1 规范：包含展示占位数据的页面，在顶栏显示统一「示例数据」标记
-const DEMO_ROUTES = ['/today', '/growth']
+// P2-2B 起今日/成长页已接入真实账号数据，不再有全局示例数据页；
+// 保留机制：如未来新增演示页，把路由加进来即可显示统一标记。
+const DEMO_ROUTES: string[] = []
 const isDemoData = computed(() => DEMO_ROUTES.includes(route.path))
 </script>
 

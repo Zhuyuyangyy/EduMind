@@ -1,160 +1,195 @@
 <template>
   <section class="growth">
-    <h1 class="m-section-title">学习成长 <span class="m-section-title__sub">示例数据 · P2-2 接入真实画像</span></h1>
+    <!-- 加载中 -->
+    <template v-if="loading">
+      <div class="m-card">
+        <div class="m-skeleton m-skeleton--text" style="width: 45%" />
+        <div class="m-skeleton m-skeleton--text" style="width: 85%" />
+        <div class="m-skeleton m-skeleton--block" />
+      </div>
+      <div class="m-card" style="margin-top: 12px">
+        <div class="m-skeleton m-skeleton--text" style="width: 60%" />
+        <div class="m-skeleton m-skeleton--block" />
+      </div>
+    </template>
 
-    <!-- 学习路径 -->
-    <div class="m-card">
-      <h2 class="m-card__title">你的学习路径 <span class="m-card__more">诊断 → 练习 → 评估</span></h2>
-      <ol class="growth__path">
-        <li v-for="(step, i) in pathSteps" :key="step.title" :class="['growth__step', step.state]">
-          <span class="growth__step-dot">{{ i + 1 }}</span>
-          <div class="growth__step-body">
-            <p class="growth__step-title">{{ step.title }}</p>
-            <p class="growth__step-desc">{{ step.desc }}</p>
+    <!-- 加载失败 -->
+    <div v-else-if="loadError" class="m-error" role="alert">
+      <b>学习数据加载失败</b>
+      <span class="m-error__detail">{{ loadError }}</span>
+      <button class="m-btn m-btn--ghost m-btn--sm" style="align-self: flex-start; margin-top: 8px" @click="load">重试</button>
+    </div>
+
+    <template v-else>
+      <!-- 能力画像（真实账号数据） -->
+      <h2 class="m-section-title">能力画像 <span class="m-section-title__sub">{{ profileSourceLabel }}</span></h2>
+      <div class="m-card">
+        <div v-if="dimensions.length" class="growth__dims">
+          <div v-for="dim in dimensions" :key="dim.label" class="growth__dim">
+            <div class="growth__dim-head">
+              <span>{{ dim.label }}</span>
+              <span class="growth__dim-num">{{ dim.value }}</span>
+            </div>
+            <div class="m-progress"><div class="m-progress__fill" :style="{ width: dim.value + '%' }" /></div>
           </div>
-          <span class="m-badge" :class="step.badgeClass">{{ step.stateLabel }}</span>
-        </li>
-      </ol>
-    </div>
-
-    <!-- 能力画像 -->
-    <h2 class="m-section-title">能力画像</h2>
-    <div class="m-card">
-      <div v-for="dim in dimensions" :key="dim.label" class="growth__dim">
-        <div class="growth__dim-head">
-          <span>{{ dim.label }}</span>
-          <span class="growth__dim-num">{{ dim.value }}</span>
         </div>
-        <div class="m-progress"><div class="m-progress__fill" :style="{ width: dim.value + '%' }" /></div>
+        <div v-else class="m-empty">
+          <span class="m-empty__icon">◌</span>
+          <p class="m-empty__text">暂无画像<br />完成一次学习自评后展示</p>
+        </div>
       </div>
-    </div>
 
-    <!-- 错题反馈 -->
-    <h2 class="m-section-title">错题反馈</h2>
-    <div class="m-card">
-      <div v-if="mistakes.length" class="growth__mistakes">
-        <article v-for="m in mistakes" :key="m.title" class="growth__mistake">
-          <p class="growth__mistake-title">{{ m.title }}</p>
-          <p class="growth__mistake-cause">错因：{{ m.cause }}</p>
-          <p class="growth__mistake-fix">建议：{{ m.fix }}</p>
-        </article>
+      <!-- 学习路径（真实账号数据，掌握度为模型估计） -->
+      <h2 class="m-section-title">学习路径 <span class="m-section-title__sub">掌握度为模型估计</span></h2>
+      <div class="m-card">
+        <template v-if="path">
+          <div v-for="phase in path.phases" :key="phase.id" class="growth__phase">
+            <div class="growth__phase-head">
+              <span class="growth__phase-dot" :style="{ background: phase.color || '#54d6ff' }" />
+              <span class="growth__phase-name">{{ phase.name }}</span>
+            </div>
+            <div v-for="topic in phase.topics || []" :key="topic.id" class="growth__topic">
+              <div class="growth__topic-head">
+                <span class="growth__topic-name">{{ topic.name }}</span>
+                <span class="m-badge" :class="masteryBadge(topic.mastery)">{{ masteryLabel(topic.mastery) }}</span>
+              </div>
+              <div class="m-progress"><div class="m-progress__fill" :style="{ width: Math.round(topic.mastery * 100) + '%' }" /></div>
+            </div>
+          </div>
+        </template>
+        <div v-else class="m-empty">
+          <span class="m-empty__icon">⌂</span>
+          <p class="m-empty__text">暂无学习路径<br />在「今日学习」生成知识路径后展示</p>
+        </div>
       </div>
-      <div v-else class="m-empty">
-        <span class="m-empty__icon">✓</span>
-        <p class="m-empty__text">暂无错题记录<br>完成一次测评后，这里会出现错因分析</p>
-      </div>
-    </div>
 
-    <!-- 阶段性进步 -->
-    <h2 class="m-section-title">阶段性进步</h2>
-    <div class="m-card growth__progress-card">
-      <div class="growth__stat">
-        <span class="growth__stat-num">12</span>
-        <span class="growth__stat-label">连续学习（天）</span>
-      </div>
-      <div class="growth__stat">
-        <span class="growth__stat-num">+8</span>
-        <span class="growth__stat-label">本周掌握点数</span>
-      </div>
-      <div class="growth__stat">
-        <span class="growth__stat-num">73%</span>
-        <span class="growth__stat-label">阶段目标进度</span>
-      </div>
-    </div>
+      <!-- 评估与画像变化（仅存在结构化学习闭环证据时展示） -->
+      <h2 class="m-section-title">评估记录 <span class="m-section-title__sub">{{ cycleSourceLabel }}</span></h2>
+      <div class="m-card">
+        <template v-if="cycle">
+          <p class="growth__cycle-time">最近闭环：{{ cycleTime }}</p>
 
-    <p class="growth__footnote">
-      以上为设计评审用示例数据。P2-2 起，画像与路径将读取当前账号的服务端真实记录（已按账号隔离），
-      测评结果会驱动画像与路径更新。
-    </p>
+          <div v-if="masteryItems.length" class="growth__mastery">
+            <div v-for="item in masteryItems" :key="item.name" class="growth__mastery-row">
+              <span>{{ item.name }}</span>
+              <div class="m-progress growth__mastery-bar"><div class="m-progress__fill" :style="{ width: item.level + '%' }" /></div>
+              <span class="growth__mastery-num">{{ item.level }}</span>
+            </div>
+          </div>
+
+          <div v-if="profileChanges.length" class="growth__changes">
+            <p class="growth__changes-title">画像变化（有依据的更新痕迹）</p>
+            <div v-for="(change, i) in profileChanges" :key="i" class="growth__change">
+              <span class="growth__change-dim">{{ change.dimension || '维度' }}</span>
+              <span class="growth__change-delta">{{ change.before ?? '—' }} → {{ change.after ?? '—' }}</span>
+              <span class="growth__change-reason">{{ change.reason || '' }}</span>
+            </div>
+          </div>
+
+          <p v-if="!masteryItems.length && !profileChanges.length" class="growth__empty-inline">闭环记录存在，但暂无结构化评估字段</p>
+        </template>
+        <div v-else class="m-empty">
+          <span class="m-empty__icon">✧</span>
+          <p class="m-empty__text">暂无评估记录<br />完成一次学习测评后，这里会展示有依据的画像变化</p>
+        </div>
+      </div>
+
+      <!-- 无可靠数据源的指标：明确暂无记录，不伪造 -->
+      <h2 class="m-section-title">学习记录</h2>
+      <div class="m-card">
+        <div class="m-row"><span>连续学习天数</span><span class="m-row__value">暂无记录</span></div>
+        <div class="m-row"><span>累计答题</span><span class="m-row__value">暂无记录</span></div>
+        <div class="m-row"><span>掌握度提升</span><span class="m-row__value">暂无记录</span></div>
+        <p class="growth__note">这些指标需要真实学习事件记录（P3 闭环建成后启用），当前不使用演示数值。</p>
+      </div>
+    </template>
   </section>
 </template>
 
 <script setup lang="ts">
-const pathSteps = [
-  { title: '学情诊断', desc: '6 维问卷 + 答题信号', state: 'done', stateLabel: '已完成', badgeClass: 'm-badge--success' },
-  { title: '专项练习', desc: 'BFS / 队列 · 3 题', state: 'doing', stateLabel: '进行中', badgeClass: 'm-badge--info' },
-  { title: '阶段评估', desc: '测评 + 错因分析', state: 'todo', stateLabel: '未开始', badgeClass: '' },
-]
+import { computed, onMounted, ref } from 'vue'
+import {
+  currentAccount,
+  fetchAccountData,
+  masteryLabel,
+  profileDimensions,
+} from '@/mobile/data/learning-data'
+import type { KnowledgePath, LearnerProfile, LearningCycle } from '@/mobile/data/types'
 
-const dimensions = [
-  { label: '知识基础', value: 61 },
-  { label: '学习速度', value: 68 },
-  { label: '逻辑思维', value: 72 },
-  { label: '创造力', value: 55 },
-  { label: '专注力', value: 64 },
-  { label: '自律力', value: 70 },
-]
+const loading = ref(true)
+const loadError = ref('')
+const profile = ref<LearnerProfile | null>(null)
+const path = ref<KnowledgePath | null>(null)
+const cycle = ref<LearningCycle | null>(null)
 
-const mistakes = [
-  { title: 'BFS 入队时未标记 visited', cause: '概念混淆：把「发现」和「处理」当成同一时刻', fix: '重做路径第 2 步的 3 道判断题' },
-  { title: '队列判空条件写反', cause: '粗心：front > rear 与 rear < front 混淆', fix: '在 AI 导师里问「队列判空的两种写法」' },
-]
+const dimensions = computed(() => profileDimensions(profile.value))
+
+const profileSourceLabel = computed(() => {
+  const source = profile.value?.source
+  if (source === 'dialogue' || source === 'mobile-self-assessment') return '自评画像'
+  if (source === 'profile-save') return '建档画像'
+  return source ? `来源：${source}` : '账号记录'
+})
+
+const cycleSourceLabel = computed(() => {
+  if (!cycle.value) return '暂无记录'
+  const trace = cycle.value.trace as { fallbackUsed?: boolean } | null
+  return trace?.fallbackUsed ? '规则降级生成' : '智能体评估'
+})
+
+const cycleTime = computed(() => {
+  const createdAt = cycle.value?.createdAt
+  if (!createdAt) return '时间未记录'
+  const date = new Date(createdAt)
+  return Number.isNaN(date.getTime()) ? '时间未记录' : date.toLocaleString('zh-CN')
+})
+
+interface MasteryItem { name: string; level: number }
+
+const masteryItems = computed<MasteryItem[]>(() => {
+  const evaluation = cycle.value?.evaluation as { mastery?: unknown } | null
+  if (!evaluation || !Array.isArray(evaluation.mastery)) return []
+  return evaluation.mastery
+    .filter((item): item is MasteryItem =>
+      Boolean(item) && typeof item === 'object' && typeof (item as MasteryItem).name === 'string' && typeof (item as MasteryItem).level === 'number')
+    .map(item => ({ name: item.name, level: Math.max(0, Math.min(100, item.level)) }))
+})
+
+const profileChanges = computed(() => cycle.value?.profileChanges ?? [])
+
+function masteryBadge(mastery: number): string {
+  const { level } = masteryLabel(mastery)
+  return level === 'high' ? 'm-badge--success' : level === 'mid' ? 'm-badge--info' : 'm-badge--warn'
+}
+
+onMounted(async () => {
+  document.title = '学习成长 · 智学星枢 Mobile'
+  await load()
+})
+
+async function load() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    const data = await fetchAccountData()
+    if (!data) return // 过期响应（切号/退出），丢弃
+    if (data.learningCycle?.accountId && data.learningCycle.accountId !== currentAccount()) return
+    profile.value = data.profile
+    path.value = data.knowledgePath
+    cycle.value = data.learningCycle
+  } catch (err) {
+    loadError.value = err instanceof Error ? err.message : '未知错误'
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <style scoped>
-.growth__path {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.growth__dims {
   display: flex;
   flex-direction: column;
-}
-
-.growth__step {
-  display: flex;
-  align-items: center;
   gap: var(--m-space-3);
-  padding: var(--m-space-3) 0;
-  border-bottom: 1px solid var(--m-border);
-}
-.growth__step:last-child {
-  border-bottom: none;
-}
-
-.growth__step-dot {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--m-radius-full);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--m-text-sm);
-  font-weight: 700;
-  background: var(--m-surface-2);
-  color: var(--m-text-dim);
-}
-.growth__step.done .growth__step-dot {
-  background: var(--m-success-soft);
-  color: var(--m-success);
-}
-.growth__step.doing .growth__step-dot {
-  background: var(--m-primary-soft);
-  color: var(--m-primary);
-}
-
-.growth__step-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.growth__step-title {
-  font-size: var(--m-text-base);
-  font-weight: 600;
-  margin: 0 0 2px;
-}
-
-.growth__step-desc {
-  font-size: var(--m-text-sm);
-  color: var(--m-text-faint);
-  margin: 0;
-}
-
-.growth__dim {
-  margin-bottom: var(--m-space-3);
-}
-.growth__dim:last-child {
-  margin-bottom: 0;
 }
 
 .growth__dim-head {
@@ -170,59 +205,128 @@ const mistakes = [
   font-weight: 600;
 }
 
-.growth__mistakes {
+.growth__phase {
+  padding: var(--m-space-3) 0;
+  border-bottom: 1px solid var(--m-border);
+}
+.growth__phase:first-child {
+  padding-top: 0;
+}
+.growth__phase:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.growth__phase-head {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  margin-bottom: var(--m-space-3);
+}
+
+.growth__phase-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--m-radius-full);
+}
+
+.growth__phase-name {
+  font-size: var(--m-text-base);
+  font-weight: 700;
+}
+
+.growth__topic {
+  margin-bottom: var(--m-space-3);
+}
+.growth__topic:last-child {
+  margin-bottom: 0;
+}
+
+.growth__topic-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-space-2);
+  margin-bottom: var(--m-space-2);
+}
+
+.growth__topic-name {
+  font-size: var(--m-text-md);
+  color: var(--m-text-dim);
+}
+
+.growth__cycle-time {
+  font-size: var(--m-text-sm);
+  color: var(--m-text-faint);
+  margin: 0 0 var(--m-space-3);
+}
+
+.growth__mastery {
   display: flex;
   flex-direction: column;
   gap: var(--m-space-3);
+  margin-bottom: var(--m-space-4);
 }
 
-.growth__mistake {
-  border-left: 2px solid var(--m-warn);
-  padding-left: var(--m-space-3);
-}
-
-.growth__mistake-title {
-  font-size: var(--m-text-base);
-  font-weight: 600;
-  margin: 0 0 var(--m-space-1);
-  line-height: 1.5;
-}
-
-.growth__mistake-cause,
-.growth__mistake-fix {
+.growth__mastery-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 32px;
+  align-items: center;
+  gap: var(--m-space-2);
   font-size: var(--m-text-sm);
   color: var(--m-text-dim);
-  line-height: 1.7;
-  margin: 0;
 }
 
-.growth__progress-card {
+.growth__mastery-num {
+  text-align: right;
+  color: var(--m-text);
+  font-weight: 600;
+}
+
+.growth__changes-title {
+  font-size: var(--m-text-md);
+  font-weight: 600;
+  color: var(--m-text-dim);
+  margin: 0 0 var(--m-space-2);
+}
+
+.growth__change {
   display: flex;
-  justify-content: space-between;
-  text-align: center;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--m-space-2);
+  padding: var(--m-space-2) 0;
+  border-bottom: 1px dashed var(--m-border);
+  font-size: var(--m-text-sm);
+}
+.growth__change:last-child {
+  border-bottom: none;
 }
 
-.growth__stat {
-  display: flex;
-  flex-direction: column;
-  gap: var(--m-space-1);
+.growth__change-dim {
+  color: var(--m-text);
+  font-weight: 600;
 }
 
-.growth__stat-num {
-  font-size: var(--m-text-xl);
-  font-weight: 700;
+.growth__change-delta {
   color: var(--m-primary);
 }
 
-.growth__stat-label {
-  font-size: var(--m-text-xs);
+.growth__change-reason {
   color: var(--m-text-faint);
+  flex-basis: 100%;
 }
 
-.growth__footnote {
-  margin-top: var(--m-space-6);
+.growth__empty-inline {
+  font-size: var(--m-text-md);
+  color: var(--m-text-faint);
+  margin: 0;
+}
+
+.growth__note {
   font-size: var(--m-text-xs);
   color: var(--m-text-faint);
   line-height: 1.8;
+  margin: var(--m-space-3) 0 0;
 }
 </style>

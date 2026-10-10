@@ -94,6 +94,14 @@ export async function apiGet<T>(input: string, init?: RequestInit): Promise<T> {
   return requestJson<T>(input, init)
 }
 
+/** 通用 JSON POST（P2-2B 供移动端生成知识路径等使用） */
+export async function apiPost<T>(input: string, body?: unknown): Promise<T> {
+  return requestJson<T>(input, {
+    method: 'POST',
+    body: JSON.stringify(body ?? {}),
+  })
+}
+
 async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
   const appStore = useAppStore()
   const method = (init?.method ?? 'GET').toUpperCase()
