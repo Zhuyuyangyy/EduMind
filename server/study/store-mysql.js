@@ -39,6 +39,7 @@ export async function ensureStudySchema() {
       exercise_version INT NOT NULL,
       correct TINYINT(1) NOT NULL,
       reason VARCHAR(255) NOT NULL DEFAULT '',
+      submitted_json JSON NULL,
       idempotency_key VARCHAR(191) NOT NULL,
       submitted_at DATETIME(3) NOT NULL,
       UNIQUE KEY answer_submissions_idem (idempotency_key),
@@ -46,6 +47,12 @@ export async function ensureStudySchema() {
       KEY answer_submissions_account (account_id, submitted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `)
+  // P3-2 迁移：既有表补 submitted_json（幂等）
+  try {
+    await db.query('ALTER TABLE answer_submissions ADD COLUMN submitted_json JSON NULL')
+  } catch (error) {
+    if (error?.code !== 'ER_DUP_FIELDNAME' && !/Duplicate column/i.test(error?.message || '')) throw error
+  }
   await db.query(`
     CREATE TABLE IF NOT EXISTS learning_events (
       id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -115,7 +122,7 @@ export async function createStudySession(accountId, { topicId, phaseId, timezone
     id: newId('session'),
     accountId,
     topicId: topicId || null,
-    phaseId: phaseId || null,
+    phaseId: phaseId || exercises[0]?.phaseId || null,
     timezone: timezone || 'Asia/Shanghai',
     status: 'active',
     exerciseIds: exercises.map(item => item.id),
@@ -148,7 +155,7 @@ export async function getStudySession(accountId, sessionId) {
   const row = await loadSession(db, accountId, sessionId)
   if (!row) return null
   const [attempts] = await db.query(
-    'SELECT exercise_id, exercise_version, correct, reason, submitted_at FROM answer_submissions WHERE session_id = ? ORDER BY id',
+    'SELECT exercise_id, exercise_version, correct, reason, submitted_json, submitted_at FROM answer_submissions WHERE session_id = ? ORDER BY id',
     [sessionId],
   )
   return {
@@ -158,6 +165,7 @@ export async function getStudySession(accountId, sessionId) {
       exerciseVersion: a.exercise_version,
       correct: Boolean(a.correct),
       reason: a.reason,
+      submitted: a.submitted_json ? (typeof a.submitted_json === 'string' ? JSON.parse(a.submitted_json) : a.submitted_json) : null,
       submittedAt: a.submitted_at instanceof Date ? a.submitted_at.toISOString() : a.submitted_at,
     })),
   }
@@ -223,9 +231,9 @@ export async function recordAnswer(accountId, sessionId, { exerciseId, submitted
     // 服务端确定性判分
     const { correct, reason } = scoreAnswer(exercise, submitted)
     await connection.query(
-      `INSERT INTO answer_submissions (session_id, account_id, exercise_id, exercise_version, correct, reason, idempotency_key, submitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [sessionId, accountId, exerciseId, exercise.version, correct ? 1 : 0, reason, idempotencyKey, nowIso()],
+      `INSERT INTO answer_submissions (session_id, account_id, exercise_id, exercise_version, correct, reason, submitted_json, idempotency_key, submitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?)`,
+      [sessionId, accountId, exerciseId, exercise.version, correct ? 1 : 0, reason, JSON.stringify(submitted ?? null), idempotencyKey, nowIso()],
     )
     await connection.query(
       `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'answer-submit', CAST(? AS JSON), ?)`,

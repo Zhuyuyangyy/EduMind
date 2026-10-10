@@ -86,7 +86,7 @@ export function createStudySession(accountId, { topicId, phaseId, timezone, exer
     id: newId('session'),
     accountId,
     topicId: topicId || null,
-    phaseId: phaseId || null,
+    phaseId: phaseId || exercises[0]?.phaseId || null,
     timezone: timezone || 'Asia/Shanghai',
     status: 'active',
     exerciseIds: exercises.map(item => item.id),
@@ -182,6 +182,7 @@ export function recordAnswer(accountId, sessionId, { exerciseId, submitted, idem
     exerciseVersion: exercise.version,
     correct,
     reason,
+    submitted: submitted ?? null,
     submittedAt: nowIso(),
     idempotencyKey,
   }

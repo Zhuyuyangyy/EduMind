@@ -64,7 +64,11 @@ import {
   listLearningEvents,
   listProfileRevisions,
   listBankTopics,
+  findExercise,
+  summarizeAttempts,
 } from './study/repository.js'
+import { generateStudyFeedback, buildWrongItems } from './study/feedback.js'
+import { applyEvidenceToProfile, applyEvidenceToPath, UPDATE_RULES } from './study/profile-updater.js'
 
 const PORT = Number(process.env.PORT || 8788)
 const MAX_BODY_SIZE = 1024 * 1024
@@ -656,6 +660,31 @@ const server = http.createServer(async (req, res) => {
         return
       }
       sendJson(res, 200, result)
+      return
+    }
+
+    // P3-2 反馈与受控更新：仅对已完成会话；评分不变，反馈可降级，
+    // 画像/路径更新受证据门槛与边界控制（全部记录修订账本）
+    const feedbackMatch = pathname.match(/^\/api\/study\/sessions\/([A-Za-z0-9-]+)\/feedback$/)
+    if (req.method === 'POST' && feedbackMatch) {
+      const accountId = accountIdOf(req)
+      const state = await getStudySession(accountId, feedbackMatch[1])
+      if (!state) {
+        sendJson(res, 404, { error: 'Not Found', message: '会话不存在或不属于当前账号' })
+        return
+      }
+      if (state.session.status !== 'completed') {
+        sendJson(res, 400, { error: 'session-not-completed', message: '会话尚未完成，不能生成反馈' })
+        return
+      }
+      const attempts = state.attempts
+      const assessment = summarizeAttempts(attempts)
+      const wrongItems = buildWrongItems(attempts, findExercise)
+      // 反馈与判分隔离：LLM 任何故障只影响 feedback.source/text
+      const feedback = await generateStudyFeedback({ assessment, wrongItems })
+      const profileUpdate = await applyEvidenceToProfile({ accountId, session: state.session, attempts })
+      const pathUpdate = await applyEvidenceToPath({ accountId, session: state.session, attempts })
+      sendJson(res, 200, { assessment, feedback, profileUpdate, pathUpdate, rules: UPDATE_RULES })
       return
     }
 
