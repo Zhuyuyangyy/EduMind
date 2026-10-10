@@ -10,7 +10,7 @@ let schemaReady
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-function isMySqlConfigured() {
+export function isMySqlConfigured() {
   return Boolean(process.env.MYSQL_URL || (process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_DATABASE))
 }
 

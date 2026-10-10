@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "updatedAt": "2026-10-10",
+  "exercises": [
+    {
+      "id": "bfs-visited-timing",
+      "version": 1,
+      "topicId": "f1",
+      "phaseId": "fundamentals",
+      "domain": "算法基础",
+      "knowledgePoint": "BFS visited 标记时机",
+      "difficulty": "easy",
+      "type": "choice",
+      "prompt": "在无向图的 BFS 中，visited 标记应该什么时候打？",
+      "choices": [
+        "节点入队时立即标记",
+        "节点出队准备扩展时再标记",
+        "整个 BFS 结束后统一标记",
+        "不需要 visited，靠层数判断"
+      ],
+      "answer": 0,
+      "explanation": "入队时标记可防止同一节点被多次入队；若等到出队才标记，同一节点可能在被多次发现后重复入队，造成队列膨胀。"
+    },
+    {
+      "id": "bfs-queue-fifo",
+      "version": 1,
+      "topicId": "f1",
+      "phaseId": "fundamentals",
+      "domain": "算法基础",
+      "knowledgePoint": "BFS 队列性质",
+      "difficulty": "easy",
+      "type": "choice",
+      "prompt": "BFS 按层遍历的特性依赖于哪种数据结构？",
+      "choices": ["栈（后进先出）", "队列（先进先出）", "优先队列", "哈希表"],
+      "answer": 1,
+      "explanation": "队列的先进先出保证同层节点先于下一层节点被扩展，从而形成层序。"
+    },
+    {
+      "id": "bfs-shortest-path",
+      "version": 1,
+      "topicId": "f1",
+      "phaseId": "fundamentals",
+      "domain": "算法基础",
+      "knowledgePoint": "BFS 最短路适用条件",
+      "difficulty": "medium",
+      "type": "choice",
+      "prompt": "BFS 可以直接求解无权图最短路径。当边带有不同权重时，应该用什么算法？",
+      "choices": ["继续用 BFS，结果仍然精确", "Dijkstra（或 A*）", "只做 DFS", "并查集"],
+      "answer": 1,
+      "explanation": "带权图的最短路需要按累计权重贪心扩展，Dijkstra 用优先队列实现；A* 在此基础上加入启发函数。"
+    },
+    {
+      "id": "queue-empty-condition",
+      "version": 1,
+      "topicId": "f2",
+      "phaseId": "fundamentals",
+      "domain": "数据结构",
+      "knowledgePoint": "队列判空",
+      "difficulty": "easy",
+      "type": "choice",
+      "prompt": "顺序队列用 front/rear 指针表示（rear 指向队尾元素，front 指向队首前一个位置），队列为空的条件是？",
+      "choices": ["front == rear", "front > rear", "rear == -1", "front == 0"],
+      "answer": 0,
+      "explanation": "该表示下 front == rear 即空；入队 rear 后移，出队 front 后移。"
+    },
+    {
+      "id": "stack-vs-queue",
+      "version": 1,
+      "topicId": "f2",
+      "phaseId": "fundamentals",
+      "domain": "数据结构",
+      "knowledgePoint": "栈与队列对比",
+      "difficulty": "easy",
+      "type": "choice",
+      "prompt": "函数调用栈的管理最接近哪种数据结构？",
+      "choices": ["队列", "栈", "图", "堆"],
+      "answer": 1,
+      "explanation": "后调用的函数先返回，是典型的栈（LIFO）行为。"
+    },
+    {
+      "id": "python-list-index",
+      "version": 1,
+      "topicId": "c1",
+      "phaseId": "core-skills",
+      "domain": "Python",
+      "knowledgePoint": "列表索引",
+      "difficulty": "easy",
+      "type": "choice",
+      "prompt": "Python 中 lst = [10, 20, 30]，lst[-1] 的值是？",
+      "choices": ["10", "20", "30", "报错"],
+      "answer": 2,
+      "explanation": "负索引从末尾计数，-1 即最后一个元素。"
+    },
+    {
+      "id": "python-dict-lookup",
+      "version": 1,
+      "topicId": "c1",
+      "phaseId": "core-skills",
+      "domain": "Python",
+      "knowledgePoint": "字典复杂度",
+      "difficulty": "medium",
+      "type": "choice",
+      "prompt": "Python 字典平均情况下按键查找的时间复杂度是？",
+      "choices": ["O(1)", "O(log n)", "O(n)", "O(n log n)"],
+      "answer": 0,
+      "explanation": "字典基于哈希表实现，平均 O(1)；最坏退化到 O(n) 但概率极低。"
+    },
+    {
+      "id": "ml-train-test-split",
+      "version": 1,
+      "topicId": "c2",
+      "phaseId": "core-skills",
+      "domain": "机器学习",
+      "knowledgePoint": "训练测试划分",
+      "difficulty": "medium",
+      "type": "choice",
+      "prompt": "划分训练/测试集的主要目的是？",
+      "choices": [
+        "减少训练时间",
+        "估计模型在未见数据上的泛化表现",
+        "增加数据量",
+        "统一特征尺度"
+      ],
+      "answer": 1,
+      "explanation": "测试集模拟未见数据，用于估计泛化误差；在测试集上反复调参会造成信息泄露。"
+    },
+    {
+      "id": "dl-backprop",
+      "version": 1,
+      "topicId": "d1",
+      "phaseId": "deep-learning",
+      "domain": "深度学习",
+      "knowledgePoint": "反向传播",
+      "difficulty": "medium",
+      "type": "choice",
+      "prompt": "神经网络训练中，反向传播算法计算的是什么？",
+      "choices": [
+        "损失函数对各个参数的梯度",
+        "数据的分布",
+        "最优学习率",
+        "特征的重要性排序"
+      ],
+      "answer": 0,
+      "explanation": "反向传播用链式法则高效计算损失对每层参数的梯度，供优化器更新。"
+    },
+    {
+      "id": "dl-overfit",
+      "version": 1,
+      "topicId": "d1",
+      "phaseId": "deep-learning",
+      "domain": "深度学习",
+      "knowledgePoint": "过拟合",
+      "difficulty": "easy",
+      "type": "choice",
+      "prompt": "训练误差很低但验证误差很高，最可能发生了什么？",
+      "choices": ["欠拟合", "过拟合", "数据泄露", "标签均衡"],
+      "answer": 1,
+      "explanation": "模型记住了训练集噪声而非通用规律，是过拟合的典型表现；可用正则化、Dropout、增数据缓解。"
+    }
+  ]
+}

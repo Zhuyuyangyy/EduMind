@@ -54,6 +54,17 @@ import {
 } from './store/agent-collaboration.js'
 import { seedAllDays } from './collaboration-data.js'
 import { getCollaborationForDay } from './collaboration-sync.js'
+import {
+  backendName,
+  createStudySession,
+  getStudySession,
+  recordAnswer,
+  completeStudySession,
+  getStudyStats,
+  listLearningEvents,
+  listProfileRevisions,
+  listBankTopics,
+} from './study/repository.js'
 
 const PORT = Number(process.env.PORT || 8788)
 const MAX_BODY_SIZE = 1024 * 1024
@@ -577,6 +588,92 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && pathname === '/api/learning-cycles/latest') {
       sendJson(res, 200, { result: await getLatestLearningCycle(accountIdOf(req)) })
+      return
+    }
+
+    /* ———————————— P3-1 真实学习闭环（服务端判分） ———————————— */
+
+    // 题库主题列表（题目答案不下发）
+    if (req.method === 'GET' && pathname === '/api/study/topics') {
+      sendJson(res, 200, { topics: listBankTopics(), backend: backendName() })
+      return
+    }
+
+    // 创建练习会话：服务端选题，客户端只拿题目（无答案）
+    if (req.method === 'POST' && pathname === '/api/study/sessions') {
+      const body = await readJson(req)
+      const result = await createStudySession(accountIdOf(req), {
+        topicId: typeof body.topicId === 'string' ? body.topicId : '',
+        phaseId: typeof body.phaseId === 'string' ? body.phaseId : null,
+        timezone: typeof body.timezone === 'string' ? body.timezone : null,
+        exerciseCount: Number.isInteger(body.exerciseCount) ? body.exerciseCount : null,
+      })
+      if (result.error) {
+        sendJson(res, result.error === 'no-exercises' ? 404 : 400, { error: result.error, message: result.message })
+        return
+      }
+      sendJson(res, 201, result)
+      return
+    }
+
+    // 会话状态（刷新/重连后恢复；账号越权不可见）
+    const sessionMatch = pathname.match(/^\/api\/study\/sessions\/([A-Za-z0-9-]+)$/)
+    if (req.method === 'GET' && sessionMatch) {
+      const state = await getStudySession(accountIdOf(req), sessionMatch[1])
+      if (!state) {
+        sendJson(res, 404, { error: 'Not Found', message: '会话不存在或不属于当前账号' })
+        return
+      }
+      sendJson(res, 200, state)
+      return
+    }
+
+    // 提交答案（幂等）：客户端只提交答案，正确率由服务端判定
+    const answerMatch = pathname.match(/^\/api\/study\/sessions\/([A-Za-z0-9-]+)\/answers$/)
+    if (req.method === 'POST' && answerMatch) {
+      const body = await readJson(req)
+      const result = await recordAnswer(accountIdOf(req), answerMatch[1], {
+        exerciseId: body.exerciseId,
+        submitted: body.submitted,
+        idempotencyKey: body.idempotencyKey,
+      })
+      if (!result.ok) {
+        const status = result.code === 'session-not-found' ? 404 : 400
+        sendJson(res, status, { error: result.code, message: result.message })
+        return
+      }
+      sendJson(res, 200, result)
+      return
+    }
+
+    // 完成会话：零题拒绝；重复完成幂等
+    const completeMatch = pathname.match(/^\/api\/study\/sessions\/([A-Za-z0-9-]+)\/complete$/)
+    if (req.method === 'POST' && completeMatch) {
+      const result = await completeStudySession(accountIdOf(req), completeMatch[1])
+      if (!result.ok) {
+        const status = result.code === 'session-not-found' ? 404 : 400
+        sendJson(res, status, { error: result.code, message: result.message })
+        return
+      }
+      sendJson(res, 200, result)
+      return
+    }
+
+    // 账号学习统计（真实完成事件，按账号时区计算学习日）
+    if (req.method === 'GET' && pathname === '/api/study/stats') {
+      sendJson(res, 200, await getStudyStats(accountIdOf(req)))
+      return
+    }
+
+    // 学习事件账本（审计用）
+    if (req.method === 'GET' && pathname === '/api/study/events') {
+      sendJson(res, 200, { items: await listLearningEvents(accountIdOf(req), 50) })
+      return
+    }
+
+    // 画像修订账本（证据来源可追溯）
+    if (req.method === 'GET' && pathname === '/api/study/revisions') {
+      sendJson(res, 200, { items: await listProfileRevisions(accountIdOf(req), 20) })
       return
     }
 
