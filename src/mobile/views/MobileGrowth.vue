@@ -94,13 +94,58 @@
         </div>
       </div>
 
-      <!-- 无可靠数据源的指标：明确暂无记录，不伪造 -->
-      <h2 class="m-section-title">学习记录</h2>
+      <!-- 学习记录（P3-3B：真实完成事件统计 + 修订历史） -->
+      <h2 class="m-section-title">学习记录 <span class="m-section-title__sub">来自真实完成事件</span></h2>
       <div class="m-card">
-        <div class="m-row"><span>连续学习天数</span><span class="m-row__value">暂无记录</span></div>
-        <div class="m-row"><span>累计答题</span><span class="m-row__value">暂无记录</span></div>
-        <div class="m-row"><span>掌握度提升</span><span class="m-row__value">暂无记录</span></div>
-        <p class="growth__note">这些指标需要真实学习事件记录（P3 闭环建成后启用），当前不使用演示数值。</p>
+        <div v-if="stats" class="growth__stats">
+          <div class="growth__stat">
+            <span class="growth__stat-num">{{ stats.completedSessions }}</span>
+            <span class="growth__stat-label">完成练习</span>
+          </div>
+          <div class="growth__stat">
+            <span class="growth__stat-num">{{ stats.totalAnswers }}</span>
+            <span class="growth__stat-label">累计答题</span>
+          </div>
+          <div class="growth__stat">
+            <span class="growth__stat-num">{{ stats.correctAnswers }}</span>
+            <span class="growth__stat-label">答对</span>
+          </div>
+          <div class="growth__stat">
+            <span class="growth__stat-num">{{ stats.studyDays }}</span>
+            <span class="growth__stat-label">学习天数</span>
+          </div>
+          <div class="growth__stat">
+            <span class="growth__stat-num">{{ stats.streakDays }}</span>
+            <span class="growth__stat-label">连续学习</span>
+          </div>
+        </div>
+        <div v-else class="m-empty">
+          <span class="m-empty__icon">◌</span>
+          <p class="m-empty__text">暂无练习记录<br />完成一次练习后，这里会显示真实统计</p>
+        </div>
+        <p class="growth__note">
+          学习天数按账号时区的自然日计算，只统计真实完成的练习会话；页面访问不计入。
+        </p>
+      </div>
+
+      <!-- 画像修订历史（证据可追溯） -->
+      <h2 class="m-section-title">画像修订历史</h2>
+      <div class="m-card">
+        <div v-if="revisions.length" class="growth__revisions">
+          <article v-for="revision in revisions" :key="revision.id" class="growth__revision">
+            <div class="growth__revision-head">
+              <span class="m-badge" :class="revision.source === 'model' ? 'm-badge--info' : 'm-badge--success'">
+                {{ revision.source === 'model' ? '模型修订' : '规则修订' }}
+              </span>
+              <span class="growth__revision-time">{{ formatTime(revision.createdAt) }}</span>
+            </div>
+            <p class="growth__revision-reason">{{ revision.reason }}</p>
+          </article>
+        </div>
+        <div v-else class="m-empty">
+          <span class="m-empty__icon">✧</span>
+          <p class="m-empty__text">暂无画像修订<br />练习证据满足更新条件后，每次变化都会记录在这里</p>
+        </div>
       </div>
     </template>
   </section>
@@ -114,13 +159,22 @@ import {
   masteryLabel,
   profileDimensions,
 } from '@/mobile/data/learning-data'
+import { fetchStudyStats, fetchStudyRevisions } from '@/mobile/data/study'
 import type { KnowledgePath, LearnerProfile, LearningCycle } from '@/mobile/data/types'
+import type { StudyStats } from '@/mobile/data/study'
 
 const loading = ref(true)
 const loadError = ref('')
 const profile = ref<LearnerProfile | null>(null)
 const path = ref<KnowledgePath | null>(null)
 const cycle = ref<LearningCycle | null>(null)
+const stats = ref<StudyStats | null>(null)
+const revisions = ref<Array<{ id: string; reason: string; source: string; version: number; createdAt: string; eventIds: string[] }>>([])
+
+function formatTime(iso: string): string {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? '时间未记录' : date.toLocaleString('zh-CN')
+}
 
 const dimensions = computed(() => profileDimensions(profile.value))
 
@@ -188,6 +242,10 @@ async function load() {
     profile.value = result.data.profile
     path.value = result.data.knowledgePath
     cycle.value = result.data.learningCycle
+    // P3-3B：真实学习统计与修订历史（失败不阻塞主数据渲染）
+    const [statsData, revisionsData] = await Promise.all([fetchStudyStats(), fetchStudyRevisions()])
+    stats.value = statsData
+    revisions.value = revisionsData || []
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : '未知错误'
   } finally {
@@ -339,5 +397,58 @@ async function load() {
   color: var(--m-text-faint);
   line-height: 1.8;
   margin: var(--m-space-3) 0 0;
+}
+</style>
+
+<style scoped>
+.growth__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-space-4);
+  justify-content: space-between;
+}
+
+.growth__stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-1);
+  min-width: 56px;
+}
+
+.growth__stat-num {
+  font-size: var(--m-text-xl);
+  font-weight: 700;
+  color: var(--m-primary);
+}
+
+.growth__stat-label {
+  font-size: var(--m-text-xs);
+  color: var(--m-text-faint);
+}
+
+.growth__revisions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
+}
+
+.growth__revision-head {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  margin-bottom: var(--m-space-1);
+}
+
+.growth__revision-time {
+  margin-left: auto;
+  font-size: var(--m-text-xs);
+  color: var(--m-text-faint);
+}
+
+.growth__revision-reason {
+  font-size: var(--m-text-sm);
+  color: var(--m-text-dim);
+  line-height: 1.7;
+  margin: 0;
 }
 </style>

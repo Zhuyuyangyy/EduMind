@@ -24,7 +24,8 @@
     "android:build": "node scripts/android-build.mjs",
     "cap:sync": "npx cap sync android",
     "test:mobile-e2e": "node scripts/mobile-e2e.mjs",
-    "test:mobile-e2e-data": "node scripts/mobile-e2e-data.mjs"
+    "test:mobile-e2e-data": "node scripts/mobile-e2e-data.mjs",
+    "test:mobile-e2e-study": "node scripts/mobile-e2e-study.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.6.9",

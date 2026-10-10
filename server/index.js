@@ -641,6 +641,30 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
+    // P3-3A 会话恢复契约：题目快照。未完成会话不返回答案/解析；
+    // 已完成会话（允许公开答案的阶段）返回完整内容供结果页展示。
+    const questionsMatch = pathname.match(/^\/api\/study\/sessions\/([A-Za-z0-9-]+)\/questions$/)
+    if (req.method === 'GET' && questionsMatch) {
+      const accountId = accountIdOf(req)
+      const state = await getStudySession(accountId, questionsMatch[1])
+      if (!state) {
+        sendJson(res, 404, { error: 'Not Found', message: '会话不存在或不属于当前账号' })
+        return
+      }
+      const revealed = state.session.status === 'completed'
+      const exercises = state.session.exerciseIds
+        .map(id => findExercise(id))
+        .filter(Boolean)
+        .map(exercise => (revealed ? exercise : (({ answer, explanation, ...rest }) => rest)(exercise)))
+      sendJson(res, 200, {
+        session: state.session,
+        exercises,
+        answered: state.attempts.map(a => ({ exerciseId: a.exerciseId, correct: a.correct, submitted: a.submitted ?? null })),
+        revealed,
+      })
+      return
+    }
+
     // 提交答案（幂等）：客户端只提交答案，正确率由服务端判定
     const answerMatch = pathname.match(/^\/api\/study\/sessions\/([A-Za-z0-9-]+)\/answers$/)
     if (req.method === 'POST' && answerMatch) {

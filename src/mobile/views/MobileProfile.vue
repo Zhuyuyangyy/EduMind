@@ -66,6 +66,7 @@ import { clearAuthSession, getAuthSession } from '@/lib/auth'
 import { fetchCurrentSession, logout, apiGet } from '@/lib/api'
 import { getApiBase, getDefaultApiBase, setApiBase, validateApiBase } from '@/lib/api-config'
 import { bumpDataEpoch } from '@/mobile/data/learning-data'
+import { resetStudyLocalState } from '@/mobile/data/study'
 
 const router = useRouter()
 const session = ref(getAuthSession())
@@ -159,7 +160,7 @@ async function onLogout() {
   } finally {
     clearAuthSession()
     // 退出即失效纪元：在途响应全部丢弃，下一账号从干净状态开始
-    bumpDataEpoch()
+    resetStudyLocalState()
     await router.replace('/login')
   }
 }

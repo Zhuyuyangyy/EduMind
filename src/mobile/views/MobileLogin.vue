@@ -41,6 +41,7 @@ import { useRouter } from 'vue-router'
 import { setAuthSession } from '@/lib/auth'
 import { loginDemoAccount } from '@/lib/api'
 import { bumpDataEpoch } from '@/mobile/data/learning-data'
+import { resetStudyLocalState } from '@/mobile/data/study'
 import { toFriendlyError, type FriendlyError } from '../errors'
 
 const router = useRouter()
@@ -69,7 +70,7 @@ async function onSubmit() {
       loginAt: new Date().toISOString(),
     }, result.token)
     // 新账号纪元：丢弃任何在途的旧账号数据响应
-    bumpDataEpoch()
+    resetStudyLocalState() // 清幂等键 + 纪元+1
     const redirect = router.currentRoute.value.query.redirect
     await router.replace(typeof redirect === 'string' ? redirect : '/today')
   } catch (err) {

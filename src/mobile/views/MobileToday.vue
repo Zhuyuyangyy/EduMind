@@ -63,9 +63,15 @@
           <span>掌握估计 {{ Math.round(todayTopic.masteryEstimate * 100) }}%</span>
           <span>知识点 #{{ todayTopic.topicId }}</span>
         </div>
-        <RouterLink :to="`/tutor?topic=${encodeURIComponent(todayTopic.topicId)}&name=${encodeURIComponent(todayTopic.topicName)}`" class="m-btn m-btn--primary m-btn--block">
-          开始学习
-        </RouterLink>
+        <div class="today__hero-actions">
+          <button class="m-btn m-btn--primary m-btn--block" :disabled="startingPractice" @click="onStartPractice">
+            {{ startingPractice ? '创建中…' : '开始练习' }}
+          </button>
+          <RouterLink :to="`/tutor?topic=${encodeURIComponent(todayTopic.topicId)}&name=${encodeURIComponent(todayTopic.topicName)}`" class="m-btn m-btn--ghost m-btn--block">
+            问 AI 导师
+          </RouterLink>
+        </div>
+        <p v-if="practiceError" class="today__generate-error">{{ practiceError }}</p>
       </div>
 
       <!-- 画像总览（真实画像，区分自评/分析来源） -->
@@ -116,6 +122,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { getAuthSession } from '@/lib/auth'
 import { apiGet, apiPost } from '@/lib/api'
 import {
@@ -125,8 +132,10 @@ import {
   profileTotalScore,
   selectTodayTopic,
 } from '@/mobile/data/learning-data'
+import { createStudySession } from '@/mobile/data/study'
 import type { KnowledgePath, LearnerProfile } from '@/mobile/data/types'
 
+const router = useRouter()
 const session = getAuthSession()
 const loading = ref(true)
 const loadError = ref('')
@@ -134,6 +143,8 @@ const profile = ref<LearnerProfile | null>(null)
 const path = ref<KnowledgePath | null>(null)
 const generating = ref(false)
 const generateError = ref('')
+const startingPractice = ref(false)
+const practiceError = ref('')
 
 const displayName = computed(() => session?.name || session?.account || '同学')
 const hour = new Date().getHours()
@@ -192,6 +203,23 @@ async function onGeneratePath() {
     generating.value = false
   }
 }
+
+/** 开始练习：服务端创建会话（题目不含答案），进入练习页 */
+async function onStartPractice() {
+  if (!todayTopic.value || startingPractice.value) return
+  startingPractice.value = true
+  practiceError.value = ''
+  try {
+    const result = await createStudySession([todayTopic.value.topicId], 3)
+    if ('error' in result) {
+      practiceError.value = result.message || '创建练习失败，请重试'
+      return
+    }
+    await router.push(`/study/session/${result.session.id}`)
+  } finally {
+    startingPractice.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -247,6 +275,12 @@ async function onGeneratePath() {
   font-size: var(--m-text-sm);
   color: var(--m-danger);
   margin: 0;
+}
+
+.today__hero-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-2);
 }
 
 .today__dims {

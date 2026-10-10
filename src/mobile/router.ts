@@ -5,6 +5,8 @@ import MobileTutor from './views/MobileTutor.vue'
 import MobileGrowth from './views/MobileGrowth.vue'
 import MobileProfile from './views/MobileProfile.vue'
 import MobileDiagnose from './views/MobileDiagnose.vue'
+import MobilePractice from './views/MobilePractice.vue'
+import MobileResult from './views/MobileResult.vue'
 import { getAuthSession } from '@/lib/auth'
 
 // Capacitor 与本地预览都用 hash 路由：file/capacitor 源下没有服务端重写
@@ -18,6 +20,8 @@ const router = createRouter({
     { path: '/growth', name: 'growth', component: MobileGrowth, meta: { title: '学习成长' } },
     { path: '/profile', name: 'profile', component: MobileProfile, meta: { title: '我的' } },
     { path: '/diagnose', name: 'diagnose', component: MobileDiagnose, meta: { title: '学习自评' } },
+    { path: '/study/session/:sessionId', name: 'practice', component: MobilePractice, meta: { title: '练习' } },
+    { path: '/study/session/:sessionId/result', name: 'result', component: MobileResult, meta: { title: '练习结果' } },
     // P1 旧路由兼容：/status 并入「我的」
     { path: '/status', redirect: '/profile' },
   ],
