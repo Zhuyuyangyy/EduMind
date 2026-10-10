@@ -330,10 +330,39 @@ export async function saveLearningCycle(accountId = 'default', cycle) {
   return { workflowId: cycle.workflowId, accountId, createdAt: createdAt.toISOString() }
 }
 
+/**
+ * 学习闭环统一响应契约（P2-2A）。
+ * JSON 存储返回原始保存对象（含 profileBefore/profileChanges/agentResults），
+ * MySQL 存储按列重组（含 resourcePackage/tutoring）——两者字段集不同，
+ * 客户端无法用一套类型安全消费。这里归一为同一组键：
+ * 缺失的可选字段补 null / 空数组，绝不伪造数据。
+ */
+export function normalizeLearningCycle(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  return {
+    workflowId: raw.workflowId ?? null,
+    accountId: raw.accountId ?? null,
+    createdAt: raw.createdAt ?? null,
+    // 画像（更新后）与更新痕迹
+    profile: raw.profile ?? null,
+    profileBefore: raw.profileBefore ?? null,
+    profileChanges: Array.isArray(raw.profileChanges) ? raw.profileChanges : [],
+    // 各智能体产物
+    resourcePackage: raw.resourcePackage ?? null,
+    tutoring: raw.tutoring ?? null,
+    evaluation: raw.evaluation ?? null,
+    path: raw.path ?? null,
+    reflection: raw.reflection ?? null,
+    // 溯源
+    trace: raw.trace ?? null,
+    agentResults: Array.isArray(raw.agentResults) ? raw.agentResults : [],
+  }
+}
+
 export async function getLatestLearningCycle(accountId = 'default') {
   if (!isMySqlConfigured()) {
     const cycles = readFallbackStore().learningCycles.filter(item => item.accountId === accountId)
-    return cycles.at(-1) || null
+    return normalizeLearningCycle(cycles.at(-1) || null)
   }
   await ensureMySqlSchema()
   const [rows] = await getMySqlPool().query(
@@ -345,7 +374,7 @@ export async function getLatestLearningCycle(accountId = 'default') {
   )
   const row = rows[0]
   if (!row) return null
-  return {
+  return normalizeLearningCycle({
     workflowId: row.workflow_id,
     accountId: row.account_id,
     profile: parseJsonColumn(row.profile_json),
@@ -356,7 +385,7 @@ export async function getLatestLearningCycle(accountId = 'default') {
     reflection: parseJsonColumn(row.reflection_json),
     trace: parseJsonColumn(row.trace_json),
     createdAt: row.created_at,
-  }
+  })
 }
 
 export async function getLearningCycleHistory(accountId = 'default', limit = 5) {

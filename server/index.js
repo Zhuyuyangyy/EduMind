@@ -457,6 +457,8 @@ const server = http.createServer(async (req, res) => {
         mode: body.mode || 'qa',
         scenario: body.scenario || 'preview',
         multimodalContents: body.multimodalContents || [],
+        // P2-2A：历史条目携带降级元数据，供客户端如实标注来源
+        fallbackAgents: agentResult.fallbackAgents || [],
       })
       sendJson(res, 200, {
         answer,

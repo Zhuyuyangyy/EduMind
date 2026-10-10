@@ -156,7 +156,7 @@ export function getTutoringHistory(accountId = 'default') {
   return readHistoryMap(readStore(), 'tutoringHistory')[accountId] || []
 }
 
-export function saveTutoringHistoryEntry(accountId = 'default', { question, answer, mode, scenario, multimodalContents }) {
+export function saveTutoringHistoryEntry(accountId = 'default', { question, answer, mode, scenario, multimodalContents, fallbackAgents }) {
   const store = readStore()
   writeHistoryEntry(store, 'tutoringHistory', accountId, {
     q: question,
@@ -165,6 +165,9 @@ export function saveTutoringHistoryEntry(accountId = 'default', { question, answ
     mode,
     scenario: scenario || 'preview',
     multimodalContents: multimodalContents || [],
+    // P2-2A：如实记录本次回答是否走了降级（空数组 = 真实模型）。
+    // 旧记录没有此字段，客户端按“来源未记录”处理。
+    ...(Array.isArray(fallbackAgents) ? { fallbackAgents } : {}),
   })
   writeStore(store)
 }
