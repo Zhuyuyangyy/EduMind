@@ -1,12 +1,10 @@
 import { resolveApiUrl, getApiBase, isNativeApp } from './api-config'
 import { SecureStorage } from '@aparajita/capacitor-secure-storage'
 import {
-  createWebTokenStore,
-  createWebCrossOriginBridgeStore,
-  createNativeTokenStore,
-  createFallbackNativeStore,
+  selectTokenStore,
   type AuthTokenStore,
   type KeyValueStorage,
+  type SecureStorageLike,
 } from './auth-token-store'
 import { effectiveOrigin } from './auth-origin'
 
@@ -34,59 +32,53 @@ function currentOrigin(): string {
   return effectiveOrigin(getApiBase(), window.location.origin)
 }
 
-function apiOrigin(): string {
-  if (typeof window === 'undefined') return ''
-  return effectiveOrigin(getApiBase(), window.location.origin)
-}
-
-/** 当前 API Base 与页面源是否同源 */
-function isSameOriginApi(): boolean {
-  if (typeof window === 'undefined') return true
-  return apiOrigin() === window.location.origin
-}
-
 let tokenStore: AuthTokenStore | null = null
 
+function isProdBuild(): boolean {
+  return import.meta.env.PROD === true
+}
+
+/** 当前 API Base 与页面源是否跨源 */
+function isCrossOriginApi(): boolean {
+  if (typeof window === 'undefined') return false
+  const base = getApiBase()
+  if (!base) return false
+  return effectiveOrigin(base, window.location.origin) !== window.location.origin
+}
+
 /**
- * 统一凭据存储：
+ * 统一凭据存储（P4-1C 建立，P4-2A 收紧）：
  * - 原生（Capacitor）：Keystore/Keychain 安全存储（生产拒绝明文回退）；
  * - Web 同源：HttpOnly Cookie（本地零 token）；
- * - Web 跨源：仅开发/测试的 Bearer 桥接（origin 绑定 + 明确告警），
- *   生产 Web 部署为同源 Cookie 认证。
+ * - Web 跨源 + 开发/测试：origin 绑定 Bearer 桥接；
+ * - Web 跨源 + 生产：显式拒绝（P0 复核发现原分支未限制构建模式，
+ *   生产 Web 配跨源 API 会把 Bearer 写进 localStorage）。
  */
 export function getTokenStore(): AuthTokenStore {
   if (tokenStore) return tokenStore
   const storage = browserStorage()
+  const cookieReader = () => (typeof document === 'undefined' ? '' : document.cookie)
 
   if (isNativeApp()) {
-    const prod = import.meta.env.PROD === true
-    try {
-      tokenStore = createNativeTokenStore(
-        {
-          get: async (key: string) => {
-            const value = await SecureStorage.get(key)
-            return value == null ? null : String(value)
-          },
-          set: async (key: string, value: string) => { await SecureStorage.set(key, value) },
-          remove: async (key: string) => { await SecureStorage.remove(key) },
-        },
-        { insecureFallback: storage, prod },
-      )
-    } catch {
-      tokenStore = createFallbackNativeStore(storage, prod)
+    const secure: SecureStorageLike = {
+      get: async (key: string) => {
+        const value = await SecureStorage.get(key)
+        return value == null ? null : String(value)
+      },
+      set: async (key: string, value: string) => { await SecureStorage.set(key, value) },
+      remove: async (key: string) => { await SecureStorage.remove(key) },
     }
+    tokenStore = selectTokenStore(
+      { platform: 'native', crossOrigin: isCrossOriginApi(), prod: isProdBuild() },
+      { storage, cookieReader, secure },
+    )
     return tokenStore
   }
 
-  const cookieReader = () => (typeof document === 'undefined' ? '' : document.cookie)
-  if (!isSameOriginApi() && getApiBase()) {
-    // 跨源 Web（开发/跨域 E2E）：Bearer 桥接，token origin 绑定
-    console.warn('[auth] 跨源 Web 调试模式：使用 origin 绑定的 Bearer 桥接（生产 Web 部署应为同源 Cookie 认证）')
-    tokenStore = createWebCrossOriginBridgeStore(storage, cookieReader)
-    return tokenStore
-  }
-  // 同源 Web：HttpOnly Cookie 认证，本地零 token
-  tokenStore = createWebTokenStore(storage, cookieReader)
+  tokenStore = selectTokenStore(
+    { platform: 'web', crossOrigin: isCrossOriginApi(), prod: isProdBuild() },
+    { storage, cookieReader },
+  )
   return tokenStore
 }
 
@@ -208,17 +200,62 @@ export async function restoreAuthSession(): Promise<AuthSession | null> {
 }
 
 /**
- * 切换 API origin 时的凭据冲突判定（P4-1A）。
- * 绑定 origin 与新 origin 不同 → true，调用方必须先解绑并要求重新登录。
+ * 切换 API origin 时的凭据处理（P4-1A 建立，P4-2A 重写）。
+ *
+ * 复核发现：旧实现只读 Web localStorage 的 origin 绑定键，原生端
+ * 绑定在安全存储里，切换判定失效。现改为**直接比较切换前后的 API
+ * origin**（与存储位置无关）：origin 变化即视为需要解除绑定。
+ *
+ * 返回 { conflict, revoked }：
+ * - conflict=true 时调用方必须把 API Base 改为新地址并要求重新登录；
+ * - revoked 表示是否已尽力向旧服务发送撤销（best-effort，失败不阻断）。
  */
-export function authBindingConflictsWith(nextBase: string): boolean {
-  const store = browserStorage()
-  if (!store) return false
-  if (typeof window === 'undefined') return false
-  const nextOrigin = effectiveOrigin(nextBase, window.location.origin)
-  const bound = store.getItem('edumind-auth-token-origin')
-  if (!bound) return false
-  return Boolean(nextOrigin) && bound !== nextOrigin
+export async function prepareOriginSwitch(nextBase: string): Promise<{ conflict: boolean; revoked: boolean }> {
+  if (typeof window === 'undefined') return { conflict: false, revoked: false }
+  const currentOriginValue = effectiveOrigin(getApiBase(), window.location.origin)
+  const nextOriginValue = effectiveOrigin(nextBase, window.location.origin)
+  // 两边都为空（同源相对路径 ↔ 同源相对路径）或相等 → 无切换
+  if (currentOriginValue === nextOriginValue) return { conflict: false, revoked: false }
+
+  // origin 变化：先尽力撤销旧服务会话，再解除本地绑定并中止在途请求
+  let revoked = false
+  try {
+    const token = await getAuthToken()
+    if (token) {
+      const response = await fetch(resolveApiUrl('/api/auth/logout'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      revoked = response.ok
+    } else {
+      // Cookie 认证：带 CSRF 双提交注销（尽力而为）
+      const csrf = await getCsrfToken()
+      const response = await fetch(resolveApiUrl('/api/auth/logout'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: csrf ? { 'X-CSRF-Token': csrf } : {},
+      })
+      revoked = response.ok
+    }
+  } catch {
+    /* 旧服务不可达：本地解绑仍然生效 */
+  }
+  await clearAuthSession()
+  return { conflict: true, revoked }
+}
+
+/**
+ * 带身份纪元防护的 token 读取（P4-2A 竞态修复）。
+ *
+ * 竞态场景：请求开始 → 异步读取 Keystore/存储 → 期间用户退出或
+ * 切号 → 读取恢复。若不校验纪元，旧 token 会随清理后的请求再次
+ * 外发。调用方在发送前必须调用本函数并检查 null。
+ */
+export async function getAuthTokenGuarded(startEpoch: number): Promise<string | null> {
+  const token = await getAuthToken()
+  if (currentAuthEpoch() !== startEpoch) return null // 清理已发生：不外发旧凭据
+  return token
 }
 
 /** 供测试：重置模块级单例 */

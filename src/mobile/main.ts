@@ -8,6 +8,10 @@ import './styles.css'
 // 标记移动端入口：共享代码（如 api.ts 的 401 跳转）据此选择 hash 路由
 ;(window as unknown as { __EDUMIND_MOBILE__?: boolean }).__EDUMIND_MOBILE__ = true
 
+// 构建模式标记（P4-2A）：跨域 Web 调试桥接仅开发构建可用，
+// 跨域 E2E 据此自检（生产构建跑跨域场景会命中拒绝存储）
+;(window as unknown as { __EDUMIND_PROD_BUILD__?: boolean }).__EDUMIND_PROD_BUILD__ = import.meta.env.PROD === true
+
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)

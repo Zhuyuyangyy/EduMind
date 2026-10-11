@@ -52,6 +52,7 @@ class CdpClient {
     this.ws = ws
     this.id = 0
     this.pending = new Map()
+    this.consoleLines = []
     ws.onmessage = event => {
       const msg = JSON.parse(typeof event.data === 'string' ? event.data : event.data.toString())
       if (msg.id && this.pending.has(msg.id)) {
@@ -59,6 +60,12 @@ class CdpClient {
         this.pending.delete(msg.id)
         if (msg.error) reject(new Error(msg.error.message))
         else resolve(msg.result)
+      }
+      // 收集浏览器 console（失败诊断用）
+      if (msg.method === 'Runtime.consoleAPICalled' && msg.params?.args) {
+        const text = msg.params.args.map(a => a.value ?? a.description ?? '').join(' ')
+        this.consoleLines.push(`[${msg.params.type}] ${text}`)
+        if (this.consoleLines.length > 60) this.consoleLines.shift()
       }
     }
   }
@@ -120,6 +127,11 @@ async function login(cdp) {
 
 async function main() {
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'edumind-mobile-e2e-'))
+  // P4-2A：跨域场景必须基于开发构建（跨源 Bearer 桥接仅开发可用）。
+  // 生产构建会命中「拒绝跨源 Web」存储，登录必然失败——先给出明确提示。
+  if (CROSS_ORIGIN) {
+    console.log('[mobile-e2e] 跨域模式：dist-mobile 须由 `node scripts/build-mobile.mjs --dev` 产出（开发构建）；生产构建将按设计拒绝跨源 Web')
+  }
   const chrome = spawn(CHROME, [
     '--headless=new',
     `--remote-debugging-port=${CDP_PORT}`,
@@ -235,20 +247,80 @@ async function main() {
     }, 25000)
     const errLine = netError ? (await cdp.bodyText()).split('\n').find(l => l.includes('网络') || l.includes('不可达') || l.includes('请求失败')) : ''
     report('G 网络不可达时给出清晰错误提示', Boolean(netError), errLine || '无错误提示')
+
+    // H. 冷启动恢复（P4-2A）：重新登录 → 刷新页面 → 登录态必须仍在。
+    //    同源模式走 HttpOnly Cookie；跨域（开发构建）走 origin 绑定的
+    //    Bearer 桥接——桥接 migrate() 曾误清活动 token 导致刷新丢登录，
+    //    本场景守住该修复。先恢复默认 API 地址，避免 G 的死端口残留。
+    await cdp.eval("localStorage.removeItem('edumind-api-base')")
+    await cdp.send('Page.reload')
+    await waitFor(() => cdp.eval("Boolean(document.querySelector('.login') || document.querySelector('.mobile-tabs'))"), 20000)
+    if (await cdp.eval("Boolean(document.querySelector('.login'))")) {
+      // 重试一次：刷新后 Vue 挂载与 CDP 点击可能存在时序竞争
+      //（实测点击未触发提交、无错误提示）
+      let loggedIn = await login(cdp)
+      if (!loggedIn) {
+        // 兜底：直接派发表单 submit 事件（排除按钮被遮挡/点击未命中）
+        await new Promise(r => setTimeout(r, 1500))
+        await cdp.eval(`(() => {
+          const form = document.querySelector('.login__form')
+          if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+        })()`)
+        loggedIn = await waitFor(() => cdp.eval("Boolean(document.querySelector('.mobile-tabs')) && location.hash !== '#/login'"), 15000)
+      }
+      if (!loggedIn) {
+        report('H 刷新后登录态保持（冷启动恢复）', false, '重新登录失败（挂载时序）')
+        return
+      }
+    }
+    // 刷新：不得被打回登录页
+    await cdp.send('Page.reload')
+    const staysLoggedIn = await waitFor(async () => {
+      const onLogin = await cdp.eval("Boolean(document.querySelector('.login'))")
+      const hasTabs = await cdp.eval("document.querySelectorAll('.tab, .mobile-tabs').length > 0")
+      return !onLogin && hasTabs
+    }, 20000)
+    if (!staysLoggedIn) {
+      const diag = await cdp.eval(`JSON.stringify({
+        apiBase: localStorage.getItem('edumind-api-base'),
+        token: localStorage.getItem('edumind-auth-token'),
+        session: localStorage.getItem('edumind-auth-session'),
+        onLogin: Boolean(document.querySelector('.login')),
+        body: document.body.innerText.slice(0, 200),
+      })`)
+      console.log('[H-diag]', diag)
+    }
+    report('H 刷新后登录态保持（冷启动恢复）', Boolean(staysLoggedIn),
+      staysLoggedIn ? '' : '刷新后被登出或未恢复')
   } finally {
     if (ws) ws.close()
-    chrome.kill()
-    // Chromium 退出后可能仍短暂占用 profile 文件，清理失败不影响测试结果
+    // Windows：树杀（/T）确保渲染进程等子进程一并退出
+    if (process.platform === 'win32' && chrome.pid) {
+      try {
+        spawn('taskkill', ['/F', '/T', '/PID', String(chrome.pid)], { stdio: 'ignore' })
+      } catch {
+        chrome.kill()
+      }
+    } else {
+      chrome.kill()
+    }
+    // Chromium profile 清理改为分离的后台进程：同步 rmSync 在 Windows 上
+    // 会因句柄未释放阻塞主线程（实测挂住 2 分钟以上），且临时目录本就
+    // 由操作系统回收——fire-and-forget 后主进程立即退出（P4-2A）。
     try {
-      fs.rmSync(userDataDir, { recursive: true, force: true })
+      const cleaner = process.platform === 'win32'
+        ? spawn('cmd', ['/c', 'rd', '/s', '/q', `"${userDataDir}"`], { detached: true, stdio: 'ignore', windowsHide: true })
+        : spawn('rm', ['-rf', userDataDir], { detached: true, stdio: 'ignore' })
+      cleaner.unref()
     } catch {
-      console.log(`(提示: 临时 profile 目录未能清理，可手动删除 ${userDataDir})`)
+      /* 清理失败不影响测试结果（Temp 由 OS 回收） */
     }
   }
 
   const failed = results.filter(r => !r.ok)
   console.log(`\nE2E 汇总${CROSS_ORIGIN ? '（跨 Origin → 远程 API 模式）' : '（同源代理模式）'}: ${results.length - failed.length}/${results.length} 通过`)
-  if (failed.length > 0) process.exitCode = 1
+  // 强制退出：Chromium 子进程可能残留句柄使事件循环不空（测试工具链）
+  process.exit(failed.length > 0 ? 1 : 0)
 }
 
 main().catch(err => {

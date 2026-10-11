@@ -358,10 +358,24 @@ async function main() {
       `status=${webView.session?.status} attempts=${webView.attempts?.length}`)
   } finally {
     if (ws) ws.close()
-    chrome.kill()
+    // Windows：树杀确保 Chromium 子进程一并退出
+    if (process.platform === 'win32' && chrome.pid) {
+      try {
+        spawn('taskkill', ['/F', '/T', '/PID', String(chrome.pid)], { stdio: 'ignore' })
+      } catch {
+        chrome.kill()
+      }
+    } else {
+      chrome.kill()
+    }
     api.kill()
+    // Chromium profile 同步删除在 Windows 上会因句柄未释放阻塞主线程
+    // （实测挂住数分钟）——改为分离的后台进程清理，主进程立即退出。
     try {
-      fs.rmSync(userDataDir, { recursive: true, force: true })
+      const cleaner = process.platform === 'win32'
+        ? spawn('cmd', ['/c', 'rd', '/s', '/q', `"${userDataDir}"`], { detached: true, stdio: 'ignore', windowsHide: true })
+        : spawn('rm', ['-rf', userDataDir], { detached: true, stdio: 'ignore' })
+      cleaner.unref()
       fs.rmSync(seedFile, { force: true })
     } catch {
       /* ignore */

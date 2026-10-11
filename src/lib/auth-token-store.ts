@@ -64,6 +64,8 @@ export interface AuthTokenStore {
   setToken(token: string, origin: string): Promise<void>
   /** 解除绑定 */
   clearToken(): Promise<void>
+  /** 当前绑定的 API origin（无绑定时 null）；用于切换判定 */
+  getBoundOrigin(): Promise<string | null>
   /** CSRF Token（Web 从 Cookie 读；原生不需要） */
   getCsrfToken(): Promise<string | null>
   /** 清理遗留明文凭据 */
@@ -84,6 +86,10 @@ export function createWebTokenStore(storage: KeyValueStorage | null, cookieReade
     },
     async clearToken() {
       storage?.removeItem(LEGACY_TOKEN_KEY)
+      storage?.removeItem(TOKEN_ORIGIN_KEY)
+    },
+    async getBoundOrigin() {
+      return null // Cookie 模式无本地 origin 绑定
     },
     async getCsrfToken() {
       return readCookieValue(cookieReader(), CSRF_COOKIE_NAME)
@@ -91,6 +97,7 @@ export function createWebTokenStore(storage: KeyValueStorage | null, cookieReade
     async migrate() {
       const had = Boolean(storage?.getItem(LEGACY_TOKEN_KEY))
       storage?.removeItem(LEGACY_TOKEN_KEY)
+      storage?.removeItem(TOKEN_ORIGIN_KEY)
       return { clearedLegacyToken: had }
     },
   }
@@ -101,7 +108,12 @@ export function createWebTokenStore(storage: KeyValueStorage | null, cookieReade
 /**
  * 跨源 Web 调试桥接：SameSite=None Cookie 在部分浏览器/无头环境下
  * 不稳定，开发与跨域 E2E 需要 Bearer 通道。token 仍 origin 绑定
- * （P4-1A），并仅在非生产使用。生产 Web 部署为同源 Cookie 认证。
+ * （P4-1A）。**仅限开发/测试构建**——生产 Web 跨源部署不受支持
+ * （见 createProductionRefusalStore）。
+ *
+ * P4-2A：migrate() 不再清理桥接自身的键。桥接的 token/origin 是
+ * 当前活动凭据而非遗留数据；早期实现每次启动都清除，导致跨域调试
+ * 刷新后登录态丢失。遗留清理只对同源 Cookie 模式有意义。
  */
 export function createWebCrossOriginBridgeStore(storage: KeyValueStorage | null, cookieReader: () => string): AuthTokenStore {
   return {
@@ -121,16 +133,89 @@ export function createWebCrossOriginBridgeStore(storage: KeyValueStorage | null,
       storage?.removeItem(LEGACY_TOKEN_KEY)
       storage?.removeItem(TOKEN_ORIGIN_KEY)
     },
+    async getBoundOrigin() {
+      return storage?.getItem(TOKEN_ORIGIN_KEY) || null
+    },
     async getCsrfToken() {
       return readCookieValue(cookieReader(), CSRF_COOKIE_NAME)
     },
     async migrate() {
-      const had = Boolean(storage?.getItem(LEGACY_TOKEN_KEY))
-      storage?.removeItem(LEGACY_TOKEN_KEY)
-      storage?.removeItem(TOKEN_ORIGIN_KEY)
-      return { clearedLegacyToken: had }
+      // 桥接键是活动凭据：不清除（刷新/冷启动后恢复登录）
+      return { clearedLegacyToken: false }
     },
   }
+}
+
+/* ———————————— 生产拒绝存储（P4-2A） ———————————— */
+
+/**
+ * 生产 Web 跨源组合的显式拒绝。
+ *
+ * 正式 Web 构建只支持同源部署（反向代理 + HttpOnly Cookie）。跨源
+ * Web 需要另行设计 Cookie/CSRF/origin 策略，在此之前明确失败，
+ * 绝不静默退化到明文 localStorage Bearer。
+ */
+export function createProductionRefusalStore(reason = '正式 Web 构建不支持跨源 API 部署：请使用同源反向代理 + HttpOnly Cookie。跨域 Web 需要另行设计的安全方案，当前构建明确拒绝。'): AuthTokenStore {
+  return {
+    platform: 'web',
+    async getToken() {
+      return null // 绝不提供明文 Bearer
+    },
+    async setToken() {
+      throw new Error(reason)
+    },
+    async clearToken() {
+      /* 无需清理：从未写入 */
+    },
+    async getBoundOrigin() {
+      return null
+    },
+    async getCsrfToken() {
+      return null
+    },
+    async migrate() {
+      return { clearedLegacyToken: false }
+    },
+  }
+}
+
+/* ———————————— 存储选择（纯工厂，可单测） ———————————— */
+
+export interface TokenStoreEnv {
+  platform: Platform
+  /** API Base 与页面源是否跨源 */
+  crossOrigin: boolean
+  /** 是否生产构建 */
+  prod: boolean
+}
+
+export interface TokenStoreDeps {
+  storage: KeyValueStorage | null
+  cookieReader: () => string
+  secure?: SecureStorageLike
+}
+
+/**
+ * 按平台/部署/构建模式选择凭据存储。
+ * - 原生：Keystore/Keychain 安全存储（生产拒绝明文回退）
+ * - Web 同源：HttpOnly Cookie（本地零 token）
+ * - Web 跨源 + 开发/测试：origin 绑定 Bearer 桥接
+ * - Web 跨源 + 生产：显式拒绝（不写 localStorage）
+ */
+export function selectTokenStore(env: TokenStoreEnv, deps: TokenStoreDeps): AuthTokenStore {
+  if (env.platform === 'native') {
+    if (!deps.secure) {
+      return createFallbackNativeStore(deps.storage, env.prod)
+    }
+    return createNativeTokenStore(deps.secure, { insecureFallback: deps.storage, prod: env.prod })
+  }
+  if (env.crossOrigin) {
+    if (env.prod) {
+      return createProductionRefusalStore()
+    }
+    return createWebCrossOriginBridgeStore(deps.storage, deps.cookieReader)
+  }
+  return createWebTokenStore(deps.storage, deps.cookieReader)
 }
 
 /* ———————————— 原生实现（Keystore/Keychain） ———————————— */
@@ -163,6 +248,9 @@ export function createNativeTokenStore(
       await secure.remove(SECURE_TOKEN_KEY)
       await secure.remove(SECURE_ORIGIN_KEY)
     },
+    async getBoundOrigin() {
+      return secure.get(SECURE_ORIGIN_KEY)
+    },
     async getCsrfToken() {
       return null // 原生 Bearer 认证无 CSRF 面
     },
@@ -183,6 +271,7 @@ export function createFallbackNativeStore(storage: KeyValueStorage | null, prod 
       async getToken() { throw new Error('安全存储不可用且为生产构建，拒绝明文回退') },
       async setToken() { throw new Error('安全存储不可用且为生产构建，拒绝明文回退') },
       async clearToken() { storage?.removeItem(LEGACY_TOKEN_KEY) },
+      async getBoundOrigin() { return null },
       async getCsrfToken() { return null },
       async migrate() { const had = Boolean(storage?.getItem(LEGACY_TOKEN_KEY)); storage?.removeItem(LEGACY_TOKEN_KEY); return { clearedLegacyToken: had } },
     }
@@ -204,6 +293,9 @@ export function createFallbackNativeStore(storage: KeyValueStorage | null, prod 
     async clearToken() {
       storage?.removeItem(LEGACY_TOKEN_KEY)
       storage?.removeItem(SECURE_ORIGIN_KEY)
+    },
+    async getBoundOrigin() {
+      return storage?.getItem(SECURE_ORIGIN_KEY) || null
     },
     async getCsrfToken() { return null },
     async migrate() { return { clearedLegacyToken: false } },

@@ -193,7 +193,7 @@ function applyCors(req, res) {
   if (!allowedOrigins().includes(origin)) return
   res.setHeader('Access-Control-Allow-Origin', origin)
   res.setHeader('Access-Control-Allow-Credentials', 'true')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token')
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
   res.setHeader('Access-Control-Max-Age', '600')
 }
@@ -293,7 +293,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     applyCors(req, res)
     res.writeHead(204, {
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-CSRF-Token',
       'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
       'Access-Control-Max-Age': '600',
     })

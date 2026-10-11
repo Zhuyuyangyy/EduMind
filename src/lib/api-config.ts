@@ -47,6 +47,25 @@ export function validateApiBase(base: string): { ok: boolean; error?: string } {
     return { ok: false, error: '缺少主机名' }
   }
   if (!isDev()) {
+    // P4-2A：正式 Web 构建只支持同源 API 部署（反向代理 + HttpOnly
+    // Cookie）。跨源 Web 需要另行设计的 Cookie/CSRF/origin 策略，
+    // 当前构建明确拒绝——绝不静默退化到明文 localStorage Bearer。
+    // 原生 App（Capacitor）页面源是 capacitor://localhost，与远程
+    // API 必然跨源，属受支持的原生 Bearer 通道，不适用本限制。
+    if (!isNativeApp() && value && !isLocalHost(url.hostname)) {
+      let pageOrigin = ''
+      try {
+        pageOrigin = typeof window !== 'undefined' ? window.location.origin : ''
+      } catch {
+        pageOrigin = ''
+      }
+      if (pageOrigin && url.origin !== pageOrigin) {
+        return {
+          ok: false,
+          error: '正式 Web 构建只支持同源 API 地址（请配置反向代理）。跨源 Web 部署需要另行设计的安全方案，当前版本不支持。',
+        }
+      }
+    }
     // P4-1A：生产走可信白名单（见 auth-origin.isTrustedApiBase）
     const allowlist = String(import.meta.env.VITE_ALLOWED_API_HOSTS || '')
       .split(',')

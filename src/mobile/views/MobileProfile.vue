@@ -62,7 +62,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { clearAuthSession, getAuthSession, authBindingConflictsWith } from '@/lib/auth'
+import { clearAuthSession, getAuthSession, prepareOriginSwitch } from '@/lib/auth'
 import { fetchCurrentSession, logout, apiGet } from '@/lib/api'
 import { getApiBase, getDefaultApiBase, setApiBase, validateApiBase } from '@/lib/api-config'
 import { bumpDataEpoch } from '@/mobile/data/learning-data'
@@ -131,17 +131,15 @@ async function onSaveBase() {
     // 统一走共享校验（正式构建仅可信白名单 HTTPS，开发例外仅限 localhost）
     const check = validateApiBase(value)
     if (!check.ok) throw new Error(check.error)
-    // P4-1A：origin 变更先解除认证绑定——旧 token 绝不发往新服务。
-    // 尽力向旧服务发送撤销请求（best-effort，失败不阻断切换）。
-    if (authBindingConflictsWith(value)) {
-      try {
-        await logout()
-      } catch {
-        /* 旧服务不可达时本地解绑仍然生效 */
-      }
-      clearAuthSession()
+    // P4-2A：直接比较切换前后的 API origin（与存储位置无关）。
+    // origin 变更先尽力撤销旧服务会话，再解除本地绑定、中继在途请求，
+    // 旧 token 绝不发往新服务；恢复默认地址同样遵守该规则。
+    const switchResult = await prepareOriginSwitch(value)
+    if (switchResult.conflict) {
       resetStudyLocalState()
-      baseMsg.value = 'API 地址已切换，登录状态已解除，请重新登录。'
+      baseMsg.value = switchResult.revoked
+        ? 'API 地址已切换，旧服务会话已撤销，请重新登录。'
+        : 'API 地址已切换，登录状态已解除，请重新登录。'
       setApiBase(value)
       baseOk.value = true
       bumpDataEpoch()

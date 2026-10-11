@@ -31,7 +31,7 @@ import type {
 } from '@/types/api'
 import type { ProfileResult } from '@/composables/useProfileSurvey'
 import { useAppStore } from '@/store'
-import { clearAuthSession, getAuthSession, getAuthToken, getCsrfToken, registerInFlight, unregisterInFlight } from '@/lib/auth'
+import { clearAuthSession, getAuthSession, getAuthTokenGuarded, getCsrfToken, currentAuthEpoch, registerInFlight, unregisterInFlight } from '@/lib/auth'
 import { isMobileApp, resolveApiUrl } from '@/lib/api-config'
 
 function currentAccountId() {
@@ -121,9 +121,13 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
 
   let aiRequestSettled = false
 
+  // P4-2A：请求发起时捕获身份纪元。凭据异步读取期间若发生退出/切号
+  // （纪元变化），本请求不得继续携带旧凭据发出。
+  const epochAtStart = currentAuthEpoch()
   try {
-    // P4-1C：token/CSRF 均异步获取（原生走 Keystore 安全存储）
-    const [token, csrfToken] = await Promise.all([getAuthToken(), getCsrfToken()])
+    // P4-1C：token/CSRF 均异步获取（原生走 Keystore 安全存储）；
+    // P4-2A：token 读取带纪元防护
+    const [token, csrfToken] = await Promise.all([getAuthTokenGuarded(epochAtStart), getCsrfToken()])
     // 统一超时（默认 60s，可用 VITE_API_TIMEOUT_MS 覆盖），超时走 AbortError → 友好提示
     const timeoutMs = Number(import.meta.env.VITE_API_TIMEOUT_MS) > 0 ? Number(import.meta.env.VITE_API_TIMEOUT_MS) : 60000
     const controller = new AbortController()
@@ -133,6 +137,12 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
     let response: Response
     try {
       const isStateChanging = method !== 'GET' && method !== 'HEAD'
+      // 纪元在读取期间被推进（退出/切号）→ 视作已取消，不发请求
+      if (currentAuthEpoch() !== epochAtStart) {
+        const abortError = new Error('Request aborted: auth session changed')
+        abortError.name = 'AbortError'
+        throw abortError
+      }
       response = await fetch(resolveApiUrl(input), {
         credentials: 'include',
         signal: controller.signal,

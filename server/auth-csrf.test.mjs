@@ -134,3 +134,22 @@ test('退出登录（Cookie 认证）同样受 CSRF 保护', async () => {
     assert.equal(after.status, 401, '退出后会话必须失效')
   })
 })
+
+test('CORS 预检许可 X-CSRF-Token（跨源部署下 Cookie 写请求不被浏览器拦截）', async () => {
+  await withTestServer(async ({ baseUrl }) => {
+    // P4-2A 回归：P4-1C 曾遗漏该头，跨源请求携带 X-CSRF-Token 时预检
+    // 失败 → 浏览器 TypeError（表现为"网络不可达"）。
+    const preflight = await fetch(`${baseUrl}/api/account/settings`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:5174',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type,x-csrf-token',
+      },
+    })
+    assert.equal(preflight.status, 204)
+    const allowed = preflight.headers.get('access-control-allow-headers') || ''
+    assert.match(allowed, /x-csrf-token/i, `预检必须许可 X-CSRF-Token，实际: ${allowed}`)
+    assert.equal(preflight.headers.get('access-control-allow-credentials'), 'true')
+  })
+})

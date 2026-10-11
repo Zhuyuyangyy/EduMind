@@ -8,6 +8,10 @@ import './assets/styles/global.css'
 import './assets/styles/_tailwind.css'
 import './assets/styles/universe-learning.css'
 
+// 构建模式标记（P4-2A）：跨域 Web 调试桥接仅开发构建可用，
+// 跨域 E2E 据此自检（生产构建跑跨域场景会命中拒绝存储）
+;(window as unknown as { __EDUMIND_PROD_BUILD__?: boolean }).__EDUMIND_PROD_BUILD__ = import.meta.env.PROD === true
+
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
