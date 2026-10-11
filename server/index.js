@@ -397,11 +397,21 @@ const server = http.createServer(async (req, res) => {
         return
       }
 
-      const { token, session } = createSession({
-        account: authenticated.account,
-        role: authenticated.role,
-        displayName: authenticated.displayName,
-      })
+      let issued = null
+      try {
+        issued = await createSession({
+          account: authenticated.account,
+          role: authenticated.role,
+          displayName: authenticated.displayName,
+          deviceType: String(req.headers['user-agent'] || '').slice(0, 32) || null,
+        })
+      } catch (err) {
+        // P4-1B：会话存储不可达 → 明确 503（不是 500，更不是放行）
+        recordAuthFailure(account, 'session-store-unavailable', clientIp(req))
+        sendJson(res, 503, { error: 'Service Unavailable', message: '认证服务暂不可用，请稍后重试。' })
+        return
+      }
+      const { token, session } = issued
       sendJson(res, 200, {
         account: authenticated.account,
         role: authenticated.role,
@@ -414,7 +424,7 @@ const server = http.createServer(async (req, res) => {
 
     // 校验当前会话（启动恢复登录态用）
     if (req.method === 'GET' && pathname === '/api/auth/session') {
-      const session = getSession(extractToken(req))
+      const session = await getSession(extractToken(req))
       if (!session) {
         sendJson(res, 401, { error: 'Unauthorized', message: '登录状态无效或已过期，请重新登录。' })
         return
@@ -428,7 +438,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && pathname === '/api/auth/logout') {
-      destroySession(extractToken(req))
+      await destroySession(extractToken(req))
       sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearSessionCookie() })
       return
     }
@@ -1102,7 +1112,7 @@ const server = http.createServer(async (req, res) => {
     // 认证中间件：公开路径之外一律要求有效会话；业务路由在账号上下文内执行，
     // 使 orchestrator / recorder 的深层调用无需改签名即可归属到当前账号。
     if (pathname.startsWith('/api/') && !PUBLIC_API_PATHS.has(pathname)) {
-      const session = getSession(extractToken(req))
+      const session = await getSession(extractToken(req))
       if (!session) {
         sendJson(res, 401, { error: 'Unauthorized', message: '登录状态无效或已过期，请重新登录。' })
         return
@@ -1131,7 +1141,14 @@ server.listen(PORT, async () => {
     // 不再启动全局 sync、不再注册 trace hook（消除未处理 Promise rejection 风险）。
     console.log(`API server listening on http://localhost:${PORT}`)
   } catch (error) {
-    console.error('[mysql] initialization failed:', error)
-    server.close(() => process.exitCode = 1)
+    // P4-1B：数据库不可达不在启动时致命——服务保持监听，认证按请求
+    // fail-closed（getSession 查存储失败即 401），健康检查可观测。
+    // 启动即退出会让运维失去「服务在跑但 DB 挂了」的可观测状态，
+    // 也会让故障期间的登录/恢复请求全部连接失败而非明确 401/503。
+    if (isProductionMode()) {
+      console.error('[mysql] initialization failed (production, 服务保持监听，认证 fail-closed):', error?.message || error)
+    } else {
+      console.warn('[mysql] initialization failed (服务保持监听，认证 fail-closed):', error?.message || error)
+    }
   }
 })

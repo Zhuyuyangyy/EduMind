@@ -35,3 +35,5 @@ dist-mobile/
 android/local.properties
 server/store.json
 server/evidence-data/
+server/sessions.json
+server/identities.json

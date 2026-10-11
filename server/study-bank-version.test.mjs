@@ -62,6 +62,8 @@ test('题库升级不改变历史会话的题目与判分（快照隔离）', as
     ZHIXUE_DATA_FILE: dataFile,
     ZHIXUE_CHAT_STORE_FILE: dataFile,
     ZHIXUE_TRACE_FILE: `${dataFile}.traces.json`,
+      ZHIXUE_SESSION_FILE: `${dataFile}.sessions.json`,
+      ZHIXUE_IDENTITY_FILE: `${dataFile}.identities.json`,
     ZHIXUE_EXERCISE_BANK_PATH: bankFile,
     ZHIXUE_FEEDBACK_STALE_MS: '0',
   }

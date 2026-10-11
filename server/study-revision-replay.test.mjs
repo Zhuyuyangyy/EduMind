@@ -116,6 +116,8 @@ test('修订写后、步骤未标记 → 重启后不重复写入修订', async 
       ZHIXUE_DATA_FILE: dataFile,
       ZHIXUE_CHAT_STORE_FILE: dataFile,
       ZHIXUE_TRACE_FILE: `${dataFile}.traces.json`,
+      ZHIXUE_SESSION_FILE: `${dataFile}.sessions.json`,
+      ZHIXUE_IDENTITY_FILE: `${dataFile}.identities.json`,
       ZHIXUE_FEEDBACK_STALE_MS: '0',
       ...extraEnv,
     },

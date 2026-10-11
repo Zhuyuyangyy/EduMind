@@ -57,6 +57,8 @@ function startServer(port, dataFile, extraEnv = {}) {
       ZHIXUE_DATA_FILE: dataFile,
       ZHIXUE_CHAT_STORE_FILE: dataFile,
       ZHIXUE_TRACE_FILE: `${dataFile}.traces.json`,
+      ZHIXUE_SESSION_FILE: `${dataFile}.sessions.json`,
+      ZHIXUE_IDENTITY_FILE: `${dataFile}.identities.json`,
       ZHIXUE_FEEDBACK_STALE_MS: '0', // 测试中重启后立即允许接管
       ...extraEnv,
     },

@@ -48,6 +48,9 @@ export async function withTestServer(fn) {
       MYSQL_USER: '',
       MYSQL_PASSWORD: '',
       MYSQL_DATABASE: '',
+      // P4-1B：会话文件同样按测试隔离——共享默认路径会被并行测试互相覆盖
+      ZHIXUE_SESSION_FILE: `${dataFile}.sessions.json`,
+      ZHIXUE_IDENTITY_FILE: `${dataFile}.identities.json`,
       PORT: String(port),
       ZHIXUE_DATA_FILE: dataFile,
       ZHIXUE_CHAT_STORE_FILE: dataFile,

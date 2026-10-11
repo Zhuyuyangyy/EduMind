@@ -20,6 +20,12 @@ import { fileURLToPath } from 'node:url'
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
+// 本文件聚焦 JSON 身份边界：测试进程同样剥离 MYSQL_*，
+// 否则 createIdentity 会写入 MySQL 而服务器读 JSON 文件
+for (const key of ['MYSQL_URL', 'MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DATABASE']) {
+  delete process.env[key]
+}
+
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 function startServer(port, dataFile, extraEnv = {}) {
@@ -27,10 +33,16 @@ function startServer(port, dataFile, extraEnv = {}) {
     cwd: projectRoot,
     env: {
       ...process.env,
+      // 本测试聚焦身份边界（JSON 身份存储），显式剥离 MySQL——
+      // 否则继承调用方 MYSQL_* 时身份查找走 MySQL 表，与测试写入的
+      // JSON 身份文件不一致
+      MYSQL_URL: '', MYSQL_HOST: '', MYSQL_PORT: '', MYSQL_USER: '', MYSQL_PASSWORD: '', MYSQL_DATABASE: '',
       PORT: String(port),
       ZHIXUE_DATA_FILE: dataFile,
       ZHIXUE_CHAT_STORE_FILE: dataFile,
       ZHIXUE_TRACE_FILE: `${dataFile}.traces.json`,
+      ZHIXUE_SESSION_FILE: `${dataFile}.sessions.json`,
+      ZHIXUE_IDENTITY_FILE: `${dataFile}.identities.json`,
       // 隔离：强制 JSON 模式（避免继承调用方 MYSQL_* 共库污染）
       MYSQL_URL: '', MYSQL_HOST: '', MYSQL_PORT: '', MYSQL_USER: '', MYSQL_PASSWORD: '', MYSQL_DATABASE: '',
       ...extraEnv,

@@ -201,6 +201,8 @@ async function main() {
       ZHIXUE_DATA_FILE: seedFile,
       ZHIXUE_CHAT_STORE_FILE: seedFile,
       ZHIXUE_TRACE_FILE: path.join(os.tmpdir(), `edumind-e2e-data-traces-${process.pid}.json`),
+      ZHIXUE_SESSION_FILE: `${seedFile}.sessions.json`,
+      ZHIXUE_IDENTITY_FILE: `${seedFile}.identities.json`,
     },
     stdio: 'ignore',
   })
