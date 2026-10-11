@@ -1,6 +1,16 @@
-import test from 'node:test'
+import test, { after } from 'node:test'
 import assert from 'node:assert/strict'
 import process from 'node:process'
+
+// 测试结束关闭 mysql2 连接池（正确清理，避免挂住测试进程）
+after(async () => {
+  try {
+    const { closeMySqlPool } = await import('./store/mysql.js')
+    await closeMySqlPool()
+  } catch {
+    /* ignore */
+  }
+})
 
 /**
  * P3.4 MySQL 并发接管与 fencing 验收（测试 D）。

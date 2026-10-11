@@ -39,6 +39,15 @@ export async function withTestServer(fn) {
     cwd: projectRoot,
     env: {
       ...process.env,
+      // 隔离：默认测试服务器强制 JSON 模式。若继承调用方的 MYSQL_*，
+      // 所有测试文件会共用一个库互相污染（账号状态/端口/迁移竞态）。
+      // MySQL 专用测试自行设置环境并直接 spawn。
+      MYSQL_URL: '',
+      MYSQL_HOST: '',
+      MYSQL_PORT: '',
+      MYSQL_USER: '',
+      MYSQL_PASSWORD: '',
+      MYSQL_DATABASE: '',
       PORT: String(port),
       ZHIXUE_DATA_FILE: dataFile,
       ZHIXUE_CHAT_STORE_FILE: dataFile,

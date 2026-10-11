@@ -47,6 +47,12 @@ function startServer(port, dataFile, extraEnv = {}) {
     cwd: projectRoot,
     env: {
       ...process.env,
+      MYSQL_URL: '',
+      MYSQL_HOST: '',
+      MYSQL_PORT: '',
+      MYSQL_USER: '',
+      MYSQL_PASSWORD: '',
+      MYSQL_DATABASE: '',
       PORT: String(port),
       ZHIXUE_DATA_FILE: dataFile,
       ZHIXUE_CHAT_STORE_FILE: dataFile,

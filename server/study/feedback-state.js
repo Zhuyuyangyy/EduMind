@@ -29,6 +29,23 @@ function staleMs() {
 
 const EMPTY_STEPS = { profile: 'pending', path: 'pending', revision: 'pending' }
 
+function nowIso() {
+  return new Date().toISOString()
+}
+
+/**
+ * 时间参数规范化（P4-0）：传 Date 对象给 mysql2——驱动会按连接时区
+ * 正确转换。绝不能把 ISO 字符串剥 T/Z 后直接当本地时间（UTC 墙钟会被
+ * 本地时区重新解释，读取时差一个时区偏移，曾导致「处理中」记录永远
+ * 被判超时可接管）。
+ */
+function sqlDate(value) {
+  if (value == null || value === '') return null
+  if (value instanceof Date) return value
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 function emptyRecord(accountId, sessionId) {
   return {
     accountId,
@@ -215,7 +232,7 @@ async function mysqlClaim(accountId, sessionId) {
     await db.query(
       `INSERT INTO study_feedback (account_id, session_id, status, attempt, started_at, steps_json, partial_json)
        VALUES (?, ?, 'processing', 1, ?, CAST(? AS JSON), CAST(? AS JSON))`,
-      [accountId, sessionId, now, JSON.stringify(EMPTY_STEPS), JSON.stringify({})],
+      [accountId, sessionId, sqlDate(now), JSON.stringify(EMPTY_STEPS), JSON.stringify({})],
     )
     return { status: 'claimed', attempt: 1 }
   } catch (error) {
@@ -223,9 +240,31 @@ async function mysqlClaim(accountId, sessionId) {
     if (!isDuplicate) throw error
   }
 
-  const [rows] = await db.query('SELECT * FROM study_feedback WHERE account_id = ? AND session_id = ?', [accountId, sessionId])
+  // 抢占失败：读取现状并分类。
+  // P4-0：必须用 FOR UPDATE——REPEATABLE READ 下普通 SELECT 可能读不到
+  // 胜出者刚提交的行（事务快照未更新），导致误判「无记录」而虚假抢占。
+  const [rows] = await db.query('SELECT * FROM study_feedback WHERE account_id = ? AND session_id = ? FOR UPDATE', [accountId, sessionId])
   const row = rows[0]
-  if (!row) return { status: 'claimed', attempt: 1 }
+  if (!row) {
+    // 极端情况：胜出者回滚了插入。重试一次插入；仍冲突则让位。
+    try {
+      await db.query(
+        `INSERT INTO study_feedback (account_id, session_id, status, attempt, started_at, steps_json, partial_json)
+         VALUES (?, ?, 'processing', 1, ?, CAST(? AS JSON), CAST(? AS JSON))`,
+        [accountId, sessionId, now, JSON.stringify(EMPTY_STEPS), JSON.stringify({})],
+      )
+      return { status: 'claimed', attempt: 1 }
+    } catch (retryError) {
+      const isDuplicate = retryError?.code === 'ER_DUP_ENTRY' || retryError?.code === 'ER_DUP_KEY'
+      if (!isDuplicate) throw retryError
+      const [rerun] = await db.query('SELECT * FROM study_feedback WHERE account_id = ? AND session_id = ? FOR UPDATE', [accountId, sessionId])
+      const latest = rerun[0]
+      if (latest?.status === 'completed') {
+        return { status: 'completed', result: parseMaybe(latest.result_json), attempt: latest.attempt }
+      }
+      return { status: 'in-progress', attempt: latest?.attempt ?? 1 }
+    }
+  }
 
   const startedAt = row.started_at instanceof Date ? row.started_at.getTime() : new Date(row.started_at).getTime()
   if (row.status === 'completed') {
@@ -241,10 +280,11 @@ async function mysqlClaim(accountId, sessionId) {
   const [result] = await db.query(
     `UPDATE study_feedback SET status = 'processing', attempt = attempt + 1, started_at = ?, error = NULL
      WHERE account_id = ? AND session_id = ? AND attempt = ?`,
-    [new Date(), accountId, sessionId, row.attempt],
+    [sqlDate(nowIso()), accountId, sessionId, row.attempt],
   )
   if (result.affectedRows !== 1) {
-    const [rerun] = await db.query('SELECT * FROM study_feedback WHERE account_id = ? AND session_id = ?', [accountId, sessionId])
+    // CAS 失败（他人已接管/完成）：FOR UPDATE 重读让位
+    const [rerun] = await db.query('SELECT * FROM study_feedback WHERE account_id = ? AND session_id = ? FOR UPDATE', [accountId, sessionId])
     const latest = rerun[0]
     if (latest?.status === 'completed') {
       return { status: 'completed', result: parseMaybe(latest.result_json), attempt: latest.attempt }
@@ -260,7 +300,7 @@ async function mysqlMutate(accountId, sessionId, expectedAttempt, mutate) {
   await ensureMysqlSchema()
   const db = getMySqlPool()
 
-  const [rows] = await db.query('SELECT * FROM study_feedback WHERE account_id = ? AND session_id = ?', [accountId, sessionId])
+  const [rows] = await db.query('SELECT * FROM study_feedback WHERE account_id = ? AND session_id = ? FOR UPDATE', [accountId, sessionId])
   const row = rows[0]
   if (!row) return { ok: false, code: 'not-found' }
   if (Number.isInteger(expectedAttempt) && row.attempt !== expectedAttempt) {
@@ -276,7 +316,7 @@ async function mysqlMutate(accountId, sessionId, expectedAttempt, mutate) {
      WHERE account_id = ? AND session_id = ? AND attempt = ?`,
     [
       next.status,
-      next.finishedAt || null,
+      sqlDate(next.finishedAt) || null,
       next.error || null,
       JSON.stringify(next.result ?? null),
       JSON.stringify(next.steps),

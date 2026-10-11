@@ -66,7 +66,13 @@ test('题库升级不改变历史会话的题目与判分（快照隔离）', as
     ZHIXUE_FEEDBACK_STALE_MS: '0',
   }
 
-  let api = startTrackedServer(process.execPath, ['server/index.js'], { cwd: projectRoot, env: { ...process.env, PORT: String(port), ...env }, stdio: 'ignore' })
+  let api = startTrackedServer(process.execPath, ['server/index.js'], { cwd: projectRoot, env: { ...process.env,      MYSQL_URL: '',
+      MYSQL_HOST: '',
+      MYSQL_PORT: '',
+      MYSQL_USER: '',
+      MYSQL_PASSWORD: '',
+      MYSQL_DATABASE: '',
+ PORT: String(port), ...env }, stdio: 'ignore' })
   try {
     await waitUp(baseUrl)
     const login = await (await fetch(`${baseUrl}/api/auth/login`, {
@@ -96,7 +102,7 @@ test('题库升级不改变历史会话的题目与判分（快照隔离）', as
 
     // 重启服务加载新题库
     await stopServer(api)
-    api = startTrackedServer(process.execPath, ['server/index.js'], { cwd: projectRoot, env: { ...process.env, PORT: String(port), ...env }, stdio: 'ignore' })
+    api = startTrackedServer(process.execPath, ['server/index.js'], { cwd: projectRoot, env: { ...process.env, MYSQL_URL: '', MYSQL_HOST: '', MYSQL_PORT: '', MYSQL_USER: '', MYSQL_PASSWORD: '', MYSQL_DATABASE: '', PORT: String(port), ...env }, stdio: 'ignore' })
     await waitUp(baseUrl)
     // 重启后会话令牌失效（内存态），需重新登录
     const relogin = await (await fetch(`${baseUrl}/api/auth/login`, {

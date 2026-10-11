@@ -77,6 +77,16 @@ export function getMySqlPool() {
   return pool
 }
 
+/** 关闭连接池（测试/优雅退出用；生产由进程退出处理） */
+export async function closeMySqlPool() {
+  if (pool) {
+    const current = pool
+    pool = undefined
+    schemaReady = false
+    await current.end()
+  }
+}
+
 export async function ensureMySqlSchema() {
   if (!isMySqlConfigured()) return false
   if (!schemaReady) {
@@ -186,7 +196,8 @@ export async function saveProfileResult(accountId = 'default', profile) {
     `INSERT INTO profile_results (account_id, profile_json, saved_at)
      VALUES (?, CAST(? AS JSON), ?)
      ON DUPLICATE KEY UPDATE profile_json = VALUES(profile_json), saved_at = VALUES(saved_at)`,
-    [accountId, JSON.stringify(normalized), savedAt.slice(0, 23).replace('T', ' ')],
+    // P4-0：传 Date 对象（时区由驱动处理）；剥 T/Z 的字符串会被本地时区重新解释
+    [accountId, JSON.stringify(normalized), new Date(savedAt)],
   )
   return normalized
 }

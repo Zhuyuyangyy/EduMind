@@ -124,6 +124,20 @@ function newId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+/** ISO 字符串 → MySQL DATETIME(3) 字面量（严格模式不接受 T/Z 分隔符） */
+/**
+ * 时间参数规范化（P4-0）：传 Date 对象给 mysql2——驱动会按连接时区
+ * 正确转换。绝不能把 ISO 字符串剥 T/Z 后直接当本地时间（UTC 墙钟会被
+ * 本地时区重新解释，读取时差一个时区偏移，曾导致「处理中」记录永远
+ * 被判超时可接管）。
+ */
+function sqlDate(value) {
+  if (value == null || value === '') return null
+  if (value instanceof Date) return value
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 function publicSession(row) {
   return {
     id: row.id,
@@ -178,11 +192,11 @@ export async function createStudySession(accountId, { topicId, topicIds, phaseId
   await db.query(
     `INSERT INTO study_sessions (id, account_id, topic_id, phase_id, timezone, status, exercise_ids, created_at, bank_version, exercise_snapshot_json)
      VALUES (?, ?, ?, ?, ?, 'active', CAST(? AS JSON), ?, ?, CAST(? AS JSON))`,
-    [session.id, accountId, session.topicId, session.phaseId, session.timezone, JSON.stringify(session.exerciseIds), session.createdAt, session.bankVersion, JSON.stringify(session.exerciseSnapshot)],
+    [session.id, accountId, session.topicId, session.phaseId, session.timezone, JSON.stringify(session.exerciseIds), sqlDate(session.createdAt), session.bankVersion, JSON.stringify(session.exerciseSnapshot)],
   )
   await db.query(
     `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'session-start', CAST(? AS JSON), ?)`,
-    [newId('event'), accountId, session.id, JSON.stringify({ topicId: session.topicId }), nowIso()],
+    [newId('event'), accountId, session.id, JSON.stringify({ topicId: session.topicId }), sqlDate(nowIso())],
   )
   return { session: publicSession({ ...session, created_at: session.createdAt, completed_at: null }), exercises: exercises.map(stripAnswer) }
 }
@@ -277,7 +291,7 @@ export async function recordAnswer(accountId, sessionId, { exerciseId, submitted
     if (byExercise[0]) {
       await connection.query(
         `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'answer-duplicate', CAST(? AS JSON), ?)`,
-        [newId('event'), accountId, sessionId, JSON.stringify({ exerciseId }), nowIso()],
+        [newId('event'), accountId, sessionId, JSON.stringify({ exerciseId }), sqlDate(nowIso())],
       )
       await connection.commit()
       return { ok: true, correct: Boolean(byExercise[0].correct), reason: byExercise[0].reason, duplicate: true, ...(await progressOf(connection, sessionId)) }
@@ -288,11 +302,11 @@ export async function recordAnswer(accountId, sessionId, { exerciseId, submitted
     await connection.query(
       `INSERT INTO answer_submissions (session_id, account_id, exercise_id, exercise_version, correct, reason, submitted_json, idempotency_key, submitted_at)
        VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?)`,
-      [sessionId, accountId, exerciseId, scoringExercise.version, correct ? 1 : 0, reason, JSON.stringify(submitted ?? null), idempotencyKey, nowIso()],
+      [sessionId, accountId, exerciseId, scoringExercise.version, correct ? 1 : 0, reason, JSON.stringify(submitted ?? null), idempotencyKey, sqlDate(nowIso())],
     )
     await connection.query(
       `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'answer-submit', CAST(? AS JSON), ?)`,
-      [newId('event'), accountId, sessionId, JSON.stringify({ exerciseId, exerciseVersion: scoringExercise.version, correct }), nowIso()],
+      [newId('event'), accountId, sessionId, JSON.stringify({ exerciseId, exerciseVersion: scoringExercise.version, correct }), sqlDate(nowIso())],
     )
     await connection.commit()
     return { ok: true, correct, reason, duplicate: false, ...(await progressOf(db, sessionId)) }
@@ -340,10 +354,10 @@ export async function completeStudySession(accountId, sessionId) {
   if (attempts.length === 0) {
     return { ok: false, code: 'no-answers', message: '尚未提交任何作答，不能完成练习' }
   }
-  await db.query(`UPDATE study_sessions SET status = 'completed', completed_at = ? WHERE id = ?`, [nowIso(), sessionId])
+  await db.query(`UPDATE study_sessions SET status = 'completed', completed_at = ? WHERE id = ?`, [sqlDate(nowIso()), sessionId])
   await db.query(
     `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'session-complete', CAST(? AS JSON), ?)`,
-    [newId('event'), accountId, sessionId, JSON.stringify(summarizeAttempts(attempts.map(a => ({ correct: Boolean(a.correct) })))), nowIso()],
+    [newId('event'), accountId, sessionId, JSON.stringify(summarizeAttempts(attempts.map(a => ({ correct: Boolean(a.correct) })))), sqlDate(nowIso())],
   )
   return { ok: true, duplicate: false, assessment: summarizeAttempts(attempts.map(a => ({ correct: Boolean(a.correct) }))) }
 }
@@ -409,7 +423,7 @@ export async function saveProfileRevision(accountId, revision) {
         JSON.stringify(record.eventIds),
         JSON.stringify(record.before),
         JSON.stringify(record.after),
-        record.reason, record.source, record.version, record.createdAt, record.attribution,
+        record.reason, record.source, record.version, sqlDate(record.createdAt), record.attribution,
       ],
     )
   } catch (error) {
@@ -422,7 +436,7 @@ export async function saveProfileRevision(accountId, revision) {
   }
   await db.query(
     `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'profile-revision', CAST(? AS JSON), ?)`,
-    [newId('event'), accountId, sessionId, JSON.stringify({ revisionId: record.id, source: record.source }), nowIso()],
+    [newId('event'), accountId, sessionId, JSON.stringify({ revisionId: record.id, source: record.source }), sqlDate(nowIso())],
   )
   return record
 }
