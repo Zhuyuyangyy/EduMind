@@ -62,7 +62,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { clearAuthSession, getAuthSession } from '@/lib/auth'
+import { clearAuthSession, getAuthSession, authBindingConflictsWith } from '@/lib/auth'
 import { fetchCurrentSession, logout, apiGet } from '@/lib/api'
 import { getApiBase, getDefaultApiBase, setApiBase, validateApiBase } from '@/lib/api-config'
 import { bumpDataEpoch } from '@/mobile/data/learning-data'
@@ -128,9 +128,28 @@ async function onSaveBase() {
   baseMsg.value = ''
   try {
     const value = baseInput.value.trim()
-    // 统一走共享校验（正式构建仅 HTTPS 可信地址，开发例外仅限 localhost）
+    // 统一走共享校验（正式构建仅可信白名单 HTTPS，开发例外仅限 localhost）
     const check = validateApiBase(value)
     if (!check.ok) throw new Error(check.error)
+    // P4-1A：origin 变更先解除认证绑定——旧 token 绝不发往新服务。
+    // 尽力向旧服务发送撤销请求（best-effort，失败不阻断切换）。
+    if (authBindingConflictsWith(value)) {
+      try {
+        await logout()
+      } catch {
+        /* 旧服务不可达时本地解绑仍然生效 */
+      }
+      clearAuthSession()
+      resetStudyLocalState()
+      baseMsg.value = 'API 地址已切换，登录状态已解除，请重新登录。'
+      setApiBase(value)
+      baseOk.value = true
+      bumpDataEpoch()
+      setTimeout(() => {
+        window.location.assign('#/login')
+      }, 800)
+      return
+    }
     setApiBase(value)
     baseOk.value = true
     baseMsg.value = '已保存，正在重新检测…'

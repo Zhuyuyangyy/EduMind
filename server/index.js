@@ -72,6 +72,54 @@ import {
 import { generateStudyFeedback, buildWrongItems } from './study/feedback.js'
 import { publicSessionView, publicAttemptView, publicExerciseView } from './study/dto.js'
 import {
+  findIdentity,
+  verifyPasswordHash,
+  createIdentity,
+  isProductionMode,
+  runtimeMode,
+} from './identity.js'
+
+/* ———————————— P4-1A 认证辅助 ———————————— */
+
+const AUTH_UNIFORM_ERROR = '账号或密码错误。'
+
+const LOGIN_WINDOW_MS = 60_000
+const LOGIN_MAX_ATTEMPTS = 8
+const loginFailures = new Map() // rateKey -> { count, firstAt }
+
+function clientIp(req) {
+  return String(req.socket?.remoteAddress || req.headers['x-forwarded-for'] || 'unknown').slice(0, 64)
+}
+
+function isLoginRateLimited(key) {
+  const entry = loginFailures.get(key)
+  if (!entry) return false
+  if (Date.now() - entry.firstAt > LOGIN_WINDOW_MS) {
+    loginFailures.delete(key)
+    return false
+  }
+  return entry.count >= LOGIN_MAX_ATTEMPTS
+}
+
+function recordLoginFailure(key) {
+  const now = Date.now()
+  const entry = loginFailures.get(key)
+  if (!entry || now - entry.firstAt > LOGIN_WINDOW_MS) {
+    loginFailures.set(key, { count: 1, firstAt: now })
+    return
+  }
+  entry.count += 1
+}
+
+/** 失败审计（不记录密码；生产可接外部审计管道） */
+function recordAuthFailure(account, reason, ip) {
+  if (isProductionMode() || runtimeMode() === 'test') {
+    console.warn(`[auth-failure] account=${account || '-'} reason=${reason} ip=${ip} at=${new Date().toISOString()}`)
+  }
+}
+
+export { createIdentity }
+import {
   prepareProfileUpdate,
   commitProfileUpdate,
   preparePathUpdate,
@@ -287,34 +335,77 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req)
       const account = String(body.account || '').trim()
       const password = String(body.password || '')
-      const role = body.role === 'admin' ? 'admin' : 'student'
-      // 演示环境提供两组等效的学生端演示账号，避免不同版本文档/截图口径不一致导致评审无法登录。
-      const studentCredentials = [
-        {
-          account: process.env.DEMO_STUDENT_ACCOUNT || 'reviewer',
-          password: process.env.DEMO_STUDENT_PASSWORD || 'Zhixue2026!',
-        },
-        {
-          account: process.env.DEMO_STUDENT_ACCOUNT_ALT || 'student',
-          password: process.env.DEMO_STUDENT_PASSWORD_ALT || 'student123',
-        },
-      ]
-      const adminAccount = process.env.DEMO_ADMIN_ACCOUNT || ''
-      const adminPassword = process.env.DEMO_ADMIN_PASSWORD || ''
-      const studentValid =
-        role === 'student' &&
-        studentCredentials.some((item) => item.account && item.password && account === item.account && password === item.password)
-      const adminValid = role === 'admin' && adminAccount && adminPassword && account === adminAccount && password === adminPassword
-      if (!studentValid && !adminValid) {
-        sendJson(res, 401, { error: 'Unauthorized', message: '账号或密码错误，管理员演示入口默认关闭。' })
+      // P4-1A：role 不是授权依据。真实角色只来自服务端账号记录；
+      // 客户端提交的 role 仅用于 demo 账号的路由提示。
+      const requestedRole = body.role === 'admin' ? 'admin' : 'student'
+
+      // P4-1A：登录限流（账号 + IP 双维度），统一错误响应防账号枚举
+      const rateKey = `${clientIp(req)}::${account}`
+      if (isLoginRateLimited(rateKey)) {
+        recordAuthFailure(account, 'rate-limited', clientIp(req))
+        sendJson(res, 429, { error: 'Too Many Requests', message: AUTH_UNIFORM_ERROR })
         return
       }
-      const displayName = role === 'admin' ? '演示管理员' : '评审体验账号'
-      const { token, session } = createSession({ account, role, displayName })
+
+      let authenticated = null
+
+      // 1) 正式身份存储（demo 与 production 都优先）
+      try {
+        const identity = await findIdentity(account)
+        if (identity && identity.enabled && verifyPasswordHash(password, identity.passwordHash)) {
+          authenticated = { account: identity.accountId, role: identity.role, displayName: identity.displayName }
+        }
+      } catch (err) {
+        // 身份存储不可用：生产模式拒绝登录（不退化到演示身份）
+        if (isProductionMode()) {
+          recordAuthFailure(account, 'identity-store-unavailable', clientIp(req))
+          sendJson(res, 503, { error: 'Service Unavailable', message: '认证服务暂不可用，请稍后重试。' })
+          return
+        }
+      }
+
+      // 2) demo 模式内置演示账号（竞赛回归；production 一律禁用）
+      if (!authenticated && !isProductionMode()) {
+        const studentCredentials = [
+          {
+            account: process.env.DEMO_STUDENT_ACCOUNT || 'reviewer',
+            password: process.env.DEMO_STUDENT_PASSWORD || 'Zhixue2026!',
+          },
+          {
+            account: process.env.DEMO_STUDENT_ACCOUNT_ALT || 'student',
+            password: process.env.DEMO_STUDENT_PASSWORD_ALT || 'student123',
+          },
+        ]
+        const adminAccount = process.env.DEMO_ADMIN_ACCOUNT || ''
+        const adminPassword = process.env.DEMO_ADMIN_PASSWORD || ''
+        const studentValid =
+          requestedRole === 'student' &&
+          studentCredentials.some((item) => item.account && item.password && account === item.account && password === item.password)
+        const adminValid = requestedRole === 'admin' && adminAccount && adminPassword && account === adminAccount && password === adminPassword
+        if (studentValid) {
+          authenticated = { account, role: 'student', displayName: '评审体验账号' }
+        } else if (adminValid) {
+          authenticated = { account, role: 'admin', displayName: '演示管理员' }
+        }
+      }
+
+      if (!authenticated) {
+        recordLoginFailure(rateKey)
+        recordAuthFailure(account, 'bad-credentials', clientIp(req))
+        // 统一错误：不区分账号是否存在、是否被禁用、是否演示账号
+        sendJson(res, 401, { error: 'Unauthorized', message: AUTH_UNIFORM_ERROR })
+        return
+      }
+
+      const { token, session } = createSession({
+        account: authenticated.account,
+        role: authenticated.role,
+        displayName: authenticated.displayName,
+      })
       sendJson(res, 200, {
-        account,
-        role,
-        displayName,
+        account: authenticated.account,
+        role: authenticated.role,
+        displayName: authenticated.displayName,
         token,
         expiresAt: new Date(session.expiresAt).toISOString(),
       }, { 'Set-Cookie': buildSessionCookie(token, session.expiresAt - Date.now()) })

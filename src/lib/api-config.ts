@@ -5,9 +5,11 @@
  * - 网页版：空值 → 相对 /api，走同域 Nginx 代理，行为与改造前完全一致。
  * - Capacitor App：必须配置绝对地址（如 https://yx.shushubiye.fun），
  *   因为 WebView 的源是 capacitor://localhost，相对路径会打到 App 自己。
- * - 原型阶段 token 存 localStorage（XSS 敞口），正式版需迁移到
- *   Capacitor Preferences + Keychain/Keystore 安全存储，已列入遗留问题。
+ * - P4-1A：token 与 API origin 绑定（见 auth-origin.ts），切换 origin
+ *   必须先解绑并要求重新登录；生产构建仅接受可信主机白名单。
  */
+
+import { isTrustedApiBase } from './auth-origin'
 
 const STORAGE_KEY = 'edumind-api-base'
 
@@ -20,11 +22,14 @@ function isLocalHost(hostname: string): boolean {
 }
 
 /**
- * 校验 API Base 地址（P1.5 安全加固）。
+ * 校验 API Base 地址（P1.5 安全加固 + P4-1A origin 绑定）。
  * 规则：
  * - 必须是合法的 http/https URL 且有主机名；
- * - 正式构建（PROD）只允许 https 且非本机地址——防止把 Bearer Token 发往不可信服务；
- * - 开发构建明确限定例外：仅 http://localhost 或 http://127.0.0.1 可用。
+ * - 开发构建：http 仅限 localhost/127.0.0.1，其余必须 https；
+ * - 正式构建（PROD）：只允许 https，且主机必须在可信白名单内
+ *   （VITE_ALLOWED_API_HOSTS 或构建时 VITE_API_BASE_URL 的主机）——
+ *   「任意合法 HTTPS」不再视为可信（审计 P0：切换 API 地址可能把
+ *   旧服务的 Bearer token 发给不可信新服务）。
  */
 export function validateApiBase(base: string): { ok: boolean; error?: string } {
   const value = (base || '').trim().replace(/\/+$/, '')
@@ -42,13 +47,16 @@ export function validateApiBase(base: string): { ok: boolean; error?: string } {
     return { ok: false, error: '缺少主机名' }
   }
   if (!isDev()) {
-    if (url.protocol !== 'https:') {
-      return { ok: false, error: '正式版本只允许 HTTPS 地址（明文 HTTP 会暴露登录凭据）' }
-    }
-    if (isLocalHost(url.hostname)) {
-      return { ok: false, error: '正式版本不允许指向本机地址' }
-    }
-  } else if (url.protocol === 'http:' && !isLocalHost(url.hostname)) {
+    // P4-1A：生产走可信白名单（见 auth-origin.isTrustedApiBase）
+    const allowlist = String(import.meta.env.VITE_ALLOWED_API_HOSTS || '')
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean)
+    const check = isTrustedApiBase(value, { allowlist, buildTimeBase: readEnvBase() })
+    if (!check.ok) return { ok: false, error: check.error }
+    return { ok: true }
+  }
+  if (url.protocol === 'http:' && !isLocalHost(url.hostname)) {
     return { ok: false, error: '开发版本仅允许 http://localhost 或 http://127.0.0.1，其他地址请用 HTTPS' }
   }
   return { ok: true }

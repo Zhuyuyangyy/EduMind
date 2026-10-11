@@ -1,4 +1,12 @@
-import { resolveApiUrl } from './api-config'
+import { resolveApiUrl, getApiBase } from './api-config'
+import {
+  bindToken,
+  clearTokenBinding,
+  effectiveOrigin,
+  getTokenForOrigin,
+  isOriginChange,
+  type KeyValueStorage,
+} from './auth-origin'
 
 export type AuthRole = 'student' | 'admin'
 
@@ -10,12 +18,23 @@ export interface AuthSession {
 }
 
 export const AUTH_SESSION_KEY = 'edumind-auth-session'
-const AUTH_TOKEN_KEY = 'edumind-auth-token'
+
+function storage(): KeyValueStorage | null {
+  if (typeof window === 'undefined') return null
+  return window.localStorage as unknown as KeyValueStorage
+}
+
+/** 当前 API 目标 origin（相对路径部署时取页面源） */
+function currentOrigin(): string {
+  if (typeof window === 'undefined') return ''
+  return effectiveOrigin(getApiBase(), window.location.origin)
+}
 
 export function getAuthSession(): AuthSession | null {
-  if (typeof window === 'undefined') return null
+  const store = storage()
+  if (!store) return null
   try {
-    const raw = window.localStorage.getItem(AUTH_SESSION_KEY)
+    const raw = store.getItem(AUTH_SESSION_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as AuthSession
     if (parsed.role !== 'student' && parsed.role !== 'admin') return null
@@ -25,29 +44,36 @@ export function getAuthSession(): AuthSession | null {
   }
 }
 
-/** 登录时服务端签发的会话 token（Capacitor 端走 Authorization: Bearer；Web 端由 Cookie 自动携带）。 */
+/**
+ * 取当前 API origin 可用的会话 token（P4-1A）。
+ * token 与签发它的 API origin 绑定：当前 origin 不匹配时返回 null——
+ * 绝不把 A 服务的 Bearer 发往 B 服务。
+ */
 export function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null
-  return window.localStorage.getItem(AUTH_TOKEN_KEY)
+  const store = storage()
+  if (!store) return null
+  return getTokenForOrigin(store, currentOrigin())
 }
 
 /**
  * 写入本地登录态。
- * token 参数语义：传入新 token 时覆盖；省略时保留现有 token
- * （设置页等只更新展示信息的调用不能把移动端 Bearer 认证的 token 清掉）。
+ * - token 传入时与当前 API origin 绑定存放；
+ * - 省略时保留现有 token（设置页等只更新展示信息的调用不能把
+ *   移动端 Bearer 认证的 token 清掉）。
  */
 export function setAuthSession(session: AuthSession, token?: string) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session))
+  const store = storage()
+  if (!store) return
+  store.setItem(AUTH_SESSION_KEY, JSON.stringify(session))
   if (token) {
-    window.localStorage.setItem(AUTH_TOKEN_KEY, token)
+    bindToken(store, token, currentOrigin())
   }
 }
 
 export function clearAuthSession() {
-  if (typeof window === 'undefined') return
-  window.localStorage.removeItem(AUTH_SESSION_KEY)
-  window.localStorage.removeItem(AUTH_TOKEN_KEY)
+  const store = storage()
+  if (!store) return
+  clearTokenBinding(store)
 }
 
 /**
@@ -83,4 +109,16 @@ export async function restoreAuthSession(): Promise<AuthSession | null> {
   } catch {
     return local
   }
+}
+
+/**
+ * 切换 API origin 时的凭据冲突判定（P4-1A）。
+ * 绑定 origin 与新 origin 不同 → true，调用方必须先解绑并要求重新登录。
+ */
+export function authBindingConflictsWith(nextBase: string): boolean {
+  const store = storage()
+  if (!store) return false
+  if (typeof window === 'undefined') return false
+  const nextOrigin = effectiveOrigin(nextBase, window.location.origin)
+  return isOriginChange(store, nextOrigin)
 }
