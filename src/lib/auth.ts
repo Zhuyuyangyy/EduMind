@@ -1,12 +1,14 @@
-import { resolveApiUrl, getApiBase } from './api-config'
+import { resolveApiUrl, getApiBase, isNativeApp } from './api-config'
+import { SecureStorage } from '@aparajita/capacitor-secure-storage'
 import {
-  bindToken,
-  clearTokenBinding,
-  effectiveOrigin,
-  getTokenForOrigin,
-  isOriginChange,
+  createWebTokenStore,
+  createWebCrossOriginBridgeStore,
+  createNativeTokenStore,
+  createFallbackNativeStore,
+  type AuthTokenStore,
   type KeyValueStorage,
-} from './auth-origin'
+} from './auth-token-store'
+import { effectiveOrigin } from './auth-origin'
 
 export type AuthRole = 'student' | 'admin'
 
@@ -18,20 +20,80 @@ export interface AuthSession {
 }
 
 export const AUTH_SESSION_KEY = 'edumind-auth-session'
+const CSRF_COOKIE_NAME = 'edumind_csrf'
 
-function storage(): KeyValueStorage | null {
+/* ———————————— 平台存储（P4-1C） ———————————— */
+
+function browserStorage(): KeyValueStorage | null {
   if (typeof window === 'undefined') return null
   return window.localStorage as unknown as KeyValueStorage
 }
 
-/** 当前 API 目标 origin（相对路径部署时取页面源） */
 function currentOrigin(): string {
   if (typeof window === 'undefined') return ''
   return effectiveOrigin(getApiBase(), window.location.origin)
 }
 
+function apiOrigin(): string {
+  if (typeof window === 'undefined') return ''
+  return effectiveOrigin(getApiBase(), window.location.origin)
+}
+
+/** 当前 API Base 与页面源是否同源 */
+function isSameOriginApi(): boolean {
+  if (typeof window === 'undefined') return true
+  return apiOrigin() === window.location.origin
+}
+
+let tokenStore: AuthTokenStore | null = null
+
+/**
+ * 统一凭据存储：
+ * - 原生（Capacitor）：Keystore/Keychain 安全存储（生产拒绝明文回退）；
+ * - Web 同源：HttpOnly Cookie（本地零 token）；
+ * - Web 跨源：仅开发/测试的 Bearer 桥接（origin 绑定 + 明确告警），
+ *   生产 Web 部署为同源 Cookie 认证。
+ */
+export function getTokenStore(): AuthTokenStore {
+  if (tokenStore) return tokenStore
+  const storage = browserStorage()
+
+  if (isNativeApp()) {
+    const prod = import.meta.env.PROD === true
+    try {
+      tokenStore = createNativeTokenStore(
+        {
+          get: async (key: string) => {
+            const value = await SecureStorage.get(key)
+            return value == null ? null : String(value)
+          },
+          set: async (key: string, value: string) => { await SecureStorage.set(key, value) },
+          remove: async (key: string) => { await SecureStorage.remove(key) },
+        },
+        { insecureFallback: storage, prod },
+      )
+    } catch {
+      tokenStore = createFallbackNativeStore(storage, prod)
+    }
+    return tokenStore
+  }
+
+  const cookieReader = () => (typeof document === 'undefined' ? '' : document.cookie)
+  if (!isSameOriginApi() && getApiBase()) {
+    // 跨源 Web（开发/跨域 E2E）：Bearer 桥接，token origin 绑定
+    console.warn('[auth] 跨源 Web 调试模式：使用 origin 绑定的 Bearer 桥接（生产 Web 部署应为同源 Cookie 认证）')
+    tokenStore = createWebCrossOriginBridgeStore(storage, cookieReader)
+    return tokenStore
+  }
+  // 同源 Web：HttpOnly Cookie 认证，本地零 token
+  tokenStore = createWebTokenStore(storage, cookieReader)
+  return tokenStore
+}
+
+/* ———————————— 会话状态 ———————————— */
+
 export function getAuthSession(): AuthSession | null {
-  const store = storage()
+  const store = browserStorage()
   if (!store) return null
   try {
     const raw = store.getItem(AUTH_SESSION_KEY)
@@ -45,55 +107,89 @@ export function getAuthSession(): AuthSession | null {
 }
 
 /**
- * 取当前 API origin 可用的会话 token（P4-1A）。
- * token 与签发它的 API origin 绑定：当前 origin 不匹配时返回 null——
- * 绝不把 A 服务的 Bearer 发往 B 服务。
+ * 取当前 API origin 可用的 Bearer token（P4-1A origin 绑定 +
+ * P4-1C 平台存储）。Web 同源部署返回 null——会话由 HttpOnly
+ * Cookie 自动携带。
  */
-export function getAuthToken(): string | null {
-  const store = storage()
-  if (!store) return null
-  return getTokenForOrigin(store, currentOrigin())
+export async function getAuthToken(): Promise<string | null> {
+  return getTokenStore().getToken(currentOrigin())
 }
 
-/**
- * 写入本地登录态。
- * - token 传入时与当前 API origin 绑定存放；
- * - 省略时保留现有 token（设置页等只更新展示信息的调用不能把
- *   移动端 Bearer 认证的 token 清掉）。
- */
-export function setAuthSession(session: AuthSession, token?: string) {
-  const store = storage()
+/** CSRF Token（Web 双提交用；原生返回 null） */
+export async function getCsrfToken(): Promise<string | null> {
+  return getTokenStore().getCsrfToken()
+}
+
+export function setAuthSession(session: AuthSession) {
+  const store = browserStorage()
   if (!store) return
   store.setItem(AUTH_SESSION_KEY, JSON.stringify(session))
-  if (token) {
-    bindToken(store, token, currentOrigin())
-  }
 }
 
-export function clearAuthSession() {
-  const store = storage()
+/** 登录成功：本地只写展示性会话信息；token 按平台进入安全存储 */
+export async function completeLogin(session: AuthSession, token?: string) {
+  if (token) {
+    await getTokenStore().setToken(token, currentOrigin())
+  }
+  setAuthSession(session)
+}
+
+/* ———————————— 在途请求失效（P4-1C） ———————————— */
+
+const inFlightControllers = new Set<AbortController>()
+let authEpoch = 0
+
+export function currentAuthEpoch(): number {
+  return authEpoch
+}
+
+export function registerInFlight(controller: AbortController): void {
+  inFlightControllers.add(controller)
+}
+
+export function unregisterInFlight(controller: AbortController): void {
+  inFlightControllers.delete(controller)
+}
+
+/** 安全清理：解除本地绑定 + 中止全部在途请求 + 身份纪元 +1 */
+export async function clearAuthSession() {
+  authEpoch += 1
+  for (const controller of inFlightControllers) {
+    try {
+      controller.abort()
+    } catch {
+      /* ignore */
+    }
+  }
+  inFlightControllers.clear()
+  const store = browserStorage()
   if (!store) return
-  clearTokenBinding(store)
+  await getTokenStore().clearToken()
+  store.removeItem(AUTH_SESSION_KEY)
+}
+
+/** 启动迁移：清理遗留明文 token（P4-1C 之前的版本会写入 localStorage） */
+export async function migrateLegacyCredentials(): Promise<{ clearedLegacyToken: boolean }> {
+  return getTokenStore().migrate()
 }
 
 /**
  * 启动时用服务端会话校验本地登录态。
  * - 401：本地会话已失效（过期 / 服务端重启 / 伪造），清除本地状态。
- * - 网络错误：无法证伪，保留本地会话（断网容错，接口调用时会自然暴露 401）。
+ * - 网络错误：无法证伪，保留本地会话（断网容容）。
  */
 export async function restoreAuthSession(): Promise<AuthSession | null> {
   const local = getAuthSession()
   if (!local) return null
 
   try {
-    const token = getAuthToken()
-    // P1.5：必须走 resolveApiUrl——Capacitor WebView 里相对路径会打到 App 自身
+    const token = await getAuthToken()
     const response = await fetch(resolveApiUrl('/api/auth/session'), {
       credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
     if (response.status === 401) {
-      clearAuthSession()
+      await clearAuthSession()
       return null
     }
     if (!response.ok) return local
@@ -104,7 +200,7 @@ export async function restoreAuthSession(): Promise<AuthSession | null> {
       account: data.account,
       loginAt: local.loginAt,
     }
-    setAuthSession(restored, token || undefined)
+    setAuthSession(restored)
     return restored
   } catch {
     return local
@@ -116,9 +212,18 @@ export async function restoreAuthSession(): Promise<AuthSession | null> {
  * 绑定 origin 与新 origin 不同 → true，调用方必须先解绑并要求重新登录。
  */
 export function authBindingConflictsWith(nextBase: string): boolean {
-  const store = storage()
+  const store = browserStorage()
   if (!store) return false
   if (typeof window === 'undefined') return false
   const nextOrigin = effectiveOrigin(nextBase, window.location.origin)
-  return isOriginChange(store, nextOrigin)
+  const bound = store.getItem('edumind-auth-token-origin')
+  if (!bound) return false
+  return Boolean(nextOrigin) && bound !== nextOrigin
 }
+
+/** 供测试：重置模块级单例 */
+export function __resetTokenStoreForTests() {
+  tokenStore = null
+}
+
+export { CSRF_COOKIE_NAME }

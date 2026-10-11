@@ -31,7 +31,7 @@ import type {
 } from '@/types/api'
 import type { ProfileResult } from '@/composables/useProfileSurvey'
 import { useAppStore } from '@/store'
-import { clearAuthSession, getAuthSession, getAuthToken } from '@/lib/auth'
+import { clearAuthSession, getAuthSession, getAuthToken, getCsrfToken, registerInFlight, unregisterInFlight } from '@/lib/auth'
 import { isMobileApp, resolveApiUrl } from '@/lib/api-config'
 
 function currentAccountId() {
@@ -122,25 +122,32 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
   let aiRequestSettled = false
 
   try {
-    const token = getAuthToken()
+    // P4-1C：token/CSRF 均异步获取（原生走 Keystore 安全存储）
+    const [token, csrfToken] = await Promise.all([getAuthToken(), getCsrfToken()])
     // 统一超时（默认 60s，可用 VITE_API_TIMEOUT_MS 覆盖），超时走 AbortError → 友好提示
     const timeoutMs = Number(import.meta.env.VITE_API_TIMEOUT_MS) > 0 ? Number(import.meta.env.VITE_API_TIMEOUT_MS) : 60000
     const controller = new AbortController()
+    // P4-1C：注册在途请求——安全清理/切号时一并中止
+    registerInFlight(controller)
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     let response: Response
     try {
+      const isStateChanging = method !== 'GET' && method !== 'HEAD'
       response = await fetch(resolveApiUrl(input), {
         credentials: 'include',
         signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          // Cookie 认证的写操作双提交 CSRF（Bearer 认证无需）
+          ...(isStateChanging && !token && csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
           ...(init?.headers || {}),
         },
         ...init,
       })
     } finally {
       clearTimeout(timer)
+      unregisterInFlight(controller)
     }
 
     if (!response.ok) {

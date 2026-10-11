@@ -37,3 +37,5 @@ server/store.json
 server/evidence-data/
 server/sessions.json
 server/identities.json
+server/sessions.json*
+server/identities.json*

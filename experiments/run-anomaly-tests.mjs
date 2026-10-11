@@ -4,7 +4,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { performance } from 'node:perf_hooks'
-import { createExperimentSession, withSessionCookie } from './api-session.mjs'
+import { createExperimentSession, withSessionAuth } from './api-session.mjs'
 
 const API_PORT = Number(process.env.ANOMALY_API_PORT || 8794)
 const FAKE_LLM_PORT = Number(process.env.ANOMALY_LLM_PORT || 8795)
@@ -49,7 +49,7 @@ async function request(name, urlPath, options = {}) {
   try {
     const response = await fetch(baseUrl + urlPath, {
       ...options,
-      headers: withSessionCookie(session, options.headers),
+      headers: withSessionAuth(session, options.headers),
     })
     const text = await response.text()
     let body = text

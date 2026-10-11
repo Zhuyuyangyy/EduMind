@@ -42,6 +42,12 @@ import { summarizeLearningHistory } from './learner-memory.js'
 import {
   buildSessionCookie,
   clearSessionCookie,
+  buildCsrfCookie,
+  clearCsrfCookie,
+  generateCsrfToken,
+  verifyCsrf,
+  isStateChangingMethod,
+  isCrossOriginRequest,
   createSession,
   destroySession,
   extractToken,
@@ -418,7 +424,12 @@ const server = http.createServer(async (req, res) => {
         displayName: authenticated.displayName,
         token,
         expiresAt: new Date(session.expiresAt).toISOString(),
-      }, { 'Set-Cookie': buildSessionCookie(token, session.expiresAt - Date.now()) })
+      }, {
+        'Set-Cookie': [
+          buildSessionCookie(token, session.expiresAt - Date.now(), { crossOrigin: isCrossOriginRequest(req) }),
+          buildCsrfCookie(generateCsrfToken(), { crossOrigin: isCrossOriginRequest(req) }),
+        ],
+      })
       return
     }
 
@@ -438,8 +449,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && pathname === '/api/auth/logout') {
+      const usedBearer = Boolean(req.headers.authorization?.startsWith('Bearer '))
+      if (!usedBearer && !verifyCsrf(req)) {
+        sendJson(res, 403, { error: 'Forbidden', message: '缺少或无效的 CSRF Token，请刷新页面后重试。' })
+        return
+      }
       await destroySession(extractToken(req))
-      sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearSessionCookie() })
+      sendJson(res, 200, { ok: true }, { 'Set-Cookie': [clearSessionCookie(), clearCsrfCookie()] })
       return
     }
 
@@ -1115,6 +1131,13 @@ const server = http.createServer(async (req, res) => {
       const session = await getSession(extractToken(req))
       if (!session) {
         sendJson(res, 401, { error: 'Unauthorized', message: '登录状态无效或已过期，请重新登录。' })
+        return
+      }
+      // P4-1C：Cookie 认证（浏览器自动携带）的写操作必须双提交 CSRF；
+      // Bearer 认证非浏览器自动携带，无 CSRF 面，不拦截。
+      const usedBearer = Boolean(req.headers.authorization?.startsWith('Bearer '))
+      if (!usedBearer && isStateChangingMethod(req.method) && !verifyCsrf(req)) {
+        sendJson(res, 403, { error: 'Forbidden', message: '缺少或无效的 CSRF Token，请刷新页面后重试。' })
         return
       }
       req.session = session

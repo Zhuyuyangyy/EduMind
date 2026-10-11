@@ -38,7 +38,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { setAuthSession } from '@/lib/auth'
+import { completeLogin } from '@/lib/auth'
 import { loginDemoAccount } from '@/lib/api'
 import { bumpDataEpoch } from '@/mobile/data/learning-data'
 import { resetStudyLocalState } from '@/mobile/data/study'
@@ -63,7 +63,7 @@ async function onSubmit() {
   error.value = null
   try {
     const result = await loginDemoAccount(account.value.trim(), password.value, 'student')
-    setAuthSession({
+    await completeLogin({
       role: result.role,
       name: result.displayName,
       account: result.account,

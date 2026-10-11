@@ -161,6 +161,7 @@ export async function getSession(token) {
 
   const tokenHash = hashToken(token)
   try {
+    const { findIdentity, isProductionMode } = await import('./identity.js')
     if (useMysql()) {
       await ensureSessionSchema()
       const { getMySqlPool } = await import('./store/mysql.js')
@@ -173,17 +174,22 @@ export async function getSession(token) {
       if (row.revoked_at) return null
       const expiresAt = row.expires_at instanceof Date ? row.expires_at.getTime() : new Date(row.expires_at).getTime()
       if (expiresAt <= Date.now()) return null
-      // 凭据版本校验（账号被禁用/改密后立即失效）
-      const { findIdentity } = await import('./identity.js')
+      // 身份校验（每次实时查询，不用缓存）：
+      // - 账号被禁用 → 会话失效
+      // - 凭据版本递增（改密/强制下线）→ 旧会话失效
+      // - 正式身份已被删除 → 生产模式会话失效（demo 模式保留演示账号兼容）
+      // - role 实时取自身份记录：权限降级不依赖凭据版本递增即生效
       const identity = await findIdentity(row.account_id)
       if (identity) {
         if (!identity.enabled) return null
         if ((Number(identity.credentialVersion) || 1) > (Number(row.credential_version) || 1)) return null
+      } else if (isProductionMode()) {
+        return null
       }
       return {
         account: row.account_id,
-        role: row.role,
-        displayName: row.display_name,
+        role: identity ? identity.role : row.role,
+        displayName: identity ? (identity.displayName || row.display_name) : row.display_name,
         createdAt: row.created_at instanceof Date ? row.created_at.getTime() : new Date(row.created_at).getTime(),
         expiresAt,
         credentialVersion: Number(row.credential_version) || 1,
@@ -194,15 +200,15 @@ export async function getSession(token) {
     const session = map[tokenHash]
     if (!session) return null
     if (session.revokedAt || session.expiresAt <= Date.now()) return null
-    if (session.credentialVersion) {
-      const { findIdentity } = await import('./identity.js')
-      const identity = await findIdentity(session.account)
-      if (identity) {
-        if (!identity.enabled) return null
-        if ((Number(identity.credentialVersion) || 1) > session.credentialVersion) return null
-      }
+    const identity = await findIdentity(session.account)
+    if (identity) {
+      if (!identity.enabled) return null
+      if ((Number(identity.credentialVersion) || 1) > (Number(session.credentialVersion) || 1)) return null
+    } else if (isProductionMode()) {
+      return null
     }
-    return session
+    // role 实时取自身份记录（演示账号无身份记录时沿用会话内角色）
+    return identity ? { ...session, role: identity.role, displayName: identity.displayName || session.displayName } : session
   } catch {
     // fail-closed：存储不可达不视为已认证
     return null
@@ -237,6 +243,57 @@ export function sessionCookieName() {
   return process.env.SESSION_COOKIE_NAME || 'edumind_session'
 }
 
+/* ———————————— P4-1C CSRF（双提交） ———————————— */
+
+export function csrfCookieName() {
+  return process.env.CSRF_COOKIE_NAME || 'edumind_csrf'
+}
+
+export function generateCsrfToken() {
+  return crypto.randomBytes(24).toString('base64url')
+}
+
+/**
+ * CSRF Cookie：必须可被 JS 读取（双提交模式），故不设 HttpOnly；
+ * 仅用于比对请求头，不承载认证信息。
+ */
+export function buildCsrfCookie(token, options = {}) {
+  const crossOrigin = Boolean(options.crossOrigin)
+  const sameSite = crossOrigin ? 'None' : (process.env.SESSION_COOKIE_SAMESITE || 'Lax')
+  const secure = crossOrigin || process.env.SESSION_COOKIE_SECURE === 'true' ? '; Secure' : ''
+  return `${csrfCookieName()}=${encodeURIComponent(token)}; Path=/; Max-Age=${Math.floor(ttlMs() / 1000)}; SameSite=${sameSite}${secure}`
+}
+
+/** 请求是否跨源（Origin 存在且与 Host 不同） */
+export function isCrossOriginRequest(req) {
+  const origin = req.headers.origin
+  if (!origin) return false
+  try {
+    return new URL(origin).host !== String(req.headers.host || '')
+  } catch {
+    return false
+  }
+}
+
+export function clearCsrfCookie() {
+  return `${csrfCookieName()}=; Path=/; Max-Age=0; SameSite=Lax`
+}
+
+/** 请求是否携带 CSRF 头且与 Cookie 中的值一致（timingSafeEqual） */
+export function verifyCsrf(req) {
+  const header = String(req.headers['x-csrf-token'] || '')
+  const cookie = parseCookies(req)[csrfCookieName()]
+  if (!header || !cookie) return false
+  const a = Buffer.from(header)
+  const b = Buffer.from(String(cookie))
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
+
+/** 状态修改方法（CSRF 只对这些有义） */
+export function isStateChangingMethod(method) {
+  return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method || '').toUpperCase())
+}
+
 export function parseCookies(req) {
   const header = req.headers.cookie
   if (!header) return {}
@@ -265,9 +322,13 @@ export function extractToken(req) {
   return parseCookies(req)[sessionCookieName()] || null
 }
 
-export function buildSessionCookie(token, maxAgeMs) {
-  const sameSite = process.env.SESSION_COOKIE_SAMESITE || 'Lax'
-  const secure = process.env.SESSION_COOKIE_SECURE === 'true' ? '; Secure' : ''
+export function buildSessionCookie(token, maxAgeMs, options = {}) {
+  // P4-1C：跨源部署（Capacitor/分离前后端）必须 SameSite=None 才能
+  // 随 XHR 携带；同源部署用 Lax（CSRF 面更小）。Secure 在跨源时必需
+  // （浏览器要求），同源时按显式配置。
+  const crossOrigin = Boolean(options.crossOrigin)
+  const sameSite = crossOrigin ? 'None' : (process.env.SESSION_COOKIE_SAMESITE || 'Lax')
+  const secure = crossOrigin || process.env.SESSION_COOKIE_SECURE === 'true' ? '; Secure' : ''
   const maxAge = Math.max(0, Math.floor((maxAgeMs || 0) / 1000))
   return `${sessionCookieName()}=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=${sameSite}${secure}`
 }

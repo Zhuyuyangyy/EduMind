@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { createExperimentSession, withSessionCookie } from './api-session.mjs'
+import { createExperimentSession, withSessionAuth } from './api-session.mjs'
 
 const baseUrl = process.argv[2] || 'http://127.0.0.1:8788'
 const outputPath = path.resolve(process.argv[3] || 'experiments/output/api-benchmark.json')
@@ -27,7 +27,7 @@ async function execute(scenario) {
   try {
     const response = await fetch(baseUrl + scenario.path, {
       method: scenario.method,
-      headers: withSessionCookie(session, scenario.body ? { 'content-type': 'application/json' } : undefined),
+      headers: withSessionAuth(session, scenario.body ? { 'content-type': 'application/json' } : undefined),
       body: scenario.body ? JSON.stringify(scenario.body) : undefined,
     })
     await response.arrayBuffer()

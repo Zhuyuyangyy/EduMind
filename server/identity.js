@@ -250,6 +250,40 @@ export async function bumpCredentialVersion(accountId) {
   writeIdentityFile(map)
 }
 
+/**
+ * 变更角色（权限升降级）。role 在会话校验时实时取自身份记录，
+ * 因此降级无需递增凭据版本即生效；升级同样即时。
+ */
+export async function setIdentityRole(accountId, role) {
+  const nextRole = role === 'admin' ? 'admin' : 'student'
+  if (useMysql()) {
+    await ensureIdentitySchema()
+    const { getMySqlPool } = await import('./store/mysql.js')
+    await getMySqlPool().query('UPDATE identities SET role = ?, updated_at = ? WHERE account_id = ?', [nextRole, new Date(), String(accountId)])
+    return
+  }
+  const map = readIdentityFile()
+  const record = map[String(accountId)]
+  if (!record) return
+  record.role = nextRole
+  record.updatedAt = new Date().toISOString()
+  writeIdentityFile(map)
+}
+
+/** 删除正式身份（生产模式：其名下会话立即全部失效） */
+export async function deleteIdentity(accountId) {
+  if (useMysql()) {
+    await ensureIdentitySchema()
+    const { getMySqlPool } = await import('./store/mysql.js')
+    await getMySqlPool().query('DELETE FROM identities WHERE account_id = ?', [String(accountId)])
+    return
+  }
+  const map = readIdentityFile()
+  if (!map[String(accountId)]) return
+  delete map[String(accountId)]
+  writeIdentityFile(map)
+}
+
 /** 供测试/运维：清空 JSON 身份存储 */
 export function resetIdentityStore() {
   if (!useMysql()) writeIdentityFile({})

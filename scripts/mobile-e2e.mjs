@@ -148,6 +148,7 @@ async function main() {
     cdp = new CdpClient(ws)
     await cdp.send('Page.enable')
     await cdp.send('Runtime.enable')
+    await cdp.send('Network.enable') // P4-1C：读取 HttpOnly 会话 cookie 重放注销
 
     if (CROSS_ORIGIN) {
       // 在页面脚本执行前预置绝对 API 地址（等价于真机上配置远程后端）
@@ -199,16 +200,20 @@ async function main() {
     const backToLogin = await waitFor(() => cdp.eval("Boolean(document.querySelector('.login'))"))
     report('E 退出登录回到登录页', Boolean(backToLogin))
 
-    // F. 会话失效：登录后用 App 内的 Bearer token 调服务端注销，
+    // F. 会话失效：P4-1C 起 Web 同源为 HttpOnly Cookie 认证（JS 读不到
+    //    会话 cookie），改用 CDP Network.getCookies 取全量 cookie，
+    //    配合 CSRF 双提交重放注销——等价于服务端主动撤销该会话。
     //    再进入 AI 导师（历史请求即 401）应被自动打回登录页
     const onTutor2 = await login(cdp)
     let logoutStatus = 0
     if (onTutor2) {
-      const token = await cdp.eval("localStorage.getItem('edumind-auth-token')")
-      if (token) {
+      const cookies = await cdp.send('Network.getCookies', { urls: [API_URL] }).catch(() => ({ cookies: [] }))
+      const cookieHeader = (cookies.cookies || []).map(item => `${item.name}=${item.value}`).join('; ')
+      const csrf = (cookies.cookies || []).find(item => item.name === 'edumind_csrf')?.value || ''
+      if (cookieHeader) {
         const res = await fetch(`${API_URL}/api/auth/logout`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Cookie: cookieHeader, ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
         }).catch(() => null)
         logoutStatus = res?.status || 0
       }

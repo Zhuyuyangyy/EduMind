@@ -39,6 +39,10 @@ async function withApiServer(fn) {
       ZHIXUE_DATA_FILE: DATA_FILE,
       ZHIXUE_CHAT_STORE_FILE: DATA_FILE,
       ZHIXUE_TRACE_FILE: TRACE_FILE,
+      // P4-1B：会话/身份文件按测试隔离 + 强制 JSON 模式
+      ZHIXUE_SESSION_FILE: `${DATA_FILE}.sessions.json`,
+      ZHIXUE_IDENTITY_FILE: `${DATA_FILE}.identities.json`,
+      MYSQL_URL: '', MYSQL_HOST: '', MYSQL_PORT: '', MYSQL_USER: '', MYSQL_PASSWORD: '', MYSQL_DATABASE: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -63,7 +67,10 @@ async function withApiServer(fn) {
   assert.equal(stderr, '')
 }
 
-/** 登录演示账号，返回 Cookie 头（P0 认证改造后所有业务接口都需要会话）。 */
+/**
+ * 登录演示账号，返回 { cookie, csrf }（P0 认证改造后所有业务接口都需要
+ * 会话；P4-1C 起 Cookie 认证的写操作还必须双提交 CSRF Token）。
+ */
 async function loginAsStudent() {
   const response = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
@@ -71,18 +78,26 @@ async function loginAsStudent() {
     body: JSON.stringify({ account: 'reviewer', password: 'Zhixue2026!', role: 'student' }),
   })
   assert.equal(response.status, 200)
-  const setCookie = response.headers.get('set-cookie') || ''
-  const cookie = setCookie.split(';')[0]
-  assert.ok(cookie.startsWith('edumind_session='), `login should issue session cookie, got: ${setCookie}`)
-  return cookie
+  const setCookies = response.headers.getSetCookie?.() || []
+  const cookie = setCookies.map(item => item.split(';')[0].trim()).filter(Boolean).join('; ')
+  assert.ok(cookie.startsWith('edumind_session='), `login should issue session cookie, got: ${cookie}`)
+  let csrf = ''
+  for (const item of setCookies) {
+    const pair = item.split(';')[0]
+    const index = pair.indexOf('=')
+    if (index > 0 && pair.slice(0, index).trim() === 'edumind_csrf') {
+      csrf = decodeURIComponent(pair.slice(index + 1).trim())
+    }
+  }
+  return { cookie, csrf }
 }
 
 test('/api/chat accepts dialogue messages payload and returns dialogue shape', async () => {
   await withApiServer(async () => {
-    const cookie = await loginAsStudent()
+    const { cookie, csrf } = await loginAsStudent()
     const response = await fetch(`${BASE_URL}/api/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, 'X-CSRF-Token': csrf },
       body: JSON.stringify({
         messages: [{ sender: 'user', text: '你好' }],
         currentDimensions: { identity: 'student' },

@@ -17,6 +17,8 @@ const BASE_URL = `http://127.0.0.1:${TEST_PORT}`
 // 与其他测试文件隔离数据文件，避免并行执行时争抢 store.json / traces.json
 const DATA_FILE = path.join(os.tmpdir(), `edumind-test-auth-${process.pid}.json`)
 const TRACE_FILE = path.join(os.tmpdir(), `edumind-test-auth-traces-${process.pid}.json`)
+const SESSION_FILE = path.join(os.tmpdir(), `edumind-test-auth-sessions-${process.pid}.json`)
+const IDENTITY_FILE = path.join(os.tmpdir(), `edumind-test-auth-identities-${process.pid}.json`)
 
 async function waitForServer(child) {
   const deadline = Date.now() + 5000
@@ -43,6 +45,11 @@ async function withApiServer(fn) {
       ZHIXUE_DATA_FILE: DATA_FILE,
       ZHIXUE_CHAT_STORE_FILE: DATA_FILE,
       ZHIXUE_TRACE_FILE: TRACE_FILE,
+      // P4-1B：会话/身份文件按测试隔离（并行测试不互相覆盖）
+      ZHIXUE_SESSION_FILE: SESSION_FILE,
+      ZHIXUE_IDENTITY_FILE: IDENTITY_FILE,
+      // P4-1B：强制 JSON 模式，避免继承调用方 MYSQL_* 共库
+      MYSQL_URL: '', MYSQL_HOST: '', MYSQL_PORT: '', MYSQL_USER: '', MYSQL_PASSWORD: '', MYSQL_DATABASE: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -62,6 +69,8 @@ async function withApiServer(fn) {
     }
     fs.rmSync(DATA_FILE, { force: true })
     fs.rmSync(TRACE_FILE, { force: true })
+    fs.rmSync(SESSION_FILE, { force: true })
+    fs.rmSync(IDENTITY_FILE, { force: true })
   }
 
   assert.equal(stderr, '')
@@ -74,10 +83,31 @@ async function login(account, password, role = 'student') {
     body: JSON.stringify({ account, password, role }),
   })
   assert.equal(response.status, 200, `login ${account} should succeed`)
-  const setCookie = response.headers.get('set-cookie') || ''
-  const cookie = setCookie.split(';')[0]
+  // P4-1C：登录响应同时下发会话 Cookie 与 CSRF Cookie（双提交）
+  const setCookies = response.headers.getSetCookie?.() || []
+  const cookie = setCookies.map(item => item.split(';')[0].trim()).filter(Boolean).join('; ')
+  let csrf = ''
+  for (const item of setCookies) {
+    const pair = item.split(';')[0]
+    const index = pair.indexOf('=')
+    if (index > 0 && pair.slice(0, index).trim() === 'edumind_csrf') {
+      csrf = decodeURIComponent(pair.slice(index + 1).trim())
+    }
+  }
   const data = await response.json()
-  return { cookie, token: data.token, account: data.account, role: data.role }
+  return { cookie, token: data.token, account: data.account, role: data.role, csrf }
+}
+
+/**
+ * P4-1C：Cookie 认证的写请求必须双提交 CSRF。
+ * authHeaders(cookie, csrf, extra) 生成带头部的 init。
+ */
+function writeInit(cookie, csrf, body) {
+  return {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie, 'X-CSRF-Token': csrf },
+    body: JSON.stringify(body),
+  }
 }
 
 test('未登录访问业务接口返回 401', async () => {
@@ -153,12 +183,12 @@ test('Capacitor 场景：Bearer token 可访问业务接口', async () => {
 
 test('accountId 由服务端会话推导：客户端伪造 accountId 无效', async () => {
   await withApiServer(async () => {
-    const { cookie } = await login('reviewer', 'Zhixue2026!')
+    const { cookie, csrf } = await login('reviewer', 'Zhixue2026!')
 
     // 旧攻击面：在 body / query 里自报身份，服务端必须忽略
     const saved = await fetch(`${BASE_URL}/api/profile/save`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, 'X-CSRF-Token': csrf },
       body: JSON.stringify({
         accountId: 'victim-account',
         score: 77,
@@ -195,7 +225,7 @@ test('聊天历史按账号隔离：两个账号互相看不到对方记录', as
 
     const send = await fetch(`${BASE_URL}/api/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: reviewer.cookie },
+      headers: { 'Content-Type': 'application/json', Cookie: reviewer.cookie, 'X-CSRF-Token': reviewer.csrf },
       body: JSON.stringify({ message: marker }),
     })
     assert.equal(send.status, 200)
@@ -231,13 +261,13 @@ test('CORS 白名单：不在名单中的 Origin 不获得跨域许可', async (
 
 test('登出后会话立即失效', async () => {
   await withApiServer(async () => {
-    const { cookie } = await login('reviewer', 'Zhixue2026!')
+    const { cookie, csrf } = await login('reviewer', 'Zhixue2026!')
     const before = await fetch(`${BASE_URL}/api/tutoring/topics`, { headers: { Cookie: cookie } })
     assert.equal(before.status, 200)
 
     const out = await fetch(`${BASE_URL}/api/auth/logout`, {
       method: 'POST',
-      headers: { Cookie: cookie },
+      headers: { Cookie: cookie, 'X-CSRF-Token': csrf },
     })
     assert.equal(out.status, 200)
 
@@ -254,7 +284,7 @@ test('证据追踪按账号隔离：两个账号互相看不到对方的 trace',
 
     const chat = await fetch(`${BASE_URL}/api/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: reviewer.cookie },
+      headers: { 'Content-Type': 'application/json', Cookie: reviewer.cookie, 'X-CSRF-Token': reviewer.csrf },
       body: JSON.stringify({ message: marker }),
     })
     assert.equal(chat.status, 200)
@@ -289,7 +319,7 @@ test('历史 trace（无 accountId 字段）对登录用户不可见', async () 
     }]
     fs.writeFileSync(TRACE_FILE, JSON.stringify(legacy), 'utf8')
 
-    const { cookie } = await login('reviewer', 'Zhixue2026!')
+    const { cookie, csrf } = await login('reviewer', 'Zhixue2026!')
     const traces = await fetch(`${BASE_URL}/api/evidence/traces`, { headers: { Cookie: cookie } })
     const items = (await traces.json()).items
     assert.ok(!items.some(t => (t.inputsSummary || '').includes('legacy-secret')), 'legacy traces must not leak to logged-in users')
@@ -300,7 +330,7 @@ test('协作演示数据重置接口要求管理员角色', async () => {
   await withApiServer(async () => {
     const student = await login('student', 'student123')
     const denied = await fetch(`${BASE_URL}/api/agent-collaboration/seed`, {
-      method: 'POST', headers: { Cookie: student.cookie },
+      method: 'POST', headers: { Cookie: student.cookie, 'X-CSRF-Token': student.csrf },
     })
     assert.equal(denied.status, 403)
   })
@@ -322,7 +352,7 @@ test('知识路径按账号隔离', async () => {
 
     const generated = await fetch(`${BASE_URL}/api/knowledge-path/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: reviewer.cookie },
+      headers: { 'Content-Type': 'application/json', Cookie: reviewer.cookie, 'X-CSRF-Token': reviewer.csrf },
       body: JSON.stringify({ profile }),
     })
     assert.equal(generated.status, 200)
@@ -348,12 +378,12 @@ test('交错并发产生 trace 时严格归属各自账号（非压测，交错�
       const [rRes, sRes] = await Promise.all([
         fetch(`${BASE_URL}/api/chat`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Cookie: reviewer.cookie },
+          headers: { 'Content-Type': 'application/json', Cookie: reviewer.cookie, 'X-CSRF-Token': reviewer.csrf },
           body: JSON.stringify({ message: rMarker }),
         }),
         fetch(`${BASE_URL}/api/chat`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Cookie: student.cookie },
+          headers: { 'Content-Type': 'application/json', Cookie: student.cookie, 'X-CSRF-Token': student.csrf },
           body: JSON.stringify({ message: sMarker }),
         }),
       ])
@@ -380,7 +410,7 @@ test('协作看板只聚合当前账号的真实活动（元数据也不跨账�
     // reviewer 产生 1 次 tutor trace，student 产生 3 次（主 agent 均为 ProfileAgent → profile-module）
     const askTutor = (session, question) => fetch(`${BASE_URL}/api/agents/tutor`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: session.cookie },
+      headers: { 'Content-Type': 'application/json', Cookie: session.cookie, 'X-CSRF-Token': session.csrf },
       body: JSON.stringify({ question, mode: 'qa' }),
     })
     assert.equal((await askTutor(reviewer, 'reviewer 的提问')).status, 200)

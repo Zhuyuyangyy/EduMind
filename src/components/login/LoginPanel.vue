@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { setAuthSession } from '@/lib/auth'
+import { completeLogin } from '@/lib/auth'
 import { loginDemoAccount } from '@/lib/api'
 
 type LoginRole = 'student' | 'admin'
@@ -68,7 +68,7 @@ async function handleSubmit() {
   loading.value = true
   try {
     const result = await loginDemoAccount(account.value, password.value, activeRole.value)
-    setAuthSession({
+    await completeLogin({
       role: result.role,
       name: result.displayName,
       account: result.account,

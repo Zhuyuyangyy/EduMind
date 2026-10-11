@@ -26,9 +26,11 @@
     "test:mobile-e2e": "node scripts/mobile-e2e.mjs",
     "test:mobile-e2e-data": "node scripts/mobile-e2e-data.mjs",
     "test:mobile-e2e-study": "node scripts/mobile-e2e-study.mjs",
-    "verify:mysql": "node scripts/verify-mysql.mjs"
+    "verify:mysql": "node scripts/verify-mysql.mjs",
+    "postinstall": "node scripts/patch-secure-storage.mjs"
   },
   "dependencies": {
+    "@aparajita/capacitor-secure-storage": "^7.1.6",
     "@capacitor/android": "^7.6.9",
     "@capacitor/cli": "^7.6.9",
     "@capacitor/core": "^7.6.9",
