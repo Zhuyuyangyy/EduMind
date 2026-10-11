@@ -85,12 +85,22 @@ export function previousDayInZone(dayStr, timeZone = 'Asia/Shanghai') {
   }
 }
 
-/** 计算连续学习天数：只在时区自然日上回溯，陈旧记录不会误判为仍在连续 */
+/**
+ * 计算连续学习天数（P4-0 修正）。
+ * 只有最近一个学习日是「今天或昨天」（账号时区）时，才存在当前
+ * 意义上的连续记录；最后学习日早于昨天 → 当前连续为 0
+ * （历史上很久以前的连续记录不得误显示为仍在连续）。
+ */
 export function computeStreak(daySet, timeZone = 'Asia/Shanghai') {
   if (daySet.size === 0) return 0
   const days = [...daySet].sort()
+  const latest = days[days.length - 1]
+  const today = naturalDay(new Date().toISOString(), timeZone)
+  const yesterday = previousDayInZone(today, timeZone)
+  if (latest !== today && latest !== yesterday) return 0
+
   let streak = 0
-  let cursor = days[days.length - 1]
+  let cursor = latest
   for (;;) {
     if (!daySet.has(cursor)) break
     streak += 1
@@ -322,28 +332,52 @@ export function getStudyStats(accountId) {
 
 /* ———————————— 画像修订账本 ———————————— */
 
+/**
+ * 保存画像修订（P4-0：幂等）。
+ * sessionId 持久化到记录；同一 (accountId, sessionId) 重复保存返回
+ * 已有记录（JSON 模式按会话索引 O(1) 判断，不扫描历史）。
+ * 无 sessionId 的历史修订保留并标记来源不可归因。
+ */
 export function saveProfileRevision(accountId, revision) {
   const store = readStore()
+  const sessionId = revision.sessionId || null
+
+  // 幂等：同会话已有修订 → 直接返回已有记录
+  if (sessionId) {
+    const existing = store.profileRevisions.find(r => r.accountId === accountId && r.sessionId === sessionId)
+    if (existing) return existing
+  }
+
   const record = {
     id: newId('revision'),
     accountId,
+    sessionId,
     eventIds: Array.isArray(revision.eventIds) ? revision.eventIds : [],
     before: revision.before ?? null,
     after: revision.after ?? null,
     reason: revision.reason || '',
     source: revision.source === 'model' ? 'model' : 'rule',
     version: Number.isInteger(revision.version) ? revision.version : 1,
+    // 无法归因到会话的历史记录显式标注（不猜测关联）
+    attribution: sessionId ? 'session' : 'unattributed',
     createdAt: nowIso(),
   }
   store.profileRevisions = [...store.profileRevisions, record].slice(-500)
   appendEvent(store, {
     accountId,
-    sessionId: revision.sessionId || null,
+    sessionId,
     type: 'profile-revision',
     ref: { revisionId: record.id, source: record.source },
   })
   writeStore(store)
   return record
+}
+
+/** 按会话判断修订是否已存在（O(1)，替代扫描最近 N 条） */
+export function hasRevisionForSession(accountId, sessionId) {
+  if (!sessionId) return false
+  const store = readStore()
+  return store.profileRevisions.some(r => r.accountId === accountId && r.sessionId === sessionId)
 }
 
 export function listProfileRevisions(accountId, limit = 20) {

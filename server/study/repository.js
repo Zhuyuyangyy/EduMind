@@ -39,6 +39,10 @@ export function saveProfileRevision(accountId, revision) {
   return store().saveProfileRevision(accountId, revision)
 }
 
+export function hasRevisionForSession(accountId, sessionId) {
+  return store().hasRevisionForSession(accountId, sessionId)
+}
+
 export function listProfileRevisions(accountId, limit) {
   return store().listProfileRevisions(accountId, limit)
 }

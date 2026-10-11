@@ -22,8 +22,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-// 接管超时窗口：默认 60s；测试/运维可通过 ZHIXUE_FEEDBACK_STALE_MS 调整
-const STALE_MS = Math.max(0, Number(process.env.ZHIXUE_FEEDBACK_STALE_MS || 60_000))
+// 接管超时窗口读取（P4-0：调用时读取，避免模块加载后设置环境变量不生效）
+function staleMs() {
+  return Math.max(0, Number(process.env.ZHIXUE_FEEDBACK_STALE_MS || 60_000))
+}
 
 const EMPTY_STEPS = { profile: 'pending', path: 'pending', revision: 'pending' }
 
@@ -94,7 +96,7 @@ function jsonClaim(accountId, sessionId) {
     if (existing.status === 'completed') {
       return { status: 'completed', result: existing.result, attempt: existing.attempt }
     }
-    const fresh = existing.status === 'processing' && now - new Date(existing.startedAt).getTime() < STALE_MS
+    const fresh = existing.status === 'processing' && now - new Date(existing.startedAt).getTime() < staleMs()
     if (fresh) {
       return { status: 'in-progress', attempt: existing.attempt }
     }
@@ -164,6 +166,18 @@ async function ensureMysqlSchema() {
       PRIMARY KEY (account_id, session_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `)
+  // P4-0 迁移：P3-2.1 旧表补 P3.4 新增列（幂等；CREATE IF NOT EXISTS
+  // 对已存在的表不会补列，必须显式 ALTER）
+  for (const [column, definition] of [
+    ['pending_revision_json', 'JSON NULL'],
+    ['partial_json', "JSON NOT NULL"],
+  ]) {
+    try {
+      await db.query(`ALTER TABLE study_feedback ADD COLUMN ${column} ${definition}`)
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME' && !/Duplicate column/i.test(error?.message || '')) throw error
+    }
+  }
   mysqlSchemaReady = true
 }
 
@@ -217,7 +231,7 @@ async function mysqlClaim(accountId, sessionId) {
   if (row.status === 'completed') {
     return { status: 'completed', result: parseMaybe(row.result_json), attempt: row.attempt }
   }
-  const fresh = row.status === 'processing' && Date.now() - startedAt < STALE_MS
+  const fresh = row.status === 'processing' && Date.now() - startedAt < staleMs()
   if (fresh) {
     return { status: 'in-progress', attempt: row.attempt }
   }

@@ -1,4 +1,4 @@
-import test, { after } from 'node:test'
+import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -6,11 +6,6 @@ import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
-
-// 同 study-recovery.test.mjs：防止残留句柄挂起测试进程
-after(() => {
-  setTimeout(() => process.exit(0), 200).unref()
-})
 
 /**
  * P3.4 题库版本与历史快照验收。
@@ -20,6 +15,26 @@ after(() => {
  */
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+/**
+ * 进程清理（Windows 平台）：spawn 的子进程被 kill 后会残留管道 Socket
+ * 拖住父进程事件循环。做法：spawn 后立即 unref()，kill 后等待 exit
+ * （带超时竞速）。进程随事件循环排空自然退出，不依赖强制 process.exit()。
+ */
+function startTrackedServer(command, args, options) {
+  const child = spawn(command, args, options)
+  child.unref()
+  return child
+}
+
+async function stopServer(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return
+  child.kill()
+  await Promise.race([
+    new Promise(resolve => child.on('exit', resolve)),
+    new Promise(resolve => setTimeout(resolve, 1500)),
+  ])
+}
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
@@ -51,7 +66,7 @@ test('题库升级不改变历史会话的题目与判分（快照隔离）', as
     ZHIXUE_FEEDBACK_STALE_MS: '0',
   }
 
-  let api = spawn(process.execPath, ['server/index.js'], { cwd: projectRoot, env: { ...process.env, PORT: String(port), ...env }, stdio: 'ignore' })
+  let api = startTrackedServer(process.execPath, ['server/index.js'], { cwd: projectRoot, env: { ...process.env, PORT: String(port), ...env }, stdio: 'ignore' })
   try {
     await waitUp(baseUrl)
     const login = await (await fetch(`${baseUrl}/api/auth/login`, {
@@ -80,9 +95,8 @@ test('题库升级不改变历史会话的题目与判分（快照隔离）', as
     fs.writeFileSync(bankFile, JSON.stringify(upgraded, null, 2))
 
     // 重启服务加载新题库
-    api.kill()
-    await sleep(400)
-    api = spawn(process.execPath, ['server/index.js'], { cwd: projectRoot, env: { ...process.env, PORT: String(port), ...env }, stdio: 'ignore' })
+    await stopServer(api)
+    api = startTrackedServer(process.execPath, ['server/index.js'], { cwd: projectRoot, env: { ...process.env, PORT: String(port), ...env }, stdio: 'ignore' })
     await waitUp(baseUrl)
     // 重启后会话令牌失效（内存态），需重新登录
     const relogin = await (await fetch(`${baseUrl}/api/auth/login`, {
@@ -105,7 +119,7 @@ test('题库升级不改变历史会话的题目与判分（快照隔离）', as
     })).json()
     assert.equal(submitOriginal.correct, true, '按创建时答案提交必须判对（快照判分）')
   } finally {
-    api.kill()
+    await stopServer(api)
     try {
       fs.rmSync(dataFile, { force: true })
       fs.rmSync(bankFile, { force: true })
@@ -116,7 +130,7 @@ test('题库升级不改变历史会话的题目与判分（快照隔离）', as
   }
 })
 
-test('时区连续学习天数：按账号时区自然日回溯，陈旧记录不误判', async () => {
+test('时区连续学习天数：陈旧记录不得显示为当前连续', async () => {
   const { computeStreak, naturalDay, previousDayInZone } = await import('./study/store.js')
 
   // 基本连续性
@@ -127,6 +141,14 @@ test('时区连续学习天数：按账号时区自然日回溯，陈旧记录�
   // 断档：三天前 + 今天 → 连续 1（不得把陈旧记录算进当前连续）
   const threeDaysAgo = previousDayInZone(previousDayInZone(yesterday, 'Asia/Shanghai'), 'Asia/Shanghai')
   assert.equal(computeStreak(new Set([today, threeDaysAgo]), 'Asia/Shanghai'), 1)
+
+  // P4-0：最后学习日是昨天 → 仍然算连续（昨天学的，今天还没学）
+  assert.equal(computeStreak(new Set([yesterday, previousDayInZone(yesterday, 'Asia/Shanghai')]), 'Asia/Shanghai'), 2)
+
+  // P4-0：陈旧连续（三天前结束，且更早还有记录）→ 当前连续为 0
+  const fourDaysAgo = previousDayInZone(threeDaysAgo, 'Asia/Shanghai')
+  assert.equal(computeStreak(new Set([threeDaysAgo, fourDaysAgo]), 'Asia/Shanghai'), 0,
+    '三天前结束的连续记录不得显示为当前连续')
 
   // 空集合
   assert.equal(computeStreak(new Set(), 'Asia/Shanghai'), 0)

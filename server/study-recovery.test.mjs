@@ -1,4 +1,4 @@
-import test, { after } from 'node:test'
+import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -7,11 +7,26 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
-// 所有服务器均在各自 finally 中 kill；此处确保测试进程不因 undici
-// keep-alive socket 等残留句柄挂起（node --test 会等待进程自然退出）
-after(() => {
-  setTimeout(() => process.exit(0), 200).unref()
-})
+/**
+ * 进程清理（Windows 平台）：spawn 的子进程被 kill 后会残留管道 Socket
+ * 拖住父进程事件循环。做法：spawn 后立即 unref()（子进程句柄不保持
+ * 父进程存活），finally 中 kill + 等待 exit（带超时竞速）。进程随
+ * 事件循环排空自然退出，不依赖强制 process.exit()。
+ */
+function startTrackedServer(command, args, options) {
+  const child = spawn(command, args, options)
+  child.unref()
+  return child
+}
+
+async function stopServer(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return
+  child.kill()
+  await Promise.race([
+    new Promise(resolve => child.on('exit', resolve)),
+    new Promise(resolve => setTimeout(resolve, 1500)),
+  ])
+}
 
 /**
  * P3.4 崩溃恢复验收（先于修复编写，预期在当前版本失败）。
@@ -28,7 +43,7 @@ after(() => {
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 function startServer(port, dataFile, extraEnv = {}) {
-  const child = spawn(process.execPath, ['server/index.js'], {
+  const child = startTrackedServer(process.execPath, ['server/index.js'], {
     cwd: projectRoot,
     env: {
       ...process.env,
@@ -125,8 +140,7 @@ async function crashRecoveryCase(t, faultPoint, assertions) {
     assert.equal(first.status, 500, `故障注入应导致 500，实际=${first.status}`)
 
     const afterCrash = await readState(baseUrl, auth, sessionId)
-    api.kill()
-    await new Promise(r => setTimeout(r, 400))
+    await stopServer(api)
 
     // 重启（无故障注入）
     api = startServer(port, dataFile)
@@ -138,7 +152,7 @@ async function crashRecoveryCase(t, faultPoint, assertions) {
     const afterRecovery = await readState(baseUrl, auth2, sessionId)
     assertions({ afterCrash, afterRecovery })
   } finally {
-    api.kill()
+    await stopServer(api)
     try {
       fs.rmSync(dataFile, { force: true })
       fs.rmSync(`${dataFile}.traces.json`, { force: true })
@@ -189,8 +203,7 @@ test('恢复完整性：三次连续重启后状态稳定（无重复写入）',
     const auth = await login(baseUrl)
     const sessionId = await prepareCompletedSession(baseUrl, auth)
     await fetch(`${baseUrl}/api/study/sessions/${sessionId}/feedback`, { method: 'POST', headers: auth })
-    api.kill()
-    await new Promise(r => setTimeout(r, 400))
+    await stopServer(api)
 
     // 连续三次重启 + 请求
     for (let round = 0; round < 2; round += 1) {
@@ -206,7 +219,7 @@ test('恢复完整性：三次连续重启后状态稳定（无重复写入）',
     assert.equal(logic.value, 54, `多次重启后画像应稳定在 54，实际=${logic.value}`)
     assert.equal(final.revisions.length, 1, `多次重启后修订账本应稳定为 1 条，实际=${final.revisions.length}`)
   } finally {
-    api.kill()
+    await stopServer(api)
     try {
       fs.rmSync(dataFile, { force: true })
       fs.rmSync(`${dataFile}.traces.json`, { force: true })

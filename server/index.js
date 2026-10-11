@@ -63,12 +63,14 @@ import {
   getStudyStats,
   listLearningEvents,
   listProfileRevisions,
+  hasRevisionForSession,
   saveProfileRevision,
   listBankTopics,
   findExercise,
   summarizeAttempts,
 } from './study/repository.js'
 import { generateStudyFeedback, buildWrongItems } from './study/feedback.js'
+import { publicSessionView, publicAttemptView, publicExerciseView } from './study/dto.js'
 import {
   prepareProfileUpdate,
   commitProfileUpdate,
@@ -649,7 +651,8 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    // 会话状态（刷新/重连后恢复；账号越权不可见）
+    // 会话状态（刷新/重连后恢复；账号越权不可见）。
+    // P4-0：白名单 DTO——不返回 exerciseSnapshot/答案等内部字段
     const sessionMatch = pathname.match(/^\/api\/study\/sessions\/([A-Za-z0-9-]+)$/)
     if (req.method === 'GET' && sessionMatch) {
       const state = await getStudySession(accountIdOf(req), sessionMatch[1])
@@ -657,7 +660,10 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 404, { error: 'Not Found', message: '会话不存在或不属于当前账号' })
         return
       }
-      sendJson(res, 200, state)
+      sendJson(res, 200, {
+        session: publicSessionView(state.session),
+        attempts: state.attempts.map(publicAttemptView),
+      })
       return
     }
 
@@ -681,14 +687,15 @@ const server = http.createServer(async (req, res) => {
         }
         return findExercise(id)
       }
+      // P4-0：白名单映射（非黑名单剥离）——未完成会话任何答案字段都不出现
       const exercises = state.session.exerciseIds
         .map(id => resolveExercise(id))
         .filter(Boolean)
-        .map(exercise => (revealed ? exercise : (({ answer, explanation, ...rest }) => rest)(exercise)))
+        .map(exercise => publicExerciseView(exercise, { revealed }))
       // 权威评分：由已保存的作答记录确定性计算，独立于 AI 反馈
       const assessment = summarizeAttempts(state.attempts)
       sendJson(res, 200, {
-        session: state.session,
+        session: publicSessionView(state.session),
         exercises,
         answered: state.attempts.map(a => ({ exerciseId: a.exerciseId, correct: a.correct, submitted: a.submitted ?? null })),
         revealed,
@@ -847,14 +854,16 @@ const server = http.createServer(async (req, res) => {
 
         // 步骤 2：修订账本（对账补齐：画像已写但账本缺失的中间态在此恢复）
         if (record.steps?.revision !== 'done') {
-          const existingRevisions = await listProfileRevisions(accountId, 20)
-          const hasRevision = existingRevisions.some(item => item.sessionId === sessionId)
+          // P4-0：按 (accountId, sessionId) O(1) 判断，不扫描历史
+          const hasRevision = await hasRevisionForSession(accountId, sessionId)
           const pendingRevision = record.pendingRevision || (profileUpdate.applied && profileUpdate.revision ? profileUpdate.revision : null)
           // 故障注入（测试脚手架，默认关闭）：画像已写、修订账本未写时崩溃
           if (!hasRevision && pendingRevision) injectFault('before-revision-write')
           if (!hasRevision && pendingRevision) {
             await saveProfileRevision(accountId, pendingRevision)
           }
+          // 故障注入（测试脚手架，默认关闭）：修订已写、步骤未标记时崩溃
+          injectFault('after-revision-write')
           await commitState(r => ({ ...r, steps: { ...r.steps, revision: 'done' } }))
         }
 

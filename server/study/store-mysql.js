@@ -78,6 +78,7 @@ export async function ensureStudySchema() {
     CREATE TABLE IF NOT EXISTS profile_revisions (
       id VARCHAR(64) NOT NULL PRIMARY KEY,
       account_id VARCHAR(191) NOT NULL,
+      session_id VARCHAR(64) NULL,
       event_ids JSON NOT NULL,
       before_json JSON NULL,
       after_json JSON NULL,
@@ -85,9 +86,33 @@ export async function ensureStudySchema() {
       source VARCHAR(16) NOT NULL DEFAULT 'rule',
       version INT NOT NULL DEFAULT 1,
       created_at DATETIME(3) NOT NULL,
-      KEY profile_revisions_account (account_id, created_at)
+      attribution VARCHAR(16) NOT NULL DEFAULT 'session',
+      KEY profile_revisions_account (account_id, created_at),
+      -- P4-0：会话级唯一约束（NULL 允许多条，兼容无法归因的历史记录）
+      UNIQUE KEY profile_revisions_session (account_id, session_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `)
+  // P4-0 迁移：旧表补 session_id / attribution 列（幂等，不依赖 CREATE IF NOT EXISTS）
+  for (const [column, definition] of [
+    ['session_id', 'VARCHAR(64) NULL'],
+    ['attribution', "VARCHAR(16) NOT NULL DEFAULT 'session'"],
+  ]) {
+    try {
+      await db.query(`ALTER TABLE profile_revisions ADD COLUMN ${column} ${definition}`)
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME' && !/Duplicate column/i.test(error?.message || '')) throw error
+    }
+  }
+  // 旧表补唯一索引（已存在则忽略）
+  try {
+    await db.query('ALTER TABLE profile_revisions ADD UNIQUE KEY profile_revisions_session (account_id, session_id)')
+  } catch (error) {
+    const duplicate = error?.code === 'ER_DUP_KEYNAME' || /Duplicate key name/i.test(error?.message || '')
+    const dupEntry = error?.code === 'ER_DUP_ENTRY'
+    if (!duplicate && !dupEntry) throw error
+    // ER_DUP_ENTRY：历史数据存在同会话多条修订——保留数据，由人工核对
+    // （不做猜测性删除；唯一约束对后续写入生效）
+  }
   studySchemaReady = true
 }
 
@@ -353,36 +378,82 @@ export async function getStudyStats(accountId) {
   }
 }
 
+/**
+ * 保存画像修订（P4-0：幂等 + 会话级唯一约束）。
+ * 同一 (accountId, sessionId) 重复插入时靠 UNIQUE 约束拦截并返回
+ * 已有记录（ER_DUP_ENTRY → 查回返回），不产生第二条修订。
+ */
 export async function saveProfileRevision(accountId, revision) {
   await ensureStudySchema()
   const db = getMySqlPool()
+  const sessionId = revision.sessionId || null
   const record = {
     id: newId('revision'),
     accountId,
+    sessionId,
     eventIds: Array.isArray(revision.eventIds) ? revision.eventIds : [],
     before: revision.before ?? null,
     after: revision.after ?? null,
     reason: revision.reason || '',
     source: revision.source === 'model' ? 'model' : 'rule',
     version: Number.isInteger(revision.version) ? revision.version : 1,
+    attribution: sessionId ? 'session' : 'unattributed',
     createdAt: nowIso(),
   }
-  await db.query(
-    `INSERT INTO profile_revisions (id, account_id, event_ids, before_json, after_json, reason, source, version, created_at)
-     VALUES (?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, ?, ?, ?)`,
-    [
-      record.id, accountId,
-      JSON.stringify(record.eventIds),
-      JSON.stringify(record.before),
-      JSON.stringify(record.after),
-      record.reason, record.source, record.version, record.createdAt,
-    ],
-  )
+  try {
+    await db.query(
+      `INSERT INTO profile_revisions (id, account_id, session_id, event_ids, before_json, after_json, reason, source, version, created_at, attribution)
+       VALUES (?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, ?, ?, ?, ?)`,
+      [
+        record.id, accountId, sessionId,
+        JSON.stringify(record.eventIds),
+        JSON.stringify(record.before),
+        JSON.stringify(record.after),
+        record.reason, record.source, record.version, record.createdAt, record.attribution,
+      ],
+    )
+  } catch (error) {
+    const isDuplicate = error?.code === 'ER_DUP_ENTRY' || error?.code === 'ER_DUP_KEY'
+    if (!isDuplicate || !sessionId) throw error
+    // 同会话修订已存在 → 幂等返回已有记录
+    const existing = await findRevisionBySession(accountId, sessionId)
+    if (existing) return existing
+    throw error
+  }
   await db.query(
     `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'profile-revision', CAST(? AS JSON), ?)`,
-    [newId('event'), accountId, revision.sessionId || null, JSON.stringify({ revisionId: record.id, source: record.source }), nowIso()],
+    [newId('event'), accountId, sessionId, JSON.stringify({ revisionId: record.id, source: record.source }), nowIso()],
   )
   return record
+}
+
+/** 按会话查修订（P4-0：O(1) 判断，替代扫描） */
+export async function findRevisionBySession(accountId, sessionId) {
+  await ensureStudySchema()
+  const db = getMySqlPool()
+  const [rows] = await db.query(
+    'SELECT * FROM profile_revisions WHERE account_id = ? AND session_id = ? ORDER BY created_at LIMIT 1',
+    [accountId, sessionId],
+  )
+  const row = rows[0]
+  if (!row) return null
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    sessionId: row.session_id,
+    eventIds: typeof row.event_ids === 'string' ? JSON.parse(row.event_ids) : row.event_ids,
+    before: row.before_json ? (typeof row.before_json === 'string' ? JSON.parse(row.before_json) : row.before_json) : null,
+    after: row.after_json ? (typeof row.after_json === 'string' ? JSON.parse(row.after_json) : row.after_json) : null,
+    reason: row.reason,
+    source: row.source,
+    version: row.version,
+    attribution: row.attribution || 'unattributed',
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  }
+}
+
+export async function hasRevisionForSession(accountId, sessionId) {
+  return Boolean(await findRevisionBySession(accountId, sessionId))
 }
 
 export async function listProfileRevisions(accountId, limit = 20) {
@@ -395,12 +466,14 @@ export async function listProfileRevisions(accountId, limit = 20) {
   return rows.map(row => ({
     id: row.id,
     accountId: row.account_id,
+    sessionId: row.session_id ?? null,
     eventIds: typeof row.event_ids === 'string' ? JSON.parse(row.event_ids) : row.event_ids,
     before: row.before_json ? (typeof row.before_json === 'string' ? JSON.parse(row.before_json) : row.before_json) : null,
     after: row.after_json ? (typeof row.after_json === 'string' ? JSON.parse(row.after_json) : row.after_json) : null,
     reason: row.reason,
     source: row.source,
     version: row.version,
+    attribution: row.attribution || 'unattributed',
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
   }))
 }
