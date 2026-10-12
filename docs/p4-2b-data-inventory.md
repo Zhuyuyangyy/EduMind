@@ -12,7 +12,7 @@
 |---|---|---|---|---|---|---|---|
 | 1 | 认证身份 identities | MySQL `identities` 表 | `ZHIXUE_IDENTITY_FILE` 或 `<cwd>/server/identities.json` | 主键 account_id | MySQL 唯一约束；JSON 单文件无跨进程锁 | 重启保留（MySQL/文件持久）；存储不可达 fail-closed 拒认证 | 由 identity.js 双实现；迁移随 B-4 显式命令 |
 | 2 | 会话 auth_sessions | MySQL `auth_sessions` 表 | `ZHIXUE_SESSION_FILE` 或 `<cwd>/server/sessions.json` | 行级 account_id 字段 | MySQL 唯一约束 + 撤销时间戳；JSON 无跨进程撤销传播 | 重启后未过期会话仍有效（设计语义）； revoked 立即失效 | 服务端重启不失效（区别于纯内存会话）；备份=库快照 |
-| 3 | 用户画像 profile_result | MySQL `profile_results` 表 | `data.js` → `ZHIXUE_CHAT_STORE_FILE` 或 `server/store.json` 的 `profileResult`（含账号映射） | 账号映射键 | MySQL upsert；JSON 整文件读改写（同账号并发可能互相覆盖） | 重启保留；文件损坏回退默认（**可能丢历史**，见风险 R1） | B-4 迁移命令；备份=文件/库快照 |
+| 3 | 用户画像 profile_result | MySQL `profile_results` 表 | **`store/mysql.js` 的 `profiles` 映射**（`ZHIXUE_DATA_FILE` 或 `<repo>/store.json`；`data.js` 的 `getLatestProfileResult/saveProfileResult` 仅转发到它——`data.js` 的 `profileResult` 字段是旧遗留，无读写路径，B-4 不得依据它导入） | 账号映射键 | MySQL upsert；JSON 整文件读改写（同账号并发可能互相覆盖） | 重启保留；文件损坏回退默认（**可能丢历史**，见风险 R1） | B-4 迁移命令（迁 `profiles` 映射）；备份=文件/库快照 |
 | 4 | 账号设置 account_settings | MySQL `account_settings` 表 | `store/mysql.js` fallback → `ZHIXUE_DATA_FILE` 或 `<root>/store.json` 的 `accountSettings` | 账号映射键 | 同上（仅展示名，影响低） | 重启保留 | 随 B-4 |
 | 5 | 智能体协作记录 agent_collaboration | MySQL `agent_collaboration` 表 | `store/mysql.js` fallback → `ZHIXUE_DATA_FILE` 或 `<root>/store.json` 的 `agentCollaboration` | 账号映射键 | 同上 | 重启保留 | 随 B-4；含 seed 演示数据（**非真实用户数据，迁移时跳过**） |
 | 6 | 学习闭环记录 learning_cycles | MySQL `learning_cycles` 表 | `store/mysql.js` fallback → 同上 `learningCycles` | 账号映射键 | MySQL 事务；JSON 无 | 重启保留 | 随 B-4 |
@@ -21,7 +21,7 @@
 | 9 | 聊天历史（P4-2B-3） | MySQL `chat_messages` | `data.js` store.json 的 `chatHistory`（账号映射） | 主键/索引 account_id | **交互原子事务 + 自增 seq 稳定排序**；账号索引查询 | 重启保留；DB 故障请求失败（不假装成功） | B-4 需补导入（两种旧结构：全局数组→default、账号映射） |
 | 10 | 导师辅导历史（P4-2B-3） | MySQL `tutoring_history` | `data.js` store.json 的 `tutoringHistory`（账号映射） | 索引 account_id | 账号索引查询；30/20 展示契约 | 重启保留；DB 故障请求失败 | B-4 需补导入；fallbackAgents 三态保留 |
 | 11 | 用户偏好（学习偏好设置） | 当前为**前端 localStorage 示例占位**（复审发现：界面仍是示例数据） | 无服务端持久化 | — | — | — | **待建设**：P4-2B 之后单独排期（不入本轮迁移范围） |
-| 12 | AI 追踪/证据记录 | JSON `evidence-data/traces.json`（`ZHIXUE_TRACE_FILE`） | 同左（唯一存储） | **无账号隔离**（全局数组） | 全局最近 200 条保留；无跨进程保证 | 重启从文件重读；**超 200 条滚动丢弃** | **P4-2B-6 决策项**：区分业务证据与临时追踪后决定是否入库；当前不迁 |
+| 12 | AI 追踪/证据记录 | JSON `evidence-data/traces.json`（`ZHIXUE_TRACE_FILE`） | 同左（唯一存储） | **逻辑账号隔离**（`recorder.js` 经 AsyncLocalStorage + `accountId` 过滤，无 accountId 的旧 trace 归 `default`）；但**物理上所有账号共享同一 JSON 文件** | 全局最近 200 条保留；并发 read-modify-write 可能互相覆盖；无跨进程保证 | 重启从文件重读；**超 200 条滚动丢弃**（可能丢业务证据）；P4-2B-3a 起写入失败不影响业务响应（非关键诊断数据） | **P4-2B-6 决策项**：区分业务证据与临时追踪后决定是否入库；当前不迁 |
 | 13 | 静态内容：resources / recommended / learning-path / evaluation / tutoring-topics / 题库 bank | 随包 JSON 文件（`server/*.json`、`server/study/exercise-bank.json`） | 同左（只读模板） | 不适用（全局模板） | 只读 | 随部署版本 | **演示模板/内容数据，不属于账号数据，迁移时不得混入** |
 
 ## 二、按数据性质分类（迁移时防混淆）
@@ -56,7 +56,8 @@
   B-4 迁移前应先备份。
 - **R2（中）**：画像/设置/协作/闭环的 JSON fallback 是整文件读改写，
   同账号并发更新互相覆盖。生产仅 MySQL（upsert/事务），JSON 仅开发态。
-- **R3（高，P4-2B-6 处理）**：AI 追踪无账号隔离且全局 200 条滚动丢弃，
+- **R3（高，P4-2B-6 处理）**：AI 追踪虽有逻辑账号隔离（读取按账号
+  过滤），但物理共享单文件、全局 200 条滚动丢弃、并发写可能覆盖，
   可能丢失业务证据；含学习内容需脱敏。
 - **R4（低）**：学习偏好无服务端持久化（前端占位）。
 - **R5（信息）**：`knowledge_paths`/`chat_messages`/`tutoring_history` 为

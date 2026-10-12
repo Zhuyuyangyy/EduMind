@@ -22,6 +22,19 @@ function nowTime() {
   return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+/**
+ * 消息 ID 生成（P4-2B-3a）。旧实现用 Date.now()/Date.now()+1，高频
+ * 连续写入停在同一毫秒时 ID 必然碰撞（50 次连续交互实测复现）。
+ * 进程内单调计数器：唯一且保序；重启后从当前时间重新起步（时间戳
+ * 量级远大于进程内计数，不会与历史 ID 碰撞）。
+ */
+let chatIdCounter = 0
+function nextChatId() {
+  const now = Date.now()
+  chatIdCounter = now > chatIdCounter ? now : chatIdCounter + 1
+  return chatIdCounter
+}
+
 function defaultStore() {
   return {
     profileResult: null,
@@ -131,18 +144,20 @@ export function getChatHistory(accountId = 'default') {
   return readHistoryMap(readStore(), 'chatHistory')[accountId] || []
 }
 
-export function saveChatHistoryEntry(accountId = 'default', userMessage, reply, multimodalContents) {
+export function saveChatHistoryEntry(accountId = 'default', userMessage, reply, multimodalContents, idempotencyKey) {
   const store = readStore()
   const timestamp = nowTime()
   writeHistoryEntry(store, 'chatHistory', accountId, {
-    id: Date.now(),
+    id: nextChatId(),
     role: 'user',
     content: userMessage,
     time: timestamp,
     multimodalContents: multimodalContents || [],
+    // P4-2B-3a：幂等键仅落在 user 条目（重试识别用；旧记录无此字段）
+    ...(idempotencyKey ? { clientMessageId: String(idempotencyKey) } : {}),
   })
   writeHistoryEntry(store, 'chatHistory', accountId, {
-    id: Date.now() + 1,
+    id: nextChatId(),
     role: 'assistant',
     content: reply.content,
     time: timestamp,

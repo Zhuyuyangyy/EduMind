@@ -24,10 +24,36 @@ import { fileURLToPath } from 'node:url'
  * 8. 重启后顺序与内容不变
  */
 
+// 0.1 测试隔离：data.js 的 storePath 在模块加载时读取
+// ZHIXUE_CHAT_STORE_FILE——必须在 import repository 之前设置，
+// 否则 JSON 聊天历史会写到默认 server/store.json（P4-2B-3a 实测）。
+const ISOLATED_CHAT_STORE = path.join(os.tmpdir(), `edumind-b3-iso-chat-${process.pid}.json`)
+process.env.ZHIXUE_CHAT_STORE_FILE = ISOLATED_CHAT_STORE
+
 const repository = await import('../server/study/repository.js')
 const { isMySqlConfigured } = await import('../server/store/mysql.js')
 
+const MYSQL_ENV_KEYS = ['MYSQL_URL', 'MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DATABASE']
+const MYSQL_ENV_SNAPSHOT = Object.fromEntries(MYSQL_ENV_KEYS.map(key => [key, process.env[key]]))
+// skip 判定必须在清除环境之前求值（test() 的 skip 选项注册时固化）
 const mysqlConfigured = isMySqlConfigured()
+
+/**
+ * JSON 专项：运行时清除 MYSQL_*（repository 的 useMysql() 每次调用读
+ * env——否则「JSON 测试」在 MySQL 环境下实际走 MySQL 分支，
+ * P4-2B-3a 复审指出）。
+ */
+function forceJsonMode() {
+  for (const key of MYSQL_ENV_KEYS) delete process.env[key]
+}
+/** MySQL 专项：恢复调用方的真实 MYSQL_*（顶部为 JSON 专项清除） */
+function restoreMySqlMode() {
+  for (const [key, value] of Object.entries(MYSQL_ENV_SNAPSHOT)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+}
+forceJsonMode()
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 function tmpDataFile() {
@@ -57,6 +83,7 @@ function tutoringPayload(overrides = {}) {
 /* ============ 1. JSON 模式：round-trip / 隔离 / 限额 ============ */
 
 test('B-3 JSON：聊天交互 round-trip，用户消息与助手回复成对且保序', async () => {
+  forceJsonMode()
   const dataFile = tmpDataFile()
   process.env.ZHIXUE_DATA_FILE = dataFile
   try {
@@ -83,6 +110,7 @@ test('B-3 JSON：聊天交互 round-trip，用户消息与助手回复成对且�
 })
 
 test('B-3 JSON：账号隔离——不同账号历史互不串台', async () => {
+  forceJsonMode()
   const dataFile = tmpDataFile()
   process.env.ZHIXUE_DATA_FILE = dataFile
   try {
@@ -107,6 +135,7 @@ test('B-3 JSON：账号隔离——不同账号历史互不串台', async () => 
 })
 
 test('B-3 JSON：展示契约——聊天最近 30、辅导最近 20 且保序', async () => {
+  forceJsonMode()
   const dataFile = tmpDataFile()
   process.env.ZHIXUE_DATA_FILE = dataFile
   try {
@@ -132,6 +161,7 @@ test('B-3 JSON：展示契约——聊天最近 30、辅导最近 20 且保序',
 })
 
 test('B-3 JSON：重启后顺序与内容不变（重读文件）', async () => {
+  forceJsonMode()
   const dataFile = tmpDataFile()
   process.env.ZHIXUE_DATA_FILE = dataFile
   try {
@@ -155,6 +185,7 @@ test('B-3 JSON：重启后顺序与内容不变（重读文件）', async () => 
 })
 
 test('B-3 JSON：来源三态区分——未知来源不得被补写为模型生成', async () => {
+  forceJsonMode()
   const dataFile = tmpDataFile()
   process.env.ZHIXUE_DATA_FILE = dataFile
   try {
@@ -177,6 +208,7 @@ test('B-3 JSON：来源三态区分——未知来源不得被补写为模型生
 })
 
 test('B-3 JSON：多模态体积上限——超限明确拒绝', async () => {
+  forceJsonMode()
   const dataFile = tmpDataFile()
   process.env.ZHIXUE_DATA_FILE = dataFile
   try {
@@ -197,6 +229,7 @@ test('B-3 JSON：多模态体积上限——超限明确拒绝', async () => {
 /* ============ 2. MySQL 模式：跨进程 / 原子写入 / 稳定排序 ============ */
 
 test('B-3 MySQL：A 进程写聊天交互，B 进程按原顺序读到', { skip: mysqlConfigured ? false : '未配置 MySQL 环境，跨进程历史门禁未实测' }, async () => {
+  restoreMySqlMode()
   const account = `b3-xproc-${Date.now()}`
   const outFile = path.join(os.tmpdir(), `edumind-b3-xproc-${process.pid}.json`)
   const worker = path.join(root, 'scripts', 'history-cross-process-worker.mjs')
@@ -228,6 +261,7 @@ test('B-3 MySQL：A 进程写聊天交互，B 进程按原顺序读到', { skip:
 })
 
 test('B-3 MySQL：原子写入——助手行失败时用户消息不得残留', { skip: mysqlConfigured ? false : '未配置 MySQL 环境，原子写入门禁未实测' }, async () => {
+  restoreMySqlMode()
   const account = `b3-atomic-${Date.now()}`
   // 先写一次正常交互（确保账户有历史）
   await repository.appendChatInteraction(account, { userMessage: '正常问题', reply: chatReply() })
@@ -250,6 +284,7 @@ test('B-3 MySQL：原子写入——助手行失败时用户消息不得残留',
 })
 
 test('B-3 MySQL：并发交互——顺序稳定且 ID 唯一', { skip: mysqlConfigured ? false : '未配置 MySQL 环境，并发排序门禁未实测' }, async () => {
+  restoreMySqlMode()
   const account = `b3-concurrent-${Date.now()}`
   // 同一账号并发 5 次交互（Promise.all 交错执行）
   await Promise.all(Array.from({ length: 5 }, (_, i) =>
@@ -278,6 +313,7 @@ test('B-3 MySQL：并发交互——顺序稳定且 ID 唯一', { skip: mysqlCon
 })
 
 test('B-3 MySQL：辅导历史跨进程读取与来源三态', { skip: mysqlConfigured ? false : '未配置 MySQL 环境，辅导历史门禁未实测' }, async () => {
+  restoreMySqlMode()
   const account = `b3-tutor-${Date.now()}`
   await repository.appendTutoringHistory(account, tutoringPayload({ question: '真实模型问题', fallbackAgents: [] }))
   await repository.appendTutoringHistory(account, tutoringPayload({ question: '降级问题', fallbackAgents: ['TutorAgent'] }))
@@ -294,6 +330,11 @@ test('B-3 MySQL：辅导历史跨进程读取与来源三态', { skip: mysqlConf
 })
 
 after(async () => {
+  try {
+    fs.rmSync(ISOLATED_CHAT_STORE, { force: true })
+  } catch {
+    /* ignore */
+  }
   try {
     const { closeMySqlPool } = await import('../server/store/mysql.js')
     await closeMySqlPool()

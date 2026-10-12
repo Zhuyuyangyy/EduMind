@@ -41,6 +41,7 @@ async function ensureHistorySchema() {
       seq BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
       account_id VARCHAR(191) NOT NULL,
       interaction_id VARCHAR(64) NOT NULL,
+      client_message_id VARCHAR(64) NULL,
       role VARCHAR(16) NOT NULL,
       content MEDIUMTEXT NOT NULL,
       time_str VARCHAR(32) NOT NULL,
@@ -49,9 +50,21 @@ async function ensureHistorySchema() {
       multimodal_json JSON NULL,
       created_at DATETIME(3) NOT NULL,
       KEY chat_messages_account (account_id, seq),
+      UNIQUE KEY chat_messages_idem (account_id, client_message_id),
       CONSTRAINT chat_messages_role CHECK (role IN ('user', 'assistant'))
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `)
+  // P4-2B-3a 幂等键迁移（既有表补列+补唯一约束，幂等）
+  for (const ddl of [
+    'ALTER TABLE chat_messages ADD COLUMN client_message_id VARCHAR(64) NULL',
+    'ALTER TABLE chat_messages ADD UNIQUE KEY chat_messages_idem (account_id, client_message_id)',
+  ]) {
+    try {
+      await db.query(ddl)
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME' && error?.code !== 'ER_DUP_KEYNAME' && !/Duplicate/i.test(error?.message || '')) throw error
+    }
+  }
   await db.query(`
     CREATE TABLE IF NOT EXISTS tutoring_history (
       seq BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -78,12 +91,20 @@ function nowTime() {
   return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
-/** 多模态体积闸门（两种模式统一）：超限抛错，调用方转为 4xx/5xx */
+/**
+ * 多模态体积闸门（两种模式统一）。P4-2B-3a：按 UTF-8 字节数计——
+ * 中文 3 字节/emoji 4 字节，按字符串长度计数会把超限内容放行。
+ * 超限抛 413 语义错误（index.js 的 catch 按 statusCode 映射）。
+ */
 function assertMultimodalWithinLimit(multimodalContents) {
   if (!multimodalContents || multimodalContents.length === 0) return
-  const size = JSON.stringify(multimodalContents).length
-  if (size > MAX_MULTIMODAL_BYTES) {
-    throw new Error(`多模态内容超过体积上限（${Math.round(size / 1024)}KB > ${MAX_MULTIMODAL_BYTES / 1024}KB），已拒绝写入；大对象应迁移至独立对象存储`)
+  const serialized = JSON.stringify(multimodalContents)
+  const bytes = Buffer.byteLength(serialized, 'utf8')
+  if (bytes > MAX_MULTIMODAL_BYTES) {
+    throw Object.assign(
+      new Error(`多模态内容超过体积上限（${Math.round(bytes / 1024)}KB > ${MAX_MULTIMODAL_BYTES / 1024}KB，按 UTF-8 字节计），已拒绝写入；大对象应迁移至独立对象存储`),
+      { statusCode: 413 },
+    )
   }
 }
 
@@ -101,26 +122,81 @@ function parseJsonColumn(value) {
  * 追加一次聊天交互（用户消息 + 助手回复）。
  * MySQL 模式：单事务原子写入，两条共享 interaction_id；任一行失败
  * 整体回滚（不得只保存用户消息就返回成功）。
+ *
+ * 幂等键（P4-2B-3a）：调用方传 idempotencyKey 时，(account_id,
+ * client_message_id) 唯一约束保证同键重复请求不落库，并返回第一次
+ * 的结果（duplicate:true + 首次 reply）。键仅落在 user 行（唯一索引
+ * 多 NULL 不冲突）。未传键时行为与旧版一致。
+ *
+ * @returns {{duplicate:boolean, reply?:object, interactionId?:string}}
  */
-export async function appendChatInteraction(accountId, { userMessage, reply, multimodalContents, interactionId }) {
+export async function appendChatInteraction(accountId, { userMessage, reply, multimodalContents, interactionId, idempotencyKey }) {
   assertMultimodalWithinLimit(multimodalContents)
+  const key = idempotencyKey ? String(idempotencyKey).slice(0, 64) : null
+
   if (!useMysql()) {
-    // JSON 开发实现：data.js 单次 writeStore 承载两条（既有契约不变）
-    return jsonSaveChatEntry(accountId, userMessage, reply, multimodalContents)
+    // JSON 开发实现：窗口内幂等识别（data.js 仅保留每账号最近 30 条，
+    // 键落在窗口外时不视为重复——重新记录，与 MySQL 的全历史唯一
+    // 约束相比是有意的开发态折衷）
+    if (key) {
+      const existing = jsonGetChatHistory(accountId)
+      const hit = existing.find(item => item.role === 'user' && item.clientMessageId === key)
+      if (hit) {
+        const index = existing.indexOf(hit)
+        const assistant = existing.slice(index + 1).find(item => item.role === 'assistant')
+        return {
+          duplicate: true,
+          reply: assistant
+            ? { content: assistant.content, resources: assistant.resources ?? [], suggestions: assistant.suggestions ?? [] }
+            : { content: hit.content, resources: [], suggestions: [] },
+        }
+      }
+    }
+    // data.js 单次 writeStore 承载两条（既有契约不变）
+    jsonSaveChatEntry(accountId, userMessage, reply, multimodalContents, key || undefined)
+    return { duplicate: false }
   }
+
   await ensureHistorySchema()
   const { getMySqlPool } = await import('../store/mysql.js')
   const db = getMySqlPool()
+
+  // 幂等命中：返回第一次的结果，不落库
+  if (key) {
+    const [rows] = await db.query(
+      `SELECT interaction_id FROM chat_messages WHERE account_id = ? AND client_message_id = ? LIMIT 1`,
+      [String(accountId), key],
+    )
+    if (rows.length > 0) {
+      const [assistantRows] = await db.query(
+        `SELECT content, resources_json, suggestions_json FROM chat_messages
+         WHERE account_id = ? AND interaction_id = ? AND role = 'assistant' LIMIT 1`,
+        [String(accountId), rows[0].interaction_id],
+      )
+      const row = assistantRows[0]
+      return {
+        duplicate: true,
+        reply: row
+          ? {
+              content: row.content,
+              resources: parseJsonColumn(row.resources_json) ?? [],
+              suggestions: parseJsonColumn(row.suggestions_json) ?? [],
+            }
+          : { content: '', resources: [], suggestions: [] },
+      }
+    }
+  }
+
   const connection = await db.getConnection()
   const interaction = interactionId || randomUUID()
   const timestamp = nowTime()
   try {
     await connection.beginTransaction()
     await connection.query(
-      `INSERT INTO chat_messages (account_id, interaction_id, role, content, time_str, multimodal_json, created_at)
-       VALUES (?, ?, 'user', ?, ?, CAST(? AS JSON), ?)`,
+      `INSERT INTO chat_messages (account_id, interaction_id, client_message_id, role, content, time_str, multimodal_json, created_at)
+       VALUES (?, ?, ?, 'user', ?, ?, CAST(? AS JSON), ?)`,
       [
-        String(accountId), interaction, String(userMessage ?? ''), timestamp,
+        String(accountId), interaction, key, String(userMessage ?? ''), timestamp,
         multimodalContents && multimodalContents.length ? JSON.stringify(multimodalContents) : null,
         new Date(),
       ],
@@ -136,7 +212,7 @@ export async function appendChatInteraction(accountId, { userMessage, reply, mul
       ],
     )
     await connection.commit()
-    return { interactionId: interaction }
+    return { interactionId: interaction, duplicate: false }
   } catch (error) {
     await connection.rollback()
     throw error

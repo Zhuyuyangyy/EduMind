@@ -582,16 +582,23 @@ const server = http.createServer(async (req, res) => {
       const reply = await buildChatReplyAsync(message, body.multimodalContents)
       // P4-2B-3：用户消息+助手回复一次原子写入；失败即请求失败，
       // 不「只保存用户消息就返回成功」。多模态超体积上限在此明确报错。
-      await appendChatInteraction(accountIdOf(req), {
+      // P4-2B-3a：客户端可传稳定幂等键——同键重试不重复落库，
+      // 返回第一次的结果（网络重试/双击安全）。
+      const idempotencyKey = typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim().slice(0, 64)
+        : undefined
+      const saved = await appendChatInteraction(accountIdOf(req), {
         userMessage: message,
         reply,
         multimodalContents: body.multimodalContents,
+        idempotencyKey,
       })
+      const effectiveReply = saved.duplicate ? { ...saved.reply, idempotent: true } : reply
       const chatTrace = buildTrace({
         requestId: `chat-${Date.now()}`,
         agents: ['ChatAgent'],
         inputsSummary: `消息: ${String(message || '').slice(0, 80)}`,
-        outputsSummary: `回复: ${String(reply.content || '').slice(0, 80)}`,
+        outputsSummary: `回复: ${String(effectiveReply.content || '').slice(0, 80)}`,
         evidence: [reply.fallbackUsed ? '本地规则生成对话回复' : 'LLM 生成对话回复'],
         riskFlags: [],
         // 如实记录：真实 LLM 成功时不得标记为降级
@@ -599,8 +606,9 @@ const server = http.createServer(async (req, res) => {
         durationMs: 0,
         agentResults: [],
       })
+      // P4-2B-3a：recordTrace 内部容错（非关键诊断数据，失败不影响业务）
       recordTrace(chatTrace)
-      sendJson(res, 200, isDialoguePayload ? toDialogueChatReply(reply) : reply)
+      sendJson(res, 200, isDialoguePayload ? toDialogueChatReply(effectiveReply) : effectiveReply)
       return
     }
 

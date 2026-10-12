@@ -51,6 +51,11 @@ export function readTracesForAccount(accountId) {
 }
 
 function writeTraces(traces) {
+  // 故障注入（P4-2B-3a 测试脚手架，默认关闭）：模拟追踪文件不可写，
+  // 验证「追踪失败不得把已成功的聊天事务变成业务失败」。
+  if (process.env.ZHIXUE_FAULT_INJECT === 'trace-write') {
+    throw new Error('FAULT_INJECTION:trace-write')
+  }
   ensureDir()
   fs.writeFileSync(tracesPath(), JSON.stringify(traces, null, 2), 'utf8')
 }
@@ -61,12 +66,24 @@ export function setTraceRecordedHook(hook) {
   traceHook = hook
 }
 
+/**
+ * 记录追踪（P4-2B-3a：非关键诊断数据，尽力而为）。
+ *
+ * 判定依据：trace 用于证据页展示与降级审计，不属于学习数据权威源。
+ * 追踪写入失败（文件不可写/磁盘满/注入故障）只记录 stderr，**不得把
+ * 已成功的业务事务（聊天/辅导/反馈）变成业务失败**——否则用户重试
+ * 会产生第二份业务记录，两个存储的成功状态互相矛盾。
+ */
 export function recordTrace(trace) {
   const stamped = { ...trace, accountId: trace.accountId || currentAccount() }
-  const traces = readTraces()
-  traces.push(stamped)
-  const kept = traces.slice(-200)
-  writeTraces(kept)
+  try {
+    const traces = readTraces()
+    traces.push(stamped)
+    const kept = traces.slice(-200)
+    writeTraces(kept)
+  } catch (err) {
+    console.error('[trace] 追踪写入失败（不影响业务响应）:', err?.message || err)
+  }
   if (typeof traceHook === 'function') {
     try {
       // hook 可能返回 Promise；同步 try/catch 抓不到异步 rejection，必须显式 catch
