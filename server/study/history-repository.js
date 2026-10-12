@@ -32,7 +32,7 @@ export const MAX_MULTIMODAL_BYTES = 512 * 1024
 
 let historySchemaReady = false
 
-async function ensureHistorySchema() {
+export async function ensureHistorySchema() {
   if (historySchemaReady) return
   const { getMySqlPool } = await import('../store/mysql.js')
   const db = getMySqlPool()

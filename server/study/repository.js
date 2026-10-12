@@ -63,6 +63,7 @@ export {
   regenerateKnowledgePath,
   commitPathUpdateCAS,
   hasPathUpdateForSession,
+  ensureKnowledgePathSchema,
 } from './knowledge-path-repository.js'
 
 /* ———————————— 聊天与导师历史（P4-2B-3） ———————————— */
@@ -72,5 +73,6 @@ export {
   getChatHistory,
   appendTutoringHistory,
   getTutoringHistory,
+  ensureHistorySchema,
   MAX_MULTIMODAL_BYTES,
 } from './history-repository.js'

@@ -21,7 +21,7 @@ import { getLatestKnowledgePath as jsonGetLatest, saveKnowledgePathResult as jso
 
 let mysqlSchemaReady = false
 
-async function ensureKnowledgePathSchema() {
+export async function ensureKnowledgePathSchema() {
   if (mysqlSchemaReady) return
   const { getMySqlPool } = await import('../store/mysql.js')
   const db = getMySqlPool()
