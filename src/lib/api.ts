@@ -222,10 +222,31 @@ export function fetchKnowledgePath() {
   return requestJson<{ result: any }>('/api/knowledge-path/latest')
 }
 
-export function sendChatMessage(message: string, multimodalContents?: MultimodalContent[]) {
+/**
+ * 生成聊天幂等键（P4-2B-3b）。
+ * 调用方在首次发送时生成，网络失败重试时复用同一个键——服务端按
+ * (account, client_message_id) 唯一约束保证只落库一次，重试返回
+ * 首次结果。禁止对不同的消息内容复用同一个键（服务端返回 409）。
+ */
+export function createChatIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`
+}
+
+export function sendChatMessage(
+  message: string,
+  multimodalContents?: MultimodalContent[],
+  options?: { idempotencyKey?: string },
+) {
   return requestJson<ChatReply>('/api/chat', {
     method: 'POST',
-    body: JSON.stringify({ message, multimodalContents }),
+    body: JSON.stringify({
+      message,
+      multimodalContents,
+      ...(options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+    }),
   })
 }
 

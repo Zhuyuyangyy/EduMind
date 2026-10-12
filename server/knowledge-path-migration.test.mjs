@@ -16,6 +16,15 @@ import process from 'node:process'
  *    findExercise——题库升级后历史练习按新题库归因
  */
 
+// 0.1 测试隔离（P4-2B-3a 同款修法）：知识路径 JSON 读写经 repository
+// → data.js，其 storePath 在模块加载时读取 ZHIXUE_CHAT_STORE_FILE——
+// 必须在 import repository 之前设置，否则 JSON 用例会写到默认
+// server/store.json（P4-2B-3b 实测：resolver/cas/idempotent 等测试
+// 账号残留在该文件）。ZHIXUE_DATA_FILE 供 study/store.js 使用，
+// 两个变量都隔离。
+const ISOLATED_CHAT_STORE = path.join(os.tmpdir(), `edumind-b2-iso-chat-${process.pid}.json`)
+process.env.ZHIXUE_CHAT_STORE_FILE = ISOLATED_CHAT_STORE
+
 const {
   preparePathUpdate,
 } = await import('../server/study/profile-updater.js')
@@ -208,6 +217,11 @@ test('B-2 MySQL：路径读写与 CAS 走 knowledge_paths 表', { skip: mysqlCon
 })
 
 after(async () => {
+  try {
+    fs.rmSync(ISOLATED_CHAT_STORE, { force: true })
+  } catch {
+    /* ignore */
+  }
   try {
     const { closeMySqlPool } = await import('../server/store/mysql.js')
     await closeMySqlPool()

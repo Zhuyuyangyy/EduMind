@@ -18,6 +18,13 @@ import process from 'node:process'
  * 历史路径（版本倒退）。
  */
 
+// 0.1 测试隔离（P4-2B-3b 同款修法）：JSON 用例经 repository →
+// data.js，storePath 在模块加载时读 ZHIXUE_CHAT_STORE_FILE——必须在
+// import repository 之前设置，否则写到默认 server/store.json
+// （实测 mismatch/regen/strict 等账号残留在该文件）。
+const ISOLATED_CHAT_STORE = path.join(os.tmpdir(), `edumind-b2b-iso-chat-${process.pid}.json`)
+process.env.ZHIXUE_CHAT_STORE_FILE = ISOLATED_CHAT_STORE
+
 const { preparePathUpdate } = await import('../server/study/profile-updater.js')
 const repository = await import('../server/study/repository.js')
 const { isMySqlConfigured } = await import('../server/store/mysql.js')
@@ -208,6 +215,11 @@ test('复审回归 MySQL：错配拒绝与重新生成版本语义走真实库',
 })
 
 after(async () => {
+  try {
+    fs.rmSync(ISOLATED_CHAT_STORE, { force: true })
+  } catch {
+    /* ignore */
+  }
   try {
     const { closeMySqlPool } = await import('../server/store/mysql.js')
     await closeMySqlPool()

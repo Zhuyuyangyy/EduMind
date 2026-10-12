@@ -29,7 +29,7 @@ import {
   Zap,
   X,
 } from 'lucide-vue-next'
-import { sendChatMessage, fetchChatHistory } from '@/lib/api'
+import { sendChatMessage, fetchChatHistory, createChatIdempotencyKey } from '@/lib/api'
 import type { ChatReply, ChatResource, MultimodalContent, ChatHistoryItem } from '@/types/api'
 
 interface Message {
@@ -66,6 +66,9 @@ const messages = ref<Message[]>([
 ])
 
 const inputText = ref('')
+// P4-2B-3b：失败待重试的幂等键（与内容绑定，内容变化即作废）
+const pendingChatKey = ref<string | null>(null)
+const pendingChatText = ref('')
 const isStreaming = ref(false)
 const isSending = ref(false)
 const streamContent = ref('')
@@ -248,10 +251,22 @@ async function sendMessage() {
   pendingImages.value = []
   scrollToBottom()
 
+  // P4-2B-3b：首次发送生成稳定幂等键；网络失败保留，用户重试同一
+  // 内容时复用（服务端只落库一次，重试返回首次结果）。内容变化则
+  // 换新键——同键不同内容会被服务端 409 拒绝。
+  if (!pendingChatKey.value || pendingChatText.value !== text) {
+    pendingChatKey.value = createChatIdempotencyKey()
+    pendingChatText.value = text
+  }
+  const idempotencyKey = pendingChatKey.value
+
   try {
-    const reply = await sendChatMessage(text, multimodalContents)
+    const reply = await sendChatMessage(text, multimodalContents, { idempotencyKey })
+    pendingChatKey.value = null
+    pendingChatText.value = ''
     runAgentPipeline(reply.content, reply.resources, reply.suggestions)
   } catch {
+    // 失败保留键：下次发送同一内容即重试复用
     const fallback = fallbackChatReply(text)
     runAgentPipeline(fallback.content, fallback.resources, fallback.suggestions)
   }

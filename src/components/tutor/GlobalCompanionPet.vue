@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAppStore, type CompanionState } from '@/store'
-import { sendChatMessage } from '@/lib/api'
+import { sendChatMessage, createChatIdempotencyKey } from '@/lib/api'
 import AiriLive2DRenderer from './live2d/AiriLive2DRenderer.vue'
 
 const appStore = useAppStore()
@@ -40,6 +40,9 @@ const LOOK_LERP = 0.18
 const showChat = ref(false)
 const chatMessages = ref<{ role: 'user' | 'assistant'; text: string }[]>([])
 const chatInput = ref('')
+// P4-2B-3b：失败待重试的幂等键（与内容绑定）
+const pendingChatKey = ref<string | null>(null)
+const pendingChatText = ref('')
 const isChatSending = ref(false)
 const chatPanelRef = ref<HTMLElement | null>(null)
 const chatInputRef = ref<HTMLInputElement | null>(null)
@@ -66,8 +69,17 @@ async function sendChat() {
   isChatSending.value = true
   interactionState.value = 'thinking'
 
+  // P4-2B-3b：失败保留幂等键，重发同一内容复用（只落库一次）
+  if (!pendingChatKey.value || pendingChatText.value !== text) {
+    pendingChatKey.value = createChatIdempotencyKey()
+    pendingChatText.value = text
+  }
+  const idempotencyKey = pendingChatKey.value
+
   try {
-    const reply = await sendChatMessage(text)
+    const reply = await sendChatMessage(text, undefined, { idempotencyKey })
+    pendingChatKey.value = null
+    pendingChatText.value = ''
     const content = reply.content ?? '抱歉，我暂时无法回答这个问题。'
     chatMessages.value.push({ role: 'assistant', text: content })
     interactionState.value = 'cheer'

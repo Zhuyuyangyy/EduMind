@@ -22,6 +22,12 @@ import { fileURLToPath } from 'node:url'
  *   5. 双方更新都保留
  */
 
+// 0.1 测试隔离（P4-2B-3b）：测试进程直接 import repository 时，data.js
+// 的 storePath 在模块加载时读 ZHIXUE_CHAT_STORE_FILE——必须在 import
+// 之前设置，否则 JSON 分支写到默认 server/store.json（实测复现）。
+const ISOLATED_CHAT_STORE = path.join(os.tmpdir(), `edumind-b3b-iso-${process.pid}.json`)
+process.env.ZHIXUE_CHAT_STORE_FILE = ISOLATED_CHAT_STORE
+
 const repository = await import('../server/study/repository.js')
 const { isMySqlConfigured } = await import('../server/store/mysql.js')
 
@@ -116,6 +122,11 @@ test('双进程交错：prepare 后版本被改 → 旧对象被拒、双方更�
 })
 
 after(async () => {
+  try {
+    fs.rmSync(ISOLATED_CHAT_STORE, { force: true })
+  } catch {
+    /* ignore */
+  }
   try {
     const { closeMySqlPool } = await import('../server/store/mysql.js')
     await closeMySqlPool()

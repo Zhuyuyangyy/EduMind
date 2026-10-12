@@ -142,6 +142,13 @@ export async function appendChatInteraction(accountId, { userMessage, reply, mul
       const existing = jsonGetChatHistory(accountId)
       const hit = existing.find(item => item.role === 'user' && item.clientMessageId === key)
       if (hit) {
+        // 同键不同内容 → 409 冲突（与 MySQL 路径同语义）
+        if (String(hit.content) !== String(userMessage ?? '')) {
+          throw Object.assign(
+            new Error(`幂等键冲突：该键已绑定其他消息内容（账号 ${accountId}），拒绝写入`),
+            { statusCode: 409 },
+          )
+        }
         const index = existing.indexOf(hit)
         const assistant = existing.slice(index + 1).find(item => item.role === 'assistant')
         return {
@@ -154,20 +161,33 @@ export async function appendChatInteraction(accountId, { userMessage, reply, mul
     }
     // data.js 单次 writeStore 承载两条（既有契约不变）
     jsonSaveChatEntry(accountId, userMessage, reply, multimodalContents, key || undefined)
-    return { duplicate: false }
+    return {
+      duplicate: false,
+      reply: { content: String(reply?.content ?? ''), resources: reply?.resources ?? [], suggestions: reply?.suggestions ?? [] },
+    }
   }
 
   await ensureHistorySchema()
   const { getMySqlPool } = await import('../store/mysql.js')
   const db = getMySqlPool()
 
-  // 幂等命中：返回第一次的结果，不落库
+  // 幂等命中：返回第一次的结果，不落库。
+  // userMessage 是请求身份的一部分——同键不同内容说明客户端复用键
+  // 错误，明确报 409 冲突（不得静默返回首次结果，否则调用方无法
+  // 区分「重试」与「键复用错误」）。reply 内容不参与判定：重试时
+  // 模型可能重新生成不同回复，返回首次结果正是幂等语义。
   if (key) {
     const [rows] = await db.query(
-      `SELECT interaction_id FROM chat_messages WHERE account_id = ? AND client_message_id = ? LIMIT 1`,
+      `SELECT interaction_id, content FROM chat_messages WHERE account_id = ? AND client_message_id = ? LIMIT 1`,
       [String(accountId), key],
     )
     if (rows.length > 0) {
+      if (String(rows[0].content) !== String(userMessage ?? '')) {
+        throw Object.assign(
+          new Error(`幂等键冲突：该键已绑定其他消息内容（账号 ${accountId}），拒绝写入`),
+          { statusCode: 409 },
+        )
+      }
       const [assistantRows] = await db.query(
         `SELECT content, resources_json, suggestions_json FROM chat_messages
          WHERE account_id = ? AND interaction_id = ? AND role = 'assistant' LIMIT 1`,
@@ -212,9 +232,46 @@ export async function appendChatInteraction(accountId, { userMessage, reply, mul
       ],
     )
     await connection.commit()
-    return { interactionId: interaction, duplicate: false }
+    return {
+      duplicate: false,
+      interactionId: interaction,
+      reply: { content: String(reply?.content ?? ''), resources: reply?.resources ?? [], suggestions: reply?.suggestions ?? [] },
+    }
   } catch (error) {
     await connection.rollback()
+    // 并发赢家窗口：两个进程同时通过预检（都查无记录）→ 后者 user 行
+    // INSERT 撞 (account_id, client_message_id) 唯一约束。此时不得
+    // 抛 500——回滚后重读，按 duplicate 返回首次结果（P4-2B-3b）。
+    if (key && error?.code === 'ER_DUP_ENTRY') {
+      const [rows] = await db.query(
+        `SELECT interaction_id, content FROM chat_messages WHERE account_id = ? AND client_message_id = ? LIMIT 1`,
+        [String(accountId), key],
+      )
+      if (rows.length > 0) {
+        if (String(rows[0].content) !== String(userMessage ?? '')) {
+          throw Object.assign(
+            new Error(`幂等键冲突：该键已绑定其他消息内容（账号 ${accountId}），拒绝写入`),
+            { statusCode: 409 },
+          )
+        }
+        const [assistantRows] = await db.query(
+          `SELECT content, resources_json, suggestions_json FROM chat_messages
+           WHERE account_id = ? AND interaction_id = ? AND role = 'assistant' LIMIT 1`,
+          [String(accountId), rows[0].interaction_id],
+        )
+        const row = assistantRows[0]
+        return {
+          duplicate: true,
+          reply: row
+            ? {
+                content: row.content,
+                resources: parseJsonColumn(row.resources_json) ?? [],
+                suggestions: parseJsonColumn(row.suggestions_json) ?? [],
+              }
+            : { content: '', resources: [], suggestions: [] },
+        }
+      }
+    }
     throw error
   } finally {
     connection.release()

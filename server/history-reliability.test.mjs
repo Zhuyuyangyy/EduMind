@@ -286,13 +286,16 @@ test('0.2 MySQL：幂等键唯一约束——同键第二次写入被拒且不�
   })
   assert.equal(first.duplicate, false)
 
+  // 同键同内容 = 重试（B-3b 语义：userMessage 是请求身份的一部分，
+  // 同键不同内容会 409 冲突——冲突门禁在 history-idempotency-
+  // concurrency.test.mjs）
   const second = await repository.appendChatInteraction(account, {
-    userMessage: '第二次（同键）',
-    reply: { content: '回复二', resources: [], suggestions: [] },
+    userMessage: '第一次',
+    reply: { content: '回复二（重试重新生成）', resources: [], suggestions: [] },
     idempotencyKey: 'idem-key-mysql-1',
   })
-  assert.equal(second.duplicate, true, '同键第二次必须识别为重复')
-  assert.equal(second.reply.content, '回复一', '重复请求应返回第一次的结果')
+  assert.equal(second.duplicate, true, '同键同内容必须识别为重试')
+  assert.equal(second.reply.content, '回复一', '重试应返回第一次的结果')
 
   // 不同键正常写入
   const third = await repository.appendChatInteraction(account, {
