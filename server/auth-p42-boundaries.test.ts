@@ -169,3 +169,50 @@ test('A3 竞态：退出发生在凭据读取期间 → 防护读取返回 null'
   // 对照组：纪元未变时正常返回
   assert.equal(await store.getToken('https://a.example.com'), 'token-for-A')
 })
+
+/* ================= B-0：恢复默认地址的完整切换序列 ================= */
+
+test('B-0 A→B→默认(A) 全序列：B 的 token 被清除，切回 A 不自动恢复', async () => {
+  // 模拟原生 SecureStorage 中的完整切换序列（P4-2B-0 回归）：
+  // 登录 A → 切 B（解绑）→ 登录 B → 恢复默认（回到 A，再次解绑）
+  const secure = memorySecure()
+  const store = createNativeTokenStore(secure)
+
+  // 1. 登录服务器 A
+  await store.setToken('token-A', 'https://a.example.com')
+  assert.equal(await store.getToken('https://a.example.com'), 'token-A')
+
+  // 2. 切换到 B：prepareOriginSwitch 的本地部分 = clearToken
+  await store.clearToken()
+  assert.equal(await store.getToken('https://a.example.com'), null, '切到 B 后 A 的 token 不得保留')
+
+  // 3. 在 B 登录（新绑定）
+  await store.setToken('token-B', 'https://b.example.com')
+  assert.equal(await store.getToken('https://b.example.com'), 'token-B')
+
+  // 4. 恢复默认地址（指向 A）：同样必须解绑——B 的 token 不得残留，
+  //    切回 A 后也不得自动恢复（需重新登录）
+  await store.clearToken()
+  assert.equal(await store.getToken('https://b.example.com'), null, '恢复默认后 B 的 token 必须清除')
+  assert.equal(await store.getToken('https://a.example.com'), null, '切回 A 不得自动恢复旧会话')
+  assert.equal(await store.getBoundOrigin(), null)
+})
+
+test('B-0 单例重选：origin 变化后按新环境重新选择适配器', () => {
+  // P4-2B-0：clearAuthSession 收尾重置 tokenStore 单例。此处验证
+  // selectTokenStore 本身对不同环境给出不同适配器（重置后按新 origin
+  // 重新选择的基础），覆盖「跨源→同源」与「同源→跨源」两个方向。
+  const storage = memoryStorage()
+  const deps = { storage, cookieReader: noCookies }
+
+  const crossOriginDev = selectTokenStore({ platform: 'web', crossOrigin: true, prod: false }, deps)
+  assert.equal(crossOriginDev.platform, 'web')
+  // 桥接可用（开发跨源）
+  return crossOriginDev.setToken('t', 'https://api.example.com').then(async () => {
+    assert.equal(await crossOriginDev.getToken('https://api.example.com'), 't')
+
+    // 模拟重置后按「同源生产」重新选择：必须得到 Cookie 适配器（零 token）
+    const sameOriginProd = selectTokenStore({ platform: 'web', crossOrigin: false, prod: true }, deps)
+    assert.equal(await sameOriginProd.getToken('https://api.example.com'), null, '重置后同源生产适配器不得再暴露桥接 token')
+  })
+})

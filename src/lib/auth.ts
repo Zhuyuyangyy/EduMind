@@ -155,9 +155,14 @@ export async function clearAuthSession() {
   }
   inFlightControllers.clear()
   const store = browserStorage()
-  if (!store) return
+  if (!store) {
+    resetTokenStore()
+    return
+  }
   await getTokenStore().clearToken()
   store.removeItem(AUTH_SESSION_KEY)
+  // origin 可能已变（API 切换）：重置单例，下次按新 origin 重新选适配器
+  resetTokenStore()
 }
 
 /** 启动迁移：清理遗留明文 token（P4-1C 之前的版本会写入 localStorage） */
@@ -258,8 +263,12 @@ export async function getAuthTokenGuarded(startEpoch: number): Promise<string | 
   return token
 }
 
-/** 供测试：重置模块级单例 */
-export function __resetTokenStoreForTests() {
+/**
+ * 重置凭据存储单例（P4-2B-0）。
+ * origin 变化后必须重新选择适配器：否则从跨源（桥接）切回同源
+ * （Cookie）后仍沿用旧存储策略。clearAuthSession 与 API 切换都会调用。
+ */
+export function resetTokenStore() {
   tokenStore = null
 }
 

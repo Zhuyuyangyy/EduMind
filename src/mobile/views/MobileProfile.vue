@@ -32,7 +32,7 @@
       </p>
       <input v-model="baseInput" class="m-input" type="url" placeholder="https://yx.shushubiye.fun" inputmode="url" />
       <div class="profile__actions">
-        <button class="m-btn m-btn--primary m-btn--sm" :disabled="savingBase" @click="onSaveBase">{{ savingBase ? '保存中…' : '保存并重连' }}</button>
+        <button class="m-btn m-btn--primary m-btn--sm" :disabled="savingBase" @click="onSaveBase()">{{ savingBase ? '保存中…' : '保存并重连' }}</button>
         <button class="m-btn m-btn--ghost m-btn--sm" @click="onResetBase">恢复默认</button>
       </div>
       <p v-if="baseMsg" class="profile__msg" :class="baseOk ? 'ok' : 'err'">{{ baseMsg }}</p>
@@ -123,11 +123,11 @@ async function runChecks() {
   checking.value = false
 }
 
-async function onSaveBase() {
+async function onSaveBase(explicitValue?: string) {
   savingBase.value = true
   baseMsg.value = ''
   try {
-    const value = baseInput.value.trim()
+    const value = explicitValue !== undefined ? explicitValue.trim() : baseInput.value.trim()
     // 统一走共享校验（正式构建仅可信白名单 HTTPS，开发例外仅限 localhost）
     const check = validateApiBase(value)
     if (!check.ok) throw new Error(check.error)
@@ -150,7 +150,7 @@ async function onSaveBase() {
     }
     setApiBase(value)
     baseOk.value = true
-    baseMsg.value = '已保存，正在重新检测…'
+    baseMsg.value = explicitValue !== undefined ? '已恢复默认，正在重新检测…' : '已保存，正在重新检测…'
     // API 地址变化：数据纪元 +1，各页下次进入时按新地址重新拉取
     bumpDataEpoch()
     await runChecks()
@@ -164,11 +164,15 @@ async function onSaveBase() {
   }
 }
 
-function onResetBase() {
+/**
+ * 恢复默认 API 地址（P4-2B-0）。
+ * 与「保存并重连」收敛到同一个异步切换入口 onSaveBase('')——
+ * 恢复默认同样可能发生 origin 变更（B → 默认 A），必须走撤销 /
+ * 解绑 / 中止在途的完整流程，不能绕过。
+ */
+async function onResetBase() {
   baseInput.value = getDefaultApiBase()
-  setApiBase('')
-  baseOk.value = true
-  baseMsg.value = '已恢复默认（构建时配置）'
+  await onSaveBase('')
 }
 
 async function onLogout() {
