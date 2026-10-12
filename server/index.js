@@ -21,8 +21,6 @@ import {
   generateResourcesPayload,
   getEvidenceTraces,
   getEvidenceSummary,
-  saveKnowledgePathResult,
-  getLatestKnowledgePath,
 } from './data.js'
 import {
   orchestrateProfileAnalysis,
@@ -74,6 +72,10 @@ import {
   listBankTopics,
   findExercise,
   summarizeAttempts,
+  getLatestKnowledgePath,
+  saveKnowledgePathResult,
+  commitPathUpdateCAS,
+  hasPathUpdateForSession,
 } from './study/repository.js'
 import { generateStudyFeedback, buildWrongItems } from './study/feedback.js'
 import { publicSessionView, publicAttemptView, publicExerciseView } from './study/dto.js'
@@ -559,14 +561,14 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req)
       const profile = body.profile || await getLatestProfileResult(accountIdOf(req)) || {}
       const result = await orchestrateKnowledgePath({ profile })
-      saveKnowledgePathResult(accountIdOf(req), result.knowledgePath)
+      await saveKnowledgePathResult(accountIdOf(req), result.knowledgePath)
       sendJson(res, 200, result.knowledgePath)
       return
     }
 
     // 获取已生成的知识路径（按账号隔离）
     if (req.method === 'GET' && pathname === '/api/knowledge-path/latest') {
-      const kp = getLatestKnowledgePath(accountIdOf(req))
+      const kp = await getLatestKnowledgePath(accountIdOf(req))
       sendJson(res, 200, { result: kp })
       return
     }
@@ -984,31 +986,61 @@ const server = http.createServer(async (req, res) => {
           await commitState(r => ({ ...r, steps: { ...r.steps, revision: 'done' } }))
         }
 
-        // 步骤 3：路径更新（同样的写前日志协议）
+        // 步骤 3：路径更新（同样的写前日志协议 + P4-2B-2 版本 CAS）
         let pathUpdate
         const record2 = (await getFeedbackState(accountId, sessionId)) || { steps: claim.steps, pathVersionAfter: null, partial: {} }
         if (record2.steps?.path !== 'done') {
-          const prepared = await preparePathUpdate({ accountId, session: state.session, attempts, exerciseResolver })
-          if (prepared.applied) {
-            const currentPath = await getLatestKnowledgePath(accountId)
-            const alreadyApplied = record2.pathVersionAfter && (Number(currentPath?.version) || 1) >= record2.pathVersionAfter
-            if (alreadyApplied) {
-              pathUpdate = {
-                applied: true,
-                reason: '恢复对账：上次路径更新已生效，不重复应用',
-                version: Number(currentPath.version),
-                reconciled: true,
-              }
-            } else {
-              await commitState(r => ({ ...r, pathVersionAfter: prepared.version }))
-              await commitPathUpdate(accountId, prepared.nextPath)
-              // 故障注入（测试脚手架，默认关闭）：路径已写、步骤未标记时崩溃
-              injectFault('after-path-write')
-              const { nextPath, ...rest } = prepared
-              pathUpdate = rest
+          // 同会话重放幂等：账本已记录则直接对账通过（MySQL 唯一约束 +
+          // JSON appliedSessions 双实现）
+          const alreadyInLedger = await hasPathUpdateForSession(accountId, sessionId)
+          const currentPath = await getLatestKnowledgePath(accountId)
+          const alreadyApplied = alreadyInLedger || (record2.pathVersionAfter && (Number(currentPath?.version) || 1) >= record2.pathVersionAfter)
+          if (alreadyApplied) {
+            pathUpdate = {
+              applied: true,
+              reason: '恢复对账：上次路径更新已生效，不重复应用',
+              version: Number(currentPath?.version) || 1,
+              reconciled: true,
             }
           } else {
-            pathUpdate = prepared
+            // 版本 CAS + 基于最新重算：并发会话基于同一 version 计算时，
+            // 后提交者收到 version-conflict，必须重新读取最新路径再算，
+            // 不允许拿旧对象重试（避免互相覆盖丢失更新）。
+            let committed = null
+            let lastConflictVersion = null
+            for (let attempt = 0; attempt < 3 && !committed; attempt += 1) {
+              const prepared = await preparePathUpdate({ accountId, session: state.session, attempts, exerciseResolver })
+              if (!prepared.applied) {
+                pathUpdate = prepared
+                break
+              }
+              const latestNow = await getLatestKnowledgePath(accountId)
+              const expectedVersion = Number(latestNow?.version) || 1
+              const result = await commitPathUpdateCAS(accountId, prepared.nextPath, { expectedVersion, sessionId })
+              if (result.ok) {
+                committed = { ...prepared, version: result.version }
+              } else if (result.code === 'version-conflict') {
+                lastConflictVersion = result.currentVersion
+                continue // 基于最新路径重算（循环头部重新 prepare）
+              } else {
+                // session-already-applied：并发同会话已落库，对账通过
+                committed = { ...prepared, version: result.currentVersion || prepared.version, reconciled: true }
+              }
+            }
+            if (!pathUpdate) {
+              if (committed) {
+                await commitState(r => ({ ...r, pathVersionAfter: committed.version }))
+                // 故障注入（测试脚手架，默认关闭）：路径已写、步骤未标记时崩溃
+                injectFault('after-path-write')
+                const { nextPath, ...rest } = committed
+                pathUpdate = rest
+              } else {
+                pathUpdate = {
+                  applied: false,
+                  reason: `路径版本冲突持续存在（并发写入中，当前版本 ${lastConflictVersion ?? '未知'}），本次不应用，请重新完成练习后再试`,
+                }
+              }
+            }
           }
           await commitState(r => ({
             ...r,

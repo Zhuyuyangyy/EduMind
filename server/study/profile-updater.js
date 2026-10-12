@@ -18,10 +18,11 @@
  * 每个子更新最多生效一次，绝不出现「分数已变但无证据」。
  */
 import { getProfileResult, saveProfileResult } from '../store/mysql.js'
-import { getLatestKnowledgePath, saveKnowledgePathResult } from '../data.js'
 import { findExercise } from './exercise-bank.js'
 import { summarizeAttempts } from './scoring.js'
-import { listLearningEvents } from './repository.js'
+// P4-2B-2：路径读写统一走 repository 门面（MySQL/JSON 分发），
+// 不再直连 data.js——否则 MySQL 模式下 prepare 读不到路径。
+import { listLearningEvents, getLatestKnowledgePath } from './repository.js'
 
 export const UPDATE_RULES = {
   MIN_QUESTIONS: 3,
@@ -203,9 +204,11 @@ export async function preparePathUpdate({ accountId, session, attempts, exercise
     return { applied: false, reason: '无有效正确率，不调整' }
   }
 
-  // 本次实际作答覆盖的知识点（从题目推导，支持混合主题会话）
+  // 本次实际作答覆盖的知识点（从题目推导，支持混合主题会话）。
+  // P4-2B-2：必须走 resolvePath（会话快照优先）——直接用 findExercise
+  // 会在题库升级后按新题库归因历史练习，导致路径修正对象偏移。
   const sessionTopicIds = new Set(
-    attempts.map(attempt => findExercise(attempt.exerciseId)?.topicId).filter(Boolean),
+    attempts.map(attempt => resolvePath(attempt.exerciseId)?.topicId).filter(Boolean),
   )
 
   let touched = 0
@@ -242,8 +245,13 @@ export async function preparePathUpdate({ accountId, session, attempts, exercise
   }
 }
 
-/** 落库路径更新（唯一写操作） */
+/**
+ * 落库路径更新（兼容导出 · P4-2B-2）。
+ * 生产链路已改用 commitPathUpdateCAS（版本 CAS + 会话账本）；
+ * 本函数仅保留给非 CAS 调用方（生成/初始化路径），同样走 repository。
+ */
 export async function commitPathUpdate(accountId, nextPath) {
+  const { saveKnowledgePathResult } = await import('./repository.js')
   await saveKnowledgePathResult(accountId, nextPath)
 }
 

@@ -54,3 +54,12 @@ export function listLearningEvents(accountId, limit) {
 export { naturalDay } from './store.js'
 export { loadExerciseBank, findExercise, listExercisesForTopic, listBankTopics, validateBank } from './exercise-bank.js'
 export { scoreAnswer, summarizeAttempts } from './scoring.js'
+
+/* ———————————— 知识路径（P4-2B-2） ———————————— */
+
+export {
+  getLatestKnowledgePath,
+  saveKnowledgePathResult,
+  commitPathUpdateCAS,
+  hasPathUpdateForSession,
+} from './knowledge-path-repository.js'
