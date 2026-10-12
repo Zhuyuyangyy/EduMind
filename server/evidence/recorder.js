@@ -34,12 +34,76 @@ function traceAccount(trace) {
   return trace.accountId || LEGACY_ACCOUNT
 }
 
+/* ———————————— P4-2B-6 治理策略 ———————————— */
+
+/** 追踪保留期限（天）：超期记录在读取时清理（非关键诊断数据） */
+export const TRACE_RETENTION_DAYS = 14
+/** 单账号 trace 上限：超出滚动删除最旧（防活跃账号挤占他人） */
+export const TRACE_PER_ACCOUNT_LIMIT = 100
+
+/** 调试开关：显式 opt-in 才在 trace 中保留原始内容（默认脱敏） */
+function keepContent() {
+  return process.env.ZHIXUE_TRACE_KEEP_CONTENT === '1'
+}
+
+/** 文本最小化：原文 → 长度摘要（保留可诊断的体量信息，不存内容） */
+function minimizeText(value) {
+  const text = String(value ?? '')
+  if (!text) return ''
+  return `内容(${text.length}字，已脱敏)`
+}
+
+/**
+ * 落库前脱敏（P4-2B-6）。
+ * 判定：trace 是诊断/证据展示数据，不是业务权威源（教学证据以
+ * tutoring_history/chat_messages 为准）。默认不落原始问题/回答
+ * 文本（隐私最小化）；agentResults 的输入输出摘要同样处理。
+ * 调试场景经 ZHIXUE_TRACE_KEEP_CONTENT=1 显式开启原文保留。
+ */
+function sanitizeTrace(trace) {
+  if (keepContent()) return trace
+  return {
+    ...trace,
+    inputsSummary: minimizeText(trace.inputsSummary),
+    outputsSummary: minimizeText(trace.outputsSummary),
+    agentResults: Array.isArray(trace.agentResults)
+      ? trace.agentResults.map(r => ({
+          ...r,
+          inputSummary: minimizeText(r.inputSummary),
+          outputSummary: minimizeText(r.outputSummary),
+        }))
+      : trace.agentResults,
+  }
+}
+
+/** 保留期过滤 + 每账号上限（读取统一入口，写入前同样执行） */
+function applyRetention(traces) {
+  const cutoff = Date.now() - TRACE_RETENTION_DAYS * 24 * 3600 * 1000
+  const fresh = traces.filter(t => {
+    const at = Date.parse(t.timestamp || 0)
+    return Number.isFinite(at) ? at >= cutoff : true
+  })
+  const perAccount = new Map()
+  const kept = []
+  // 从新到旧遍历，每账号保留最近 N 条
+  for (let i = fresh.length - 1; i >= 0; i -= 1) {
+    const trace = fresh[i]
+    const account = traceAccount(trace)
+    const count = perAccount.get(account) || 0
+    if (count >= TRACE_PER_ACCOUNT_LIMIT) continue
+    perAccount.set(account, count + 1)
+    kept.push(trace)
+  }
+  return kept.reverse()
+}
+
 export function readTraces() {
   ensureDir()
   const fp = tracesPath()
   if (!fs.existsSync(fp)) return []
   try {
-    return JSON.parse(fs.readFileSync(fp, 'utf8'))
+    const parsed = JSON.parse(fs.readFileSync(fp, 'utf8'))
+    return applyRetention(Array.isArray(parsed) ? parsed : [])
   } catch {
     return []
   }
@@ -75,12 +139,12 @@ export function setTraceRecordedHook(hook) {
  * 会产生第二份业务记录，两个存储的成功状态互相矛盾。
  */
 export function recordTrace(trace) {
-  const stamped = { ...trace, accountId: trace.accountId || currentAccount() }
+  const stamped = sanitizeTrace({ ...trace, accountId: trace.accountId || currentAccount() })
   try {
     const traces = readTraces()
     traces.push(stamped)
-    const kept = traces.slice(-200)
-    writeTraces(kept)
+    // 保留策略：保留期 + 每账号上限（替代旧的全局 200 条）
+    writeTraces(applyRetention(traces))
   } catch (err) {
     console.error('[trace] 追踪写入失败（不影响业务响应）:', err?.message || err)
   }
