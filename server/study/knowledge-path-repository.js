@@ -74,45 +74,137 @@ export async function getLatestKnowledgePath(accountId = 'default') {
   return { ...parsed, version: Number(row.version) || Number(parsed.version) || 1 }
 }
 
-/* ———————————— 直接保存（生成/初始化路径，无 CAS） ———————————— */
+/* ———————————— 直接保存（迁移/初始化路径，版本不回退） ———————————— */
 
+/**
+ * 保存路径（迁移/初始化语义）。
+ * 版本保护：目标已存在更新版本时拒绝覆盖（P4-2B-4「禁止覆盖较新的
+ * 正式数据」）；重复保存同一版本不产生写入。
+ */
 export async function saveKnowledgePathResult(accountId = 'default', result) {
   // version 归一化后落库：CAS 口径稳定（缺省 1）
   const normalized = { ...result, version: Number(result?.version) || 1 }
-  if (!useMysql()) return jsonSave(accountId, normalized)
+  if (!useMysql()) {
+    const current = jsonGetLatest(accountId)
+    if (current && (Number(current.version) || 1) >= normalized.version) return
+    return jsonSave(accountId, normalized)
+  }
   await ensureKnowledgePathSchema()
   const { getMySqlPool } = await import('../store/mysql.js')
-  await getMySqlPool().query(
-    `INSERT INTO knowledge_paths (account_id, version, path_json, updated_at)
-     VALUES (?, ?, CAST(? AS JSON), ?)
-     ON DUPLICATE KEY UPDATE version = VALUES(version), path_json = VALUES(path_json), updated_at = VALUES(updated_at)`,
-    [String(accountId), normalized.version, JSON.stringify(normalized), new Date(result.updatedAt || Date.now())],
-  )
+  // 两段式 + FOR UPDATE：条件 UPSERT 的 IF(VALUES(...)) 对 JSON 列实测
+  // 不可靠（version 更新而 path_json 保持旧值，MySQL 8.0 实测复现），
+  // 改显式 SELECT→INSERT/UPDATE，行锁保证并发串行。
+  const connection = await getMySqlPool().getConnection()
+  try {
+    await connection.beginTransaction()
+    const [rows] = await connection.query(
+      'SELECT version FROM knowledge_paths WHERE account_id = ? FOR UPDATE',
+      [String(accountId)],
+    )
+    const currentVersion = rows[0] ? Number(rows[0].version) || 1 : 0
+    if (rows.length === 0 || normalized.version > currentVersion) {
+      await connection.query(
+        normalized.version > currentVersion && rows.length > 0
+          ? `UPDATE knowledge_paths SET version = ?, path_json = CAST(? AS JSON), updated_at = ? WHERE account_id = ?`
+          : `INSERT INTO knowledge_paths (account_id, version, path_json, updated_at) VALUES (?, ?, CAST(? AS JSON), ?)`,
+        rows.length > 0
+          ? [normalized.version, JSON.stringify(normalized), new Date(result.updatedAt || Date.now()), String(accountId)]
+          : [String(accountId), normalized.version, JSON.stringify(normalized), new Date(result.updatedAt || Date.now())],
+      )
+    }
+    // 已存在更新/相同版本 → 拒绝覆盖（P4-2B-4 不覆盖较新正式数据）
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+/**
+ * 主动重新生成（generate 端点语义 · P4-2B-2b）。
+ * 与 saveKnowledgePathResult 的区别：生成结果通常没有 version 字段，
+ * 必须基于「现有版本 + 1」推进，而不是归一化回 v1 覆盖历史路径。
+ * 无既有路径时从 v1 开始（首次初始化）。
+ */
+export async function regenerateKnowledgePath(accountId = 'default', result) {
+  const current = await getLatestKnowledgePath(accountId)
+  const baseVersion = current ? Number(current.version) || 1 : 0
+  const normalized = {
+    ...result,
+    version: baseVersion + 1,
+    basedOn: baseVersion,
+    updatedAt: new Date().toISOString(),
+  }
+  if (!useMysql()) {
+    jsonSave(accountId, normalized)
+    return normalized
+  }
+  await ensureKnowledgePathSchema()
+  const { getMySqlPool } = await import('../store/mysql.js')
+  // 两段式 + FOR UPDATE（同 saveKnowledgePathResult：条件 UPSERT 对
+  // JSON 列实测不可靠）。regenerate 的版本必为 current+1，恒大于当前
+  // 版本，直接走 UPDATE/INSERT。
+  const connection = await getMySqlPool().getConnection()
+  try {
+    await connection.beginTransaction()
+    const [rows] = await connection.query(
+      'SELECT version FROM knowledge_paths WHERE account_id = ? FOR UPDATE',
+      [String(accountId)],
+    )
+    if (rows.length === 0) {
+      await connection.query(
+        'INSERT INTO knowledge_paths (account_id, version, path_json, updated_at) VALUES (?, ?, CAST(? AS JSON), ?)',
+        [String(accountId), normalized.version, JSON.stringify(normalized), new Date()],
+      )
+    } else {
+      await connection.query(
+        'UPDATE knowledge_paths SET version = ?, path_json = CAST(? AS JSON), updated_at = ? WHERE account_id = ?',
+        [normalized.version, JSON.stringify(normalized), new Date(), String(accountId)],
+      )
+    }
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+  return normalized
 }
 
 /* ———————————— CAS 提交（反馈链路唯一写入口） ———————————— */
 
 /**
  * 版本 CAS 提交。
- * @param expectedVersion 调用方计算所基于的当前版本
+ * @param expectedVersion 调用方计算所基于的当前版本（必须是
+ *   preparePathUpdate 返回的 basedOn——不得取提交前最新读到的版本，
+ *   否则「准备后、提交前版本被改」时旧对象会以新版本号落库覆盖他人
+ *   更新，P4-2B-2b 复现）
  * @param sessionId 学习会话 ID（可选）；提供时以账本保证同会话幂等
- * @returns {{ok:true,version:number} | {ok:false,code:'version-conflict'|'session-already-applied',currentVersion?:number}}
+ * @returns {{ok:true,version:number} | {ok:false,code:'version-mismatch'|'version-conflict'|'session-already-applied',currentVersion?:number}}
  */
 export async function commitPathUpdateCAS(accountId, nextPath, { expectedVersion, sessionId } = {}) {
   const nextVersion = Number(nextPath.version) || 1
+  const expected = Number(expectedVersion)
 
   if (!useMysql()) {
     // JSON 开发实现：进程内版本比对（单文件语义，无跨进程 CAS）
     const current = jsonGetLatest(accountId)
     const currentVersion = current ? (Number(current.version) || 1) : 0
-    if (currentVersion !== Number(expectedVersion)) {
-      return { ok: false, code: 'version-conflict', currentVersion }
-    }
     if (sessionId) {
       const ledger = current?.appliedSessions || []
       if (ledger.includes(String(sessionId))) {
         return { ok: false, code: 'session-already-applied', currentVersion }
       }
+    }
+    // 参数校验：新版本必须严格等于 basedOn+1（调用方版本绑定错误的防线）
+    if (!Number.isFinite(expected) || nextVersion !== expected + 1) {
+      return { ok: false, code: 'version-mismatch', currentVersion }
+    }
+    if (currentVersion !== expected) {
+      return { ok: false, code: 'version-conflict', currentVersion }
     }
     const toSave = sessionId
       ? { ...nextPath, appliedSessions: [...(current?.appliedSessions || []), String(sessionId)] }
@@ -140,11 +232,20 @@ export async function commitPathUpdateCAS(accountId, nextPath, { expectedVersion
       }
     }
 
+    // 参数校验（P4-2B-2b）：新版本必须严格等于 basedOn+1。
+    // 调用层若误用「提交前最新读」作 expectedVersion，旧对象会以新
+    // 版本号落库静默覆盖并发更新——此处 fail-fast 拒绝。
+    if (!Number.isFinite(expected) || nextVersion !== expected + 1) {
+      await connection.rollback()
+      const [rows] = await connection.query('SELECT version FROM knowledge_paths WHERE account_id = ?', [String(accountId)])
+      return { ok: false, code: 'version-mismatch', currentVersion: rows[0] ? Number(rows[0].version) : 0 }
+    }
+
     // 版本 CAS：仅当当前版本与 expectedVersion 一致才更新
     const [result] = await connection.query(
       `UPDATE knowledge_paths SET version = ?, path_json = CAST(? AS JSON), updated_at = ?
        WHERE account_id = ? AND version = ?`,
-      [nextVersion, JSON.stringify(nextPath), new Date(), String(accountId), Number(expectedVersion)],
+      [nextVersion, JSON.stringify(nextPath), new Date(), String(accountId), expected],
     )
     if (result.affectedRows !== 1) {
       await connection.rollback()

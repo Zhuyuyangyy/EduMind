@@ -73,7 +73,7 @@ import {
   findExercise,
   summarizeAttempts,
   getLatestKnowledgePath,
-  saveKnowledgePathResult,
+  regenerateKnowledgePath,
   commitPathUpdateCAS,
   hasPathUpdateForSession,
 } from './study/repository.js'
@@ -561,8 +561,10 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req)
       const profile = body.profile || await getLatestProfileResult(accountIdOf(req)) || {}
       const result = await orchestrateKnowledgePath({ profile })
-      await saveKnowledgePathResult(accountIdOf(req), result.knowledgePath)
-      sendJson(res, 200, result.knowledgePath)
+      // P4-2B-2b：重新生成基于「现有版本+1」推进——无版本保护的 UPSERT
+      // 会把无 version 字段的生成结果归一化为 v1，覆盖已有历史路径。
+      const saved = await regenerateKnowledgePath(accountIdOf(req), result.knowledgePath)
+      sendJson(res, 200, saved)
       return
     }
 
@@ -1014,8 +1016,11 @@ const server = http.createServer(async (req, res) => {
                 pathUpdate = prepared
                 break
               }
-              const latestNow = await getLatestKnowledgePath(accountId)
-              const expectedVersion = Number(latestNow?.version) || 1
+              // expectedVersion 必须是 prepared.basedOn（准备时基于的
+              // 版本）。取「提交前最新读」会在版本被并发改掉时让旧对象
+              // 以新版本号落库；DB 层另有 version = basedOn+1 的严格
+              // 递增校验作为第二道防线。
+              const expectedVersion = prepared.basedOn
               const result = await commitPathUpdateCAS(accountId, prepared.nextPath, { expectedVersion, sessionId })
               if (result.ok) {
                 committed = { ...prepared, version: result.version }

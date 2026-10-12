@@ -60,6 +60,7 @@ export { scoreAnswer, summarizeAttempts } from './scoring.js'
 export {
   getLatestKnowledgePath,
   saveKnowledgePathResult,
+  regenerateKnowledgePath,
   commitPathUpdateCAS,
   hasPathUpdateForSession,
 } from './knowledge-path-repository.js'
