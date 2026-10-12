@@ -6,17 +6,13 @@ import {
   buildChatReply,
   buildChatReplyAsync,
   buildTutoringReply,
-  getChatHistory,
   getEvaluationPayload,
   getLearningPathPayload,
   getLatestProfileResult,
   getRecommendedResources,
   getResources,
-  getTutoringHistory,
   getTutoringTopics,
-  saveChatHistoryEntry,
   saveProfileResult,
-  saveTutoringHistoryEntry,
   getAgentWorkflow,
   generateResourcesPayload,
   getEvidenceTraces,
@@ -76,6 +72,10 @@ import {
   regenerateKnowledgePath,
   commitPathUpdateCAS,
   hasPathUpdateForSession,
+  appendChatInteraction,
+  getChatHistory,
+  appendTutoringHistory,
+  getTutoringHistory,
 } from './study/repository.js'
 import { generateStudyFeedback, buildWrongItems } from './study/feedback.js'
 import { publicSessionView, publicAttemptView, publicExerciseView } from './study/dto.js'
@@ -580,7 +580,13 @@ const server = http.createServer(async (req, res) => {
       const isDialoguePayload = Array.isArray(body.messages)
       const message = isDialoguePayload ? latestUserMessage(body.messages) : String(body.message || '').trim()
       const reply = await buildChatReplyAsync(message, body.multimodalContents)
-      saveChatHistoryEntry(accountIdOf(req), message, reply, body.multimodalContents)
+      // P4-2B-3：用户消息+助手回复一次原子写入；失败即请求失败，
+      // 不「只保存用户消息就返回成功」。多模态超体积上限在此明确报错。
+      await appendChatInteraction(accountIdOf(req), {
+        userMessage: message,
+        reply,
+        multimodalContents: body.multimodalContents,
+      })
       const chatTrace = buildTrace({
         requestId: `chat-${Date.now()}`,
         agents: ['ChatAgent'],
@@ -599,7 +605,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/api/chat/history') {
-      sendJson(res, 200, { items: getChatHistory(accountIdOf(req)) })
+      sendJson(res, 200, { items: await getChatHistory(accountIdOf(req)) })
       return
     }
 
@@ -617,7 +623,10 @@ const server = http.createServer(async (req, res) => {
         resources: [],
       })
       const answer = agentResult.answer
-      saveTutoringHistoryEntry(accountIdOf(req), {
+      // P4-2B-3：历史写入失败即请求失败（不静默丢失辅导记录）；
+      // fallbackAgents 三态如实落库（[]=真实模型 / 非空=降级 /
+      // 缺失=未知来源，不补写）。
+      await appendTutoringHistory(accountIdOf(req), {
         question: String(body.question || '').trim() || '未提供问题',
         answer,
         mode: body.mode || 'qa',
@@ -637,7 +646,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/api/tutoring/history') {
-      sendJson(res, 200, { items: getTutoringHistory(accountIdOf(req)) })
+      sendJson(res, 200, { items: await getTutoringHistory(accountIdOf(req)) })
       return
     }
 

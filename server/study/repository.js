@@ -64,3 +64,13 @@ export {
   commitPathUpdateCAS,
   hasPathUpdateForSession,
 } from './knowledge-path-repository.js'
+
+/* ———————————— 聊天与导师历史（P4-2B-3） ———————————— */
+
+export {
+  appendChatInteraction,
+  getChatHistory,
+  appendTutoringHistory,
+  getTutoringHistory,
+  MAX_MULTIMODAL_BYTES,
+} from './history-repository.js'
