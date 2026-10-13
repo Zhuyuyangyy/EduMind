@@ -411,46 +411,93 @@ test('B-5 #9 MySQL 故障 fail-closed：坏库实例明确失败，不静默转 
 
 /* ============ 10. B-4 迁移后数据在 A/B 一致 ============ */
 
-test('B-5 #10 迁移数据跨实例一致：B-4 导入后 A/B 读到相同内容与顺序', { skip: mysqlConfigured ? false : '未配置 MySQL 环境，迁移一致性门禁未实测' }, async () => {
+test('B-5 #10 迁移数据跨实例一致：B-4 导入后 A/B 两个真实进程 HTTP 读取一致', { skip: mysqlConfigured ? false : '未配置 MySQL 环境，迁移一致性门禁未实测' }, async () => {
   const migrator = await import('../scripts/migrate-legacy-json.mjs')
-  const repository = await import('../server/study/repository.js')
 
-  // 构造迁移夹具并导入（用 migrator 的 env=当前进程环境）
-  const account = `xinst-mig-${Date.now()}`
-  const sourcePath = path.join(os.tmpdir(), `edumind-xinst-mig-${process.pid}.json`)
+  // 可真实登录的迁移测试账号：reviewer（演示身份，MySQL identities
+  // 已存在）；内容带唯一 marker 便于从历史窗口中精确核对。
+  const marker = `xinst-mig10-${Date.now()}`
+  const sourcePath = path.join(os.tmpdir(), `edumind-xinst-mig10-${process.pid}.json`)
   fs.writeFileSync(sourcePath, JSON.stringify({
     chatHistory: {
-      [account]: [
-        { id: 9001, role: 'user', content: '迁移问题一 😀', time: '09:00', multimodalContents: [] },
-        { id: 9002, role: 'assistant', content: '迁移回复一', time: '09:00', resources: [], suggestions: [] },
-        { id: 9003, role: 'user', content: '迁移问题二', time: '09:01', multimodalContents: [] },
+      reviewer: [
+        { id: 9001, role: 'user', content: `${marker} 问题一 😀`, time: '09:00', multimodalContents: [{ type: 'text', data: '迁移多模态' }] },
+        { id: 9002, role: 'assistant', content: `${marker} 回复一`, time: '09:00', resources: [{ type: 'doc', title: '迁移资源' }], suggestions: ['迁移建议'] },
+        { id: 9003, role: 'user', content: `${marker} 问题二`, time: '09:01', multimodalContents: [] },
+        { id: 9004, role: 'assistant', content: `${marker} 回复二`, time: '09:01', resources: [], suggestions: [] },
       ],
     },
     tutoringHistory: {
-      [account]: [
-        { q: '迁移辅导问题', a: '迁移辅导回答', time: '09:30', mode: 'qa', scenario: 'preview', fallbackAgents: [] },
+      reviewer: [
+        { q: `${marker} 辅导问题`, a: `${marker} 辅导回答`, time: '09:30', mode: 'qa', scenario: 'preview', fallbackAgents: [] },
+        { q: `${marker} 降级问题`, a: `${marker} 降级回答`, time: '09:31', mode: 'qa', scenario: 'preview', fallbackAgents: ['TutorAgent'] },
       ],
     },
+    profiles: {},
+    accountSettings: {},
+    learningCycles: [],
   }), 'utf8')
+
+  const pidA = serverA?.api?.pid
+  const pidB = serverB?.api?.pid
 
   try {
     const imported = await migrator.runMigration({ mode: 'import', sourcePath, env: process.env })
     assert.equal(imported.ok, true, `迁移导入应成功: ${JSON.stringify(imported.errors)}`)
 
-    // 登录该账号（演示身份库可能没有——用 reviewer 不可行，改为直接验证
-    // 两实例对同一账号数据的读取一致性：经 A/B 的 repository 直查等价于
-    // 两实例各建连接读取，这里用 HTTP 需要会话，故用 migrator verify 的
-    // 双实例读取替代：A/B 各起一次直连读取）
-    const [viaA, viaB] = await Promise.all([
-      Promise.resolve(repository.getChatHistory(account)),
-      Promise.resolve(repository.getChatHistory(account)),
-    ])
-    assert.deepEqual(viaA.map(i => [i.role, i.content]), viaB.map(i => [i.role, i.content]), '两实例读取结果必须一致')
-    assert.deepEqual(viaA.map(i => i.content), ['迁移问题一 😀', '迁移回复一', '迁移问题二'], '迁移数据顺序与内容一致')
+    // 两个真实 API 进程分别通过 HTTP 登录并读取
+    const authA = await login(BASE_A, ACCOUNT_A)
+    const authB = await login(BASE_B, ACCOUNT_A)
 
-    const tutor = await repository.getTutoringHistory(account)
-    assert.equal(tutor.length, 1)
-    assert.deepEqual(tutor[0].fallbackAgents, [], '迁移后来源三态保真')
+    const [historyA, historyB] = await Promise.all([
+      (await (await fetch(`${BASE_A}/api/chat/history`, { headers: authA })).json()).items,
+      (await (await fetch(`${BASE_B}/api/chat/history`, { headers: authB })).json()).items,
+    ])
+
+    const pick = items => items
+      .filter(i => String(i.content || '').includes(marker))
+      .map(i => [i.role, i.content])
+
+    // 内容一致（两进程读取相同）
+    assert.deepEqual(pick(historyA), pick(historyB), 'A/B 两个进程读到的迁移聊天必须一致')
+    // 顺序与内容保真（含 Unicode 与多模态元数据）
+    assert.deepEqual(pick(historyA), [
+      ['user', `${marker} 问题一 😀`],
+      ['assistant', `${marker} 回复一`],
+      ['user', `${marker} 问题二`],
+      ['assistant', `${marker} 回复二`],
+    ], '迁移聊天顺序与内容必须与源一致')
+    const userMsg = historyA.find(i => i.role === 'user' && String(i.content).includes(marker))
+    assert.deepEqual(userMsg.multimodalContents, [{ type: 'text', data: '迁移多模态' }], '多模态元数据跨实例保真')
+
+    // 辅导历史：三态保真
+    const [tutorA, tutorB] = await Promise.all([
+      (await (await fetch(`${BASE_A}/api/tutoring/history`, { headers: authA })).json()).items,
+      (await (await fetch(`${BASE_B}/api/tutoring/history`, { headers: authB })).json()).items,
+    ])
+    const pickTutor = items => items.filter(i => String(i.q || '').includes(marker)).map(i => [i.q, i.a, JSON.stringify(i.fallbackAgents ?? null)])
+    assert.deepEqual(pickTutor(tutorA), pickTutor(tutorB), 'A/B 读到的迁移辅导历史必须一致')
+    assert.deepEqual(pickTutor(tutorA), [
+      [`${marker} 辅导问题`, `${marker} 辅导回答`, '[]'],
+      [`${marker} 降级问题`, `${marker} 降级回答`, '["TutorAgent"]'],
+    ], '迁移辅导三态（[]=真实 / 非空=降级）必须保真')
+
+    // 账号隔离：student 账号（经 B 实例）不得看到 reviewer 的迁移数据
+    const authStudent = await login(BASE_B, ACCOUNT_B)
+    const studentHistory = (await (await fetch(`${BASE_B}/api/chat/history`, { headers: authStudent })).json()).items
+    assert.ok(!studentHistory.some(i => String(i.content || '').includes(marker)), 'student 不得看到 reviewer 的迁移聊天')
+
+    // 重启 API-A 后仍一致（进程级恢复）
+    serverA.api.kill()
+    await once(serverA.api, 'exit').catch(() => {})
+    const restarted = spawnApi(PORT_A)
+    serverA = restarted
+    await waitUp(BASE_A, restarted.api)
+    const authA2 = await login(BASE_A, ACCOUNT_A)
+    const historyRestarted = (await (await fetch(`${BASE_A}/api/chat/history`, { headers: authA2 })).json()).items
+    assert.deepEqual(pick(historyRestarted), pick(historyA), '重启后的 A 进程读到的迁移数据必须一致')
+
+    console.log(`[B-5 #10] API-A pid=${pidA} port=${PORT_A} | API-B pid=${pidB} port=${PORT_B} | 双进程 HTTP 核对一致（聊天 4 条顺序保真 + 辅导三态保真 + 账号隔离 + 重启恢复）`)
   } finally {
     fs.rmSync(sourcePath, { force: true })
   }
