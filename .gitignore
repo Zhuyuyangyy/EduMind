@@ -39,3 +39,6 @@ server/sessions.json
 server/identities.json
 server/sessions.json*
 server/identities.json*
+
+# 本地数据备份（sessions 撤销备份等，不提交 Git）
+.workbuddy-backups/
