@@ -41,8 +41,17 @@ export const TRACE_RETENTION_DAYS = 14
 /** 单账号 trace 上限：超出滚动删除最旧（防活跃账号挤占他人） */
 export const TRACE_PER_ACCOUNT_LIMIT = 100
 
-/** 调试开关：显式 opt-in 才在 trace 中保留原始内容（默认脱敏） */
+/**
+ * 调试开关：显式 opt-in 才在 trace 中保留原始内容（默认脱敏）。
+ * 生产模式（ZHIXUE_ENV=production / NODE_ENV=production）下强制
+ * 禁用——原文调试开关不得在生产环境保留个人学习内容（审计补强）。
+ */
+function isProductionEnv() {
+  return process.env.ZHIXUE_ENV === 'production' || process.env.NODE_ENV === 'production'
+}
+
 function keepContent() {
+  if (isProductionEnv()) return false
   return process.env.ZHIXUE_TRACE_KEEP_CONTENT === '1'
 }
 
@@ -60,17 +69,29 @@ function minimizeText(value) {
  * 文本（隐私最小化）；agentResults 的输入输出摘要同样处理。
  * 调试场景经 ZHIXUE_TRACE_KEEP_CONTENT=1 显式开启原文保留。
  */
+/** 自由文本数组最小化：每条替换为长度摘要（保留条数供诊断） */
+function minimizeTextArray(value) {
+  if (!Array.isArray(value)) return value
+  return value.map(item => minimizeText(item))
+}
+
 function sanitizeTrace(trace) {
   if (keepContent()) return trace
   return {
     ...trace,
     inputsSummary: minimizeText(trace.inputsSummary),
     outputsSummary: minimizeText(trace.outputsSummary),
+    // 审计补强：证据与风险文本同样可能含用户内容（模型生成的证据
+    // 文字常引用原问题）——自由文本字段一律最小化
+    evidence: minimizeTextArray(trace.evidence),
+    riskFlags: minimizeTextArray(trace.riskFlags),
     agentResults: Array.isArray(trace.agentResults)
       ? trace.agentResults.map(r => ({
           ...r,
           inputSummary: minimizeText(r.inputSummary),
           outputSummary: minimizeText(r.outputSummary),
+          evidence: minimizeTextArray(r.evidence),
+          riskFlags: minimizeTextArray(r.riskFlags),
         }))
       : trace.agentResults,
   }
@@ -103,7 +124,18 @@ export function readTraces() {
   if (!fs.existsSync(fp)) return []
   try {
     const parsed = JSON.parse(fs.readFileSync(fp, 'utf8'))
-    return applyRetention(Array.isArray(parsed) ? parsed : [])
+    if (!Array.isArray(parsed)) return []
+    const kept = applyRetention(parsed)
+    // 物理清理（审计补强）：检测到超期/超限记录时立即写回磁盘，
+    // 不只是查询结果过滤——否则过期原文会长期留在文件里。
+    if (kept.length !== parsed.length) {
+      try {
+        writeTraces(kept)
+      } catch (error) {
+        console.error('[trace] 保留期物理清理失败:', error?.message || error)
+      }
+    }
+    return kept
   } catch {
     return []
   }

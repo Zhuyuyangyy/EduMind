@@ -42,3 +42,32 @@
 - 脱敏后证据页展示的是长度摘要而非原文——如需原文展示，应从业务表读取（tutoring_history），这是正确方向（权威源展示）。
 - 旧 trace 文件中的历史原文记录：保留期 14 天会自然清除；如需立即清除可手动删除 `evidence-data/traces.json`（非业务数据）。
 - 生产环境建议设置 `ZHIXUE_TRACE_FILE` 到可写目录并纳入日志轮转策略。
+
+---
+
+## 六、审计补强（P4-2B 最终审计整改 · 基线 6e76273）
+
+独立审计指出三处缺口，已全部关闭（门禁 trace-governance.test.mjs 8/8）：
+
+1. **自由文本字段脱敏**（原只脱敏 inputsSummary/outputsSummary/agentResults 摘要）：
+   `sanitizeTrace` 现同时最小化 `evidence`、`riskFlags`、`agentResults[].evidence`、
+   `agentResults[].riskFlags`——模型生成的证据文字常引用用户原问题，属同类风险。
+   脱敏保留条目数（只替换文本为长度摘要），诊断价值不受损。
+   门禁：含独特敏感标记的 evidence/riskFlags 写入后，trace 文件中不存在该标记。
+
+2. **保留期物理清理**（原仅读取过滤）：`readTraces` 检测到超期/超限记录时立即
+   写回磁盘（物理删除），不只是查询结果过滤——过期原文不会长期留在文件里。
+   门禁：直接写入 30 天前的记录，一次读取后该记录从磁盘消失。
+
+3. **生产模式禁用原文开关**：`keepContent()` 增加生产环境判定
+   （ZHIXUE_ENV=production / NODE_ENV=production）——生产环境下即使显式设置
+   ZHIXUE_TRACE_KEEP_CONTENT=1 也强制脱敏，原文调试开关不得在生产保留个人
+   学习内容。门禁：生产模式 + 开关开启 → 仍脱敏。
+
+**历史 trace 清理策略**（不随意清空不明归属文件）：
+- 定位：`evidence-data/traces.json`（或 ZHIXUE_TRACE_FILE）。
+- 识别：读取路径按 14 天 TTL + 每账号 100 条自动物理清理——历史含原文的旧记录
+  会在自然读写中逐出；无需人工介入。
+- 如需立即清除：停止服务 → 备份原文件（sha256 记录）→ 删除或置空
+  `evidence-data/traces.json` → 重启。该文件是非关键诊断数据，删除不影响业务。
+- 备份目录：`.workbuddy-backups/`（不提交 Git）。

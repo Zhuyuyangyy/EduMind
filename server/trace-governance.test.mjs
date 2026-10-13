@@ -159,3 +159,80 @@ test('B-6 保留期限：超过保留期的记录被清理', () => {
   assert.ok(!all.some(t => t.requestId === 'ancient'), '超过保留期的 trace 必须被清理')
   assert.ok(all.some(t => t.requestId === 'fresh'), '保留期内的 trace 必须保留')
 })
+
+/* ============ 审计补强：evidence/riskFlags 脱敏 ============ */
+
+test('B-6 审计补强：evidence / agentResults evidence / riskFlags 默认脱敏', () => {
+  const marker = 'SENSITIVE-LEAK-MARKER-XYZ'
+  const trace = recorder.buildTrace({
+    requestId: 'req-audit',
+    agents: ['ChatAgent'],
+    inputsSummary: '问题',
+    outputsSummary: '回答',
+    evidence: [`用户提问包含 ${marker}`, 'LLM 生成'],
+    riskFlags: [`风险文本含 ${marker}`],
+    fallbackUsed: false,
+    durationMs: 5,
+    agentResults: [
+      { agentName: 'ChatAgent', inputSummary: '输入', outputSummary: '输出', evidence: [`agent 证据含 ${marker}`], riskFlags: [], confidence: 0.9, durationMs: 5, fallbackUsed: false },
+    ],
+  })
+  recorder.recordTrace(trace)
+
+  const raw = fs.readFileSync(TRACE_FILE, 'utf8')
+  assert.ok(!raw.includes(marker), `trace 文件不得包含敏感标记（evidence/riskFlags 泄漏）: ${raw.slice(0, 200)}`)
+  const stored = recorder.readTraces().find(t => t.requestId === 'req-audit')
+  assert.ok(stored, '应能读到该 trace')
+  assert.ok(stored.evidence.every(e => !String(e).includes(marker)), 'evidence 数组元素必须脱敏')
+  assert.ok(stored.riskFlags.every(r => !String(r).includes(marker)), 'riskFlags 必须脱敏')
+  assert.ok(stored.agentResults[0].evidence.every(e => !String(e).includes(marker)), 'agent evidence 必须脱敏')
+  // 诊断元数据仍保留
+  assert.equal(stored.evidence.length, 2, 'evidence 条目数应保留（脱敏不删条数）')
+  assert.equal(stored.riskFlags.length, 1, 'riskFlags 条目数应保留')
+})
+
+/* ============ 审计补强：物理 TTL 清理 ============ */
+
+test('B-6 审计补强：超期记录被物理删除（不仅是查询过滤）', () => {
+  // 直接写入一条超期记录（无敏感标记，验证物理清理机制）
+  const raw = JSON.parse(fs.readFileSync(TRACE_FILE, 'utf8'))
+  raw.push({
+    requestId: 'physical-ttl',
+    accountId: 'account-ttl',
+    timestamp: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+    agents: ['ChatAgent'], inputsSummary: '旧', outputsSummary: '旧',
+    evidence: [], riskFlags: [], fallbackUsed: false, durationMs: 1, agentResults: [],
+  })
+  fs.writeFileSync(TRACE_FILE, JSON.stringify(raw), 'utf8')
+  assert.ok(fs.readFileSync(TRACE_FILE, 'utf8').includes('physical-ttl'), '前置：超期记录应在文件中')
+
+  // 触发一次读取（治理语义：读取即物理清理）
+  const traces = recorder.readTraces()
+  assert.ok(!traces.some(t => t.requestId === 'physical-ttl'), '读取结果不得包含超期记录')
+
+  const afterRaw = fs.readFileSync(TRACE_FILE, 'utf8')
+  assert.ok(!afterRaw.includes('physical-ttl'), '超期记录必须从磁盘物理删除，不能仅查询过滤')
+})
+
+/* ============ 审计补强：生产模式禁止原文开关 ============ */
+
+test('B-6 审计补强：生产模式下 KEEP_CONTENT 开关被禁用（仍脱敏）', () => {
+  process.env.ZHIXUE_TRACE_KEEP_CONTENT = '1'
+  process.env.ZHIXUE_ENV = 'production'
+  try {
+    const trace = recorder.buildTrace({
+      requestId: 'req-prod',
+      agents: ['ChatAgent'],
+      inputsSummary: '生产环境原文问题',
+      outputsSummary: '生产环境原文回答',
+      evidence: [], riskFlags: [], fallbackUsed: false, durationMs: 1, agentResults: [],
+    })
+    recorder.recordTrace(trace)
+    const stored = recorder.readTraces().find(t => t.requestId === 'req-prod')
+    assert.ok(stored, '应能读到 trace')
+    assert.ok(!String(stored.inputsSummary).includes('原文'), '生产模式下即使显式开启 KEEP_CONTENT 也必须脱敏')
+  } finally {
+    delete process.env.ZHIXUE_ENV
+    delete process.env.ZHIXUE_TRACE_KEEP_CONTENT
+  }
+})
