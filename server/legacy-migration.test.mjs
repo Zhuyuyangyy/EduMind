@@ -184,9 +184,15 @@ test('B-4 dry-run：严格只读，输出账号分布/数量/结构变体/冲突
     // 门禁 A6：fixture 此处为账号映射形态，无全局数组场景）
     assert.ok(report.skipped.some(s => s.category === 'agentCollaboration'), '演示种子必须跳过')
     assert.ok(Array.isArray(report.isolated), '隔离清单应为数组')
-    // 严格只读：不写目标库（账本表为空）
-    const ledgerCount = await migrator.countLedger(process.env)
-    assert.equal(ledgerCount, 0, 'dry-run 不得写入迁移账本')
+    // 严格只读：本来源在账本中无记录（不能查全库计数——共享测试库
+    // 下其他测试文件正并发写入账本）
+    const mysql = await import('../server/store/mysql.js')
+    const db = mysql.getMySqlPool()
+    const [ledgerRows] = await db.query(
+      'SELECT COUNT(*) AS n FROM migration_source_ledger WHERE source_path = ?',
+      [sourcePath],
+    )
+    assert.equal(Number(ledgerRows[0].n), 0, 'dry-run 不得写入迁移账本')
     // 孤儿消息（缺助手回复）识别
     assert.ok(report.anomalies.some(a => a.kind === 'chat-without-assistant'), '缺助手回复的历史消息应被识别')
   } finally {
