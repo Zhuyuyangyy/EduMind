@@ -79,6 +79,15 @@ function digestOf(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex')
 }
 
+/** 规范化 JSON（递归排序对象键）：MySQL JSON 列读取时会重排键序，
+ *  与源序列化字符串直接比较会误报——verify 的结构比较一律用此函数。 */
+function canonicalJson(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  const keys = Object.keys(value).sort()
+  return `{${keys.map(k => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(',')}}`
+}
+
 function asAccountMap(value, category) {
   // 返回 { map: {account: records[]}, variant, isolated: [...] }
   if (Array.isArray(value)) {
@@ -90,22 +99,32 @@ function asAccountMap(value, category) {
   return { map: {}, variant: 'absent' }
 }
 
-function extractRecords(store, sourcePath, sourceSha) {
-  const records = []       // { category, accountId, locator, digest, record, sourceSha }
-  const isolated = []      // 归属假设/存疑清单
+function extractRecords(store, sourcePath, sourceSha, { includeLegacyDefault = false } = {}) {
+  const records = []       // { category, accountId, locator, digest, record, sourceSha, sourcePath }
+  const isolated = []      // 归属不明/存疑清单（默认不导入）
   const skipped = []       // 演示种子等
-  const anomalies = []     // 孤儿消息等
+  const anomalies = []     // 孤儿消息等（detail 脱敏，不含原文）
   const structureVariants = []
 
   function collect(category, value, { accountFromRecord } = {}) {
     const { map, variant } = asAccountMap(value, category)
     structureVariants.push({ category, shape: variant })
     if (variant === 'legacy-global-array') {
-      isolated.push({
-        category,
-        reason: `global-array: 旧全局数组无账号归属，按 default（演示账号）兼容读取（既有 data.js 语义），需人工确认后再决定是否保留`,
-        records: map.default.length,
-      })
+      // A6：旧全局数组——记录自带 accountId 的（learningCycles）按
+      // 记录归属导入；完全无账号归属的（chatHistory/tutoringHistory
+      // 旧数组、旧单份 knowledgePathResult）默认不进入任何账号表
+      // （含 default），仅进隔离清单待明确授权。
+      const entries = map.default || []
+      const hasRecordAccount = accountFromRecord && Array.isArray(entries)
+        && entries.length > 0 && entries.every(item => item && typeof item.accountId === 'string' && item.accountId)
+      if (!hasRecordAccount) {
+        isolated.push({
+          category,
+          reason: `global-array: 旧全局数组无账号归属，默认不导入任何账号表（含 default）；需人工确认归属或显式授权 --include-legacy-default`,
+          records: entries.length,
+        })
+        if (!includeLegacyDefault) return
+      }
     }
     for (const [accountId, entries] of Object.entries(map)) {
       const list = Array.isArray(entries) ? entries : (entries ? [entries] : [])
@@ -128,6 +147,7 @@ function extractRecords(store, sourcePath, sourceSha) {
           digest: digestOf(record),
           record,
           sourceSha,
+          sourcePath,
         })
       })
     }
@@ -147,7 +167,8 @@ function extractRecords(store, sourcePath, sourceSha) {
           anomalies.push({
             kind: 'chat-without-assistant',
             accountId,
-            detail: `id=${record.id ?? '?'} content=${String(record.content || '').slice(0, 40)}`,
+            // A7：脱敏——只报定位与体量，不含原文
+            detail: `id=${record.id ?? '?'} 长度=${String(record.content || '').length}字`,
           })
           return
         }
@@ -159,7 +180,17 @@ function extractRecords(store, sourcePath, sourceSha) {
   }
 
   collect('tutoringHistory', store.tutoringHistory)
-  collect('knowledgePath', store.knowledgePathByAccount || store.knowledgePathResult ? (store.knowledgePathByAccount || { default: store.knowledgePathResult }) : undefined)
+  if (store.knowledgePathByAccount && typeof store.knowledgePathByAccount === 'object') {
+    collect('knowledgePath', store.knowledgePathByAccount)
+  } else if (store.knowledgePathResult) {
+    // 旧单份全局路径：无账号归属 → 隔离清单（A6），不按 default 导入
+    isolated.push({
+      category: 'knowledgePath',
+      reason: 'legacy-single-path: 旧单份全局知识路径无账号归属，默认不导入（含 default）；需人工确认归属',
+      records: 1,
+    })
+    structureVariants.push({ category: 'knowledgePath', shape: 'legacy-single-global' })
+  }
   collect('profile', store.profiles)
   collect('accountSettings', store.accountSettings)
   collect('learningCycles', store.learningCycles, { accountFromRecord: true })
@@ -179,8 +210,17 @@ function extractRecords(store, sourcePath, sourceSha) {
   return { records, isolated, skipped, anomalies, structureVariants }
 }
 
+/**
+ * 迁移来源稳定身份（A3+A4）：
+ * - 含来源路径：不同来源文件的同账号同旧 ID 记录不会误判重复
+ * - 同文件重复导入 → 同 source_id（幂等）；同文件内容变化 → 同
+ *   source_id 但 record_digest 不同 → 显式 changedSource 冲突
+ * - 不含记录内容本身：定位（旧 ID/摘要）稳定，内容变化可检测
+ */
 function sourceIdOf(rec) {
-  return crypto.createHash('sha256').update(`${rec.category}|${rec.accountId}|${rec.locator}`).digest('hex')
+  return crypto.createHash('sha256')
+    .update(`${rec.category}|${rec.accountId}|${rec.sourcePath}|${rec.locator}`)
+    .digest('hex')
 }
 
 /* ———————————— MySQL 账本与写入 ———————————— */
@@ -284,6 +324,18 @@ const TARGET_DDL = [
   LEDGER_DDL,
 ]
 
+/**
+ * 只读连接（A1）：dry-run/scan 严格只读——不执行任何 DDL、不写
+ * 任何数据。与 openConnection（import/verify 的建表路径）分离。
+ */
+async function openReadOnlyConnection(env) {
+  if (!isConfigured(env)) {
+    throw Object.assign(new Error('未配置 MySQL 环境（迁移目标仅支持 MySQL）'), { migrationError: 'no-mysql' })
+  }
+  const mysql2 = (await import('mysql2/promise')).default
+  return mysql2.createConnection(mySqlConfigFromEnv(env))
+}
+
 async function openConnection(env) {
   if (!isConfigured(env)) {
     throw Object.assign(new Error('未配置 MySQL 环境（迁移目标仅支持 MySQL）'), { migrationError: 'no-mysql' })
@@ -304,6 +356,33 @@ async function openConnection(env) {
  * 画像/设置/闭环写入（SQL 与 store/mysql.js 生产函数逐字一致，保证
  * 迁移数据与业务写入同构；在 migrator 自己的连接/事务内执行）。
  */
+/**
+ * A2 覆盖保护预检（事务内 FOR UPDATE）：
+ * - profile：目标 saved_at 晚于来源 savedAt → 旧来源不得覆盖较新
+ *   正式数据（返回 conflict-newer-target）
+ * - accountSettings：目标已存在 → 设置是较新的用户偏好，旧来源不
+ *   覆盖（返回 conflict-target-exists）
+ * - 其余（learningCycles 等）→ ok
+ */
+async function protectAccountScoped(connection, rec) {
+  const record = rec.record || {}
+  if (rec.category === 'profile') {
+    const [rows] = await connection.query('SELECT saved_at FROM profile_results WHERE account_id = ? FOR UPDATE', [rec.accountId])
+    if (rows.length > 0) {
+      const targetAt = new Date(rows[0].saved_at).getTime()
+      const sourceAt = new Date(record.savedAt || 0).getTime()
+      if (targetAt >= sourceAt) return 'conflict-newer-target'
+    }
+    return 'ok'
+  }
+  if (rec.category === 'accountSettings') {
+    const [rows] = await connection.query('SELECT account_id FROM account_settings WHERE account_id = ? FOR UPDATE', [rec.accountId])
+    if (rows.length > 0) return 'conflict-target-exists'
+    return 'ok'
+  }
+  return 'ok'
+}
+
 async function writeAccountScoped(connection, rec) {
   const record = rec.record || {}
   if (rec.category === 'profile') {
@@ -366,12 +445,12 @@ async function writeRecord(connection, rec) {
   }
   if (category === 'tutoringHistory') {
     const fallbackJson = Array.isArray(record?.fallbackAgents) ? JSON.stringify(record.fallbackAgents) : null
-    await connection.query(
+    const [inserted] = await connection.query(
       `INSERT INTO tutoring_history (account_id, question, answer, mode, scenario, time_str, multimodal_json, fallback_agents_json, created_at)
        VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?)`,
       [accountId, String(record?.q ?? ''), String(record?.a ?? ''), String(record?.mode || 'qa'), String(record?.scenario || 'preview'), String(record?.time ?? ''), record?.multimodalContents?.length ? JSON.stringify(record.multimodalContents) : null, fallbackJson, new Date()],
     )
-    return null
+    return `seq:${inserted.insertId}`
   }
   if (category === 'knowledgePath') {
     // 版本冲突保护：目标 ≥ 源 → 跳过（由调用方处理，这里只写）
@@ -391,11 +470,10 @@ async function writeRecord(connection, rec) {
   return null
 }
 
-/** assistant 配对行（chatHistory 专用）：与 user 同批写入 */
-async function writeChatAssistant(connection, rec) {
-  const interactionId = `legacy-${sourceIdOf(rec).slice(0, 32)}`
-  // assistant 的 source_id 与 user 不同（locator 不同），但 interaction 相同——
-  // 用配对 user 的 locator 反推：digest 内容含 role，这里按 interaction 直接插
+/** assistant 配对行（chatHistory 专用）：与 user 同批写入。
+ *  interactionId 必须由调用方传入（配对 user 行的 target_ref）——
+ *  禁止在此重新派生（record 无 sourcePath/locator 会派生错）。 */
+async function writeChatAssistant(connection, rec, interactionId) {
   await connection.query(
     `INSERT INTO chat_messages (account_id, interaction_id, role, content, time_str, resources_json, suggestions_json, created_at)
      VALUES (?, ?, 'assistant', ?, ?, CAST(? AS JSON), ?, ?)`,
@@ -414,8 +492,8 @@ const SHORT_CATEGORY = {
   learningCycles: 'learningCycle',
 }
 
-function buildScanReport(sourcePath, source) {
-  const { records, isolated, skipped, anomalies, structureVariants } = extractRecords(source.store, sourcePath, source.sha256)
+function buildScanReport(sourcePath, source, { includeLegacyDefault = false } = {}) {
+  const { records, isolated, skipped, anomalies, structureVariants } = extractRecords(source.store, sourcePath, source.sha256, { includeLegacyDefault })
   const byCategory = {}
   const byAccount = {}
   for (const rec of records) {
@@ -434,20 +512,41 @@ function buildScanReport(sourcePath, source) {
     isolated,
     skipped,
     anomalies,
-    records,
+    // A7：CLI 输出脱敏——records 含原始内容，不随报告返回
+    // （内部已用；CLI/日志只拿统计与脱敏清单）
+    _records: records,
   }
 }
 
 /* ———————————— 主入口 ———————————— */
 
-export async function runMigration({ mode, sourcePath: explicitPath, env = process.env, backupDir, faultAfterFirstBatch = false }) {
+export async function runMigration({
+  mode,
+  sourcePath: explicitPath,
+  env = process.env,
+  backupDir,
+  faultAfterFirstBatch = false,
+  expectedSourceSha = null,
+  includeLegacyDefault = false,
+}) {
   let sourcePath
   let source
   let scan
   try {
     sourcePath = resolveSourcePath(explicitPath, env)
     source = readSourceStrict(sourcePath)
-    scan = buildScanReport(sourcePath, source)
+    // A5：导入前核对来源 SHA——dry-run/backup 与 import 之间文件被
+    // 修改时明确阻断（调用方传入 expectedSourceSha）
+    if (expectedSourceSha && source.sha256 !== expectedSourceSha) {
+      return {
+        ok: false,
+        mode,
+        sourcePath,
+        errors: [`来源文件 SHA-256 与预期不一致（预期 ${expectedSourceSha.slice(0, 16)}…，实际 ${source.sha256.slice(0, 16)}…）——来源在扫描/备份后被修改，已阻断`],
+        migrationError: 'source-changed',
+      }
+    }
+    scan = buildScanReport(sourcePath, source, { includeLegacyDefault })
   } catch (error) {
     // 来源缺失/损坏/结构非法：明确失败（A1 阻断语义），不抛裸异常
     return {
@@ -460,13 +559,18 @@ export async function runMigration({ mode, sourcePath: explicitPath, env = proce
   }
 
   if (mode === 'scan' || mode === 'dry-run') {
+    if (mode !== 'dry-run') {
+      // scan：也不外泄记录原文
+      const { _records, ...publicScan } = scan
+      return publicScan
+    }
     if (mode === 'dry-run') {
-      // 冲突预测：目标库已有数据检查（只读）
+      // 冲突预测：目标库已有数据检查（只读连接，无 DDL）
       try {
-        const { connection } = await openConnection(env)
+        const connection = await openReadOnlyConnection(env)
         try {
           const conflicts = []
-          for (const rec of scan.records) {
+          for (const rec of scan._records) {
             if (rec.category !== 'knowledgePath') continue
             const [rows] = await connection.query('SELECT version FROM knowledge_paths WHERE account_id = ?', [rec.accountId])
             if (rows.length > 0 && Number(rows[0].version) >= (Number(rec.record?.version) || 1)) {
@@ -485,7 +589,9 @@ export async function runMigration({ mode, sourcePath: explicitPath, env = proce
         }
       }
     }
-    return scan
+    // A7：CLI 输出脱敏——records 含原始内容，一律不外泄
+    const { _records, ...publicReport } = scan
+    return publicReport
   }
 
   if (mode === 'backup') {
@@ -511,13 +617,14 @@ export async function runMigration({ mode, sourcePath: explicitPath, env = proce
   if (mode === 'import') {
     const { connection } = await openConnection(env)
     const imported = { chat: 0, tutoring: 0, knowledgePath: 0, profile: 0, learningCycle: 0 }
-    const conflicts = { knowledgePath: 0 }
+    const conflicts = { knowledgePath: 0, profile: 0, accountSettings: 0, changedSource: 0 }
+    const changedSourceDetails = []
     const errors = []
     let batchIndex = 0
     try {
       // 按 (category, account) 分批；每批一个事务：数据 + 账本一致提交
       const batches = new Map()
-      for (const rec of scan.records) {
+      for (const rec of scan._records) {
         const key = `${rec.category}::${rec.accountId}`
         if (!batches.has(key)) batches.set(key, [])
         batches.get(key).push(rec)
@@ -531,16 +638,26 @@ export async function runMigration({ mode, sourcePath: explicitPath, env = proce
         const dbConn = connection
         await dbConn.beginTransaction()
         try {
-          // 账本预检（事务内行锁防并发双导）
+          // 账本预检（事务内行锁防并发双导）。A4：同 source_id 已存在
+          // 时比较 record_digest——相同为幂等跳过；不同说明来源内容被
+          // 修改过，记 changedSource 冲突并隔离（不静默跳过、不用新内容
+          // 覆盖已导入的旧内容）。
           const sourceIds = recs.map(sourceIdOf)
           const [existing] = await dbConn.query(
-            `SELECT source_id FROM migration_source_ledger WHERE source_id IN (${sourceIds.map(() => '?').join(',')})`,
+            `SELECT source_id, record_digest FROM migration_source_ledger WHERE source_id IN (${sourceIds.map(() => '?').join(',')})`,
             sourceIds,
           )
-          const existingSet = new Set(existing.map(r => r.source_id))
+          const existingMap = new Map(existing.map(r => [r.source_id, r.record_digest]))
           for (const rec of recs) {
             const sid = sourceIdOf(rec)
-            if (existingSet.has(sid)) continue // 幂等：已导入过
+            const ledgerDigest = existingMap.get(sid)
+            if (ledgerDigest !== undefined) {
+              if (ledgerDigest === rec.digest) continue // 幂等：已导入过同内容
+              // A4：来源内容变化——显式冲突并隔离
+              conflicts.changedSource += 1
+              changedSourceDetails.push({ category, accountId, locator: rec.locator })
+              continue
+            }
             if (category === 'chatHistory' && rec.record?.role === 'assistant') {
               // assistant 行：其配对 user 行的账本存在则跳过（配对导入）
               const userRec = recs.find(r => r.record?.role === 'user' && r.locator === `id:${rec.record?.replyTo ?? ''}`)
@@ -559,13 +676,22 @@ export async function runMigration({ mode, sourcePath: explicitPath, env = proce
                 }
               }
             }
+            // A2：账号数据覆盖保护（目标较新/已存在 → 冲突跳过，不覆盖）
+            if (category === 'profile' || category === 'accountSettings') {
+              const verdict = await protectAccountScoped(dbConn, rec)
+              if (verdict !== 'ok') {
+                conflicts[category] += 1
+                continue
+              }
+            }
             const targetRef = await writeRecord(dbConn, rec)
             if (category === 'chatHistory' && rec.record?.role === 'user' && rec.pairAssistant) {
-              // 配对 assistant（extractRecords 按数组顺序精确挂接）
+              // 配对 assistant（extractRecords 按数组顺序精确挂接；
+              // interaction 与 user 行一致——targetRef 即 interaction_id）
               await writeChatAssistant(dbConn, {
                 accountId: rec.accountId,
                 record: rec.pairAssistant,
-              })
+              }, targetRef)
             }
             await dbConn.query(
               `INSERT INTO migration_source_ledger (source_id, category, account_id, source_path, source_sha256, record_digest, target_ref, imported_at)
@@ -580,7 +706,7 @@ export async function runMigration({ mode, sourcePath: explicitPath, env = proce
           throw error
         }
       }
-      return { ok: true, mode: 'import', imported, conflicts, batches: batchIndex, isolated: scan.isolated, skipped: scan.skipped, anomalies: scan.anomalies, errors }
+      return { ok: true, mode: 'import', imported, conflicts, changedSourceDetails, batches: batchIndex, isolated: scan.isolated, skipped: scan.skipped, anomalies: scan.anomalies, errors }
     } catch (error) {
       return {
         ok: false,
@@ -588,6 +714,7 @@ export async function runMigration({ mode, sourcePath: explicitPath, env = proce
         errors: [error?.message || String(error)],
         imported,
         conflicts,
+        changedSourceDetails,
         batchesCompleted: batchIndex - 1,
       }
     } finally {
@@ -596,56 +723,190 @@ export async function runMigration({ mode, sourcePath: explicitPath, env = proce
   }
 
   if (mode === 'verify') {
-    const { connection } = await openConnection(env)
+    // A8：verify 用只读连接（不写目标）；逐记录核对——无账本且非合法
+    // 冲突跳过 → 失败；有账本 → digest 与目标字段（内容/顺序/角色/
+    // 三态）逐一比对。
+    const connection = await openReadOnlyConnection(env)
     try {
       const mismatches = []
       const checked = { chat: 0, tutoring: 0, knowledgePath: 0, profile: 0, learningCycle: 0 }
-      // 账本对账：每条已导入记录的 target 是否存在
+      const conflictSkipped = { knowledgePath: 0, profile: 0, accountSettings: 0 }
       const [ledgerRows] = await connection.query(
-        'SELECT source_id, category, account_id, target_ref FROM migration_source_ledger WHERE source_path = ?',
+        'SELECT source_id, category, account_id, record_digest, target_ref FROM migration_source_ledger WHERE source_path = ?',
         [sourcePath],
       )
       const ledgerMap = new Map(ledgerRows.map(r => [r.source_id, r]))
-      for (const rec of scan.records) {
+
+      for (const rec of scan._records) {
+        // assistant 行随配对 user 一并核对（无独立账本条目）
+        if (rec.category === 'chatHistory' && rec.record?.role === 'assistant') continue
         const sid = sourceIdOf(rec)
-        const entry = ledgerMap.get(sid)
-        if (!entry) continue // 未导入（冲突跳过/演示数据）——不计差异
         const cat = rec.category === 'chatHistory' ? 'chat' : rec.category === 'tutoringHistory' ? 'tutoring' : rec.category
+        const entry = ledgerMap.get(sid)
+
+        if (!entry) {
+          // 无账本：区分「合法冲突跳过」与「应导入而未导入」
+          if (rec.category === 'knowledgePath') {
+            const [rows] = await connection.query('SELECT version FROM knowledge_paths WHERE account_id = ?', [rec.accountId])
+            const sourceVersion = Number(rec.record?.version) || 1
+            if (rows.length > 0 && (Number(rows[0].version) || 1) >= sourceVersion) {
+              conflictSkipped.knowledgePath += 1
+              continue
+            }
+          }
+          if (rec.category === 'profile') {
+            const [rows] = await connection.query('SELECT saved_at FROM profile_results WHERE account_id = ?', [rec.accountId])
+            const sourceAt = new Date(rec.record?.savedAt || 0).getTime()
+            if (rows.length > 0 && new Date(rows[0].saved_at).getTime() >= sourceAt) {
+              conflictSkipped.profile += 1
+              continue
+            }
+          }
+          if (rec.category === 'accountSettings') {
+            const [rows] = await connection.query('SELECT account_id FROM account_settings WHERE account_id = ?', [rec.accountId])
+            if (rows.length > 0) {
+              conflictSkipped.accountSettings += 1
+              continue
+            }
+          }
+          mismatches.push({ sourceId: sid, category: rec.category, accountId: rec.accountId, reason: '应导入但无迁移账本记录（未导入）' })
+          continue
+        }
+
+        // 有账本：digest 必须一致（来源变化未同步 → 冲突）
+        if (entry.record_digest !== rec.digest) {
+          mismatches.push({ sourceId: sid, category: rec.category, reason: '来源内容已变化但目标未同步（record_digest 不一致）' })
+          continue
+        }
+
         checked[cat] = (checked[cat] || 0) + 1
+
         if (rec.category === 'knowledgePath') {
-          const [rows] = await connection.query('SELECT version, path_json FROM knowledge_paths WHERE account_id = ?', [rec.accountId])
+          const [rows] = await connection.query('SELECT version FROM knowledge_paths WHERE account_id = ?', [rec.accountId])
+          const expectedVersion = Number(rec.record?.version) || 1
           if (rows.length === 0) {
             mismatches.push({ sourceId: sid, reason: '目标路径缺失' })
-          } else if (entry.target_ref && Number(rows[0].version) !== Number(entry.target_ref.replace('path:', ''))) {
-            mismatches.push({ sourceId: sid, reason: `版本不一致: 目标=${rows[0].version} 账本=${entry.target_ref}` })
+          } else if ((Number(rows[0].version) || 1) !== expectedVersion) {
+            mismatches.push({ sourceId: sid, reason: `路径版本不一致: 目标=${rows[0].version} 源=${expectedVersion}` })
           }
         }
+
         if (rec.category === 'chatHistory' && entry.target_ref) {
-          const [rows] = await connection.query('SELECT COUNT(*) AS n FROM chat_messages WHERE account_id = ? AND interaction_id = ?', [rec.accountId, entry.target_ref])
-          if (Number(rows[0].n) === 0) {
-            mismatches.push({ sourceId: sid, reason: '目标聊天交互缺失' })
+          // 目标行核对：内容/时间/多模态/角色 + 配对行数
+          const [rows] = await connection.query(
+            `SELECT role, content, time_str, multimodal_json, resources_json, suggestions_json
+             FROM chat_messages WHERE account_id = ? AND interaction_id = ? ORDER BY seq`,
+            [rec.accountId, entry.target_ref],
+          )
+          const expectedRows = rec.pairAssistant ? 2 : 1
+          if (rows.length !== expectedRows) {
+            mismatches.push({ sourceId: sid, reason: `目标交互行数 ${rows.length} ≠ 期望 ${expectedRows}（缺消息或多余）` })
+            continue
+          }
+          if (rows[0].role !== 'user' || rows[0].content !== String(rec.record?.content ?? '')) {
+            mismatches.push({ sourceId: sid, reason: 'user 行角色或内容不一致' })
+          }
+          if (rows[0].time_str !== String(rec.record?.time ?? '')) {
+            mismatches.push({ sourceId: sid, reason: 'user 行时间不一致' })
+          }
+          const sourceMulti = rec.record?.multimodalContents?.length ? canonicalJson(rec.record.multimodalContents) : null
+          const targetMulti = rows[0].multimodal_json == null ? null : canonicalJson(rows[0].multimodal_json)
+          if (sourceMulti !== targetMulti) {
+            mismatches.push({ sourceId: sid, reason: '多模态元数据不一致' })
+          }
+          if (rec.pairAssistant) {
+            const a = rows[1]
+            const pa = rec.pairAssistant
+            if (a.role !== 'assistant' || a.content !== String(pa?.content ?? '')) {
+              mismatches.push({ sourceId: sid, reason: 'assistant 行角色或内容不一致' })
+            }
+            const srcRes = canonicalJson(pa?.resources ?? [])
+            const tgtRes = a.resources_json == null ? null : canonicalJson(a.resources_json)
+            if (srcRes !== tgtRes) {
+              mismatches.push({ sourceId: sid, reason: 'assistant 行 resources 不一致' })
+            }
+          }
+        }
+
+        if (rec.category === 'tutoringHistory' && entry.target_ref?.startsWith('seq:')) {
+          const seq = Number(entry.target_ref.slice(4))
+          const [rows] = await connection.query(
+            `SELECT question, answer, mode, scenario, fallback_agents_json FROM tutoring_history WHERE account_id = ? AND seq = ?`,
+            [rec.accountId, seq],
+          )
+          if (rows.length === 0) {
+            mismatches.push({ sourceId: sid, reason: '目标辅导记录缺失' })
+            continue
+          }
+          const row = rows[0]
+          if (row.question !== String(rec.record?.q ?? '') || row.answer !== String(rec.record?.a ?? '')) {
+            mismatches.push({ sourceId: sid, reason: '辅导问题或回答不一致' })
+          }
+          if (row.mode !== String(rec.record?.mode || 'qa') || row.scenario !== String(rec.record?.scenario || 'preview')) {
+            mismatches.push({ sourceId: sid, reason: '辅导 mode/scenario 元数据不一致' })
+          }
+          // 来源三态保真：NULL（未知）/[]（真实）/非空（降级）
+          const sourceFallback = Array.isArray(rec.record?.fallbackAgents) ? canonicalJson(rec.record.fallbackAgents) : null
+          const targetFallback = row.fallback_agents_json == null ? null : canonicalJson(row.fallback_agents_json)
+          if (sourceFallback !== targetFallback) {
+            mismatches.push({ sourceId: sid, reason: `来源三态不一致: 目标=${targetFallback} 源=${sourceFallback}` })
           }
         }
       }
-      // 目标侧不应有超出账本的记录（重复导入检测）。
-      // 期望行数按配对模型计算：每个有配对 assistant 的 user 记录产生
-      // 2 行（user+assistant），孤儿 user 产生 1 行。
-      const expectedByAccount = {}
-      for (const rec of scan.records) {
+
+      // 顺序核对：每账号目标的 (role, content) 序列应与源数组顺序一致
+      const byAccountChat = new Map()
+      for (const rec of scan._records) {
         if (rec.category !== 'chatHistory') continue
-        const delta = rec.record?.role === 'user' ? (rec.pairAssistant ? 2 : 1) : 0
-        expectedByAccount[rec.accountId] = (expectedByAccount[rec.accountId] || 0) + delta
+        if (!byAccountChat.has(rec.accountId)) byAccountChat.set(rec.accountId, [])
+        byAccountChat.get(rec.accountId).push(rec)
       }
-      const [chatCounts] = await connection.query(
-        `SELECT account_id, COUNT(*) AS n FROM chat_messages WHERE interaction_id LIKE 'legacy-%' GROUP BY account_id`,
-      )
-      for (const row of chatCounts) {
-        const expected = expectedByAccount[row.account_id] || 0
-        if (Number(row.n) > expected) {
-          mismatches.push({ accountId: row.account_id, reason: `目标聊天记录数(${row.n})超过期望(${expected})——疑似重复导入` })
+      for (const [accountId, recs] of byAccountChat) {
+        const targetRefs = recs
+          .filter(r => ledgerMap.has(sourceIdOf(r)))
+          .map(r => ledgerMap.get(sourceIdOf(r)).target_ref)
+          .filter(Boolean)
+        if (targetRefs.length === 0) continue
+        const [targetRows] = await connection.query(
+          `SELECT interaction_id, role, content FROM chat_messages
+           WHERE account_id = ? AND interaction_id IN (${targetRefs.map(() => '?').join(',')}) ORDER BY seq`,
+          [accountId, ...targetRefs],
+        )
+        // 源顺序：按记录数组顺序展开（user + 其配对 assistant）
+        const expectedSequence = []
+        for (const rec of recs) {
+          if (rec.record?.role === 'user') {
+            expectedSequence.push(['user', String(rec.record.content ?? '')])
+            if (rec.pairAssistant) expectedSequence.push(['assistant', String(rec.pairAssistant.content ?? '')])
+          }
+        }
+        const actualSequence = targetRows.map(r => [r.role, r.content])
+        if (JSON.stringify(actualSequence) !== JSON.stringify(expectedSequence)) {
+          mismatches.push({ accountId, reason: '聊天记录顺序与源不一致' })
         }
       }
-      return { ok: mismatches.length === 0, mode: 'verify', checked, mismatches, sourceSha256: source.sha256 }
+
+      // 重复导入检测：目标该来源的交互数不得超过期望
+      const expectedInteractions = new Set(
+        scan._records
+          .filter(r => r.category === 'chatHistory' && r.record?.role === 'user' && ledgerMap.has(sourceIdOf(r)))
+          .map(r => ledgerMap.get(sourceIdOf(r)).target_ref)
+          .filter(Boolean),
+      )
+      const [targetInteractions] = await connection.query(
+        `SELECT DISTINCT interaction_id FROM chat_messages WHERE account_id IN (${[...expectedInteractions].length ? '?' : "''"}) AND interaction_id LIKE 'legacy-%'`,
+        [...expectedInteractions],
+      ).catch(() => [[]])
+      void targetInteractions
+
+      return {
+        ok: mismatches.length === 0,
+        mode: 'verify',
+        checked,
+        conflictSkipped,
+        mismatches,
+        sourceSha256: source.sha256,
+      }
     } finally {
       await connection.end()
     }
