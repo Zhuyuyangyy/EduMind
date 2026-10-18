@@ -1,6 +1,9 @@
 <template>
   <section class="login">
     <div class="login__brand">
+      <span class="login__logo-mark" aria-hidden="true">
+        <MobileIcon name="sparkle" :size="30" />
+      </span>
       <span class="login__logo">智学星枢</span>
       <span class="login__tag">AI 个性化学习</span>
     </div>
@@ -43,6 +46,7 @@ import { loginDemoAccount } from '@/lib/api'
 import { bumpDataEpoch } from '@/mobile/data/learning-data'
 import { resetStudyLocalState } from '@/mobile/data/study'
 import { toFriendlyError, type FriendlyError } from '../errors'
+import MobileIcon from '../components/MobileIcon.vue'
 
 const router = useRouter()
 const account = ref('reviewer')
@@ -90,6 +94,20 @@ async function onSubmit() {
 .login {
   max-width: 420px;
   margin: 7vh auto 0;
+}
+
+.login__logo-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--m-radius-full);
+  background: var(--m-violet-soft);
+  border: 1px solid rgba(139, 124, 255, 0.4);
+  color: var(--m-violet);
+  box-shadow: var(--m-glow-violet);
+  margin-bottom: var(--m-space-2);
 }
 
 .login__brand {

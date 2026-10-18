@@ -184,7 +184,13 @@ async function captureSet(cdp, { label, origin, routes, viewport, note, skipLogi
     }
   }
   for (const route of routes) {
-    await cdp.goto(`${origin}${route.path}`)
+    if (route.path.includes('/#')) {
+      // hash 路由：用 JS 赋值做 SPA 内导航——Page.navigate 同文档
+      // hash 变化会触发完整 reload，reload 后 auth 守卫时序不稳定
+      await cdp.eval(`location.hash = ${JSON.stringify(route.path.slice(route.path.indexOf('#')))}`)
+    } else {
+      await cdp.goto(`${origin}${route.path}`)
+    }
     // 通用就绪判定：#app 已挂载且有子元素（新旧版根选择器不同），
     // 再叠加页面专属选择器（有则等，没有不强求——记录状态供人工确认）
     const mounted = await waitFor(cdp, "Boolean(document.querySelector('#app') && document.querySelector('#app').children.length > 0)", route.timeout || 20000)

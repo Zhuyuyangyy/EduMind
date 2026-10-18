@@ -24,10 +24,11 @@
 
     <!-- 对话区（真实数据） -->
     <div v-else class="tutor__thread" ref="thread">
-      <div v-if="!messages.length && !loading" class="m-empty">
-        <span class="m-empty__icon">✦</span>
-        <p class="m-empty__text">还没有提问<br />先问我一个问题，例如「BFS 的 visited 什么时候标记？」</p>
-      </div>
+      <MobileEmpty
+        v-if="!messages.length && !loading"
+        title="还没有提问"
+        desc="先问我一个问题，例如「BFS 的 visited 什么时候标记？」"
+      />
 
       <template v-for="item in messages" :key="item.id">
         <div class="m-bubble m-bubble--user">{{ item.question }}</div>
@@ -88,6 +89,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import MobileEmpty from '../components/MobileEmpty.vue'
 import { useRoute } from 'vue-router'
 import { askTutoringQuestion } from '@/lib/api'
 import { toFriendlyError, type FriendlyError } from '../errors'

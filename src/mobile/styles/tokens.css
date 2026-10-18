@@ -54,6 +54,27 @@
   --m-radius-xl: 20px;
   --m-radius-full: 999px;
 
+  /* —— 品牌扩展色（P4-2C 设计规范：星紫=AI/知识节点，暖金=成就/掌握） —— */
+  --m-violet: #8b7cff;
+  --m-violet-deep: #5b4bd6;
+  --m-violet-soft: rgba(139, 124, 255, 0.16);
+  --m-gradient-violet: linear-gradient(135deg, #5b4bd6, #8b7cff);
+  --m-gold: #ffcf6b;
+  --m-gold-deep: #e8a83c;
+  --m-gold-soft: rgba(255, 207, 107, 0.14);
+
+  /* —— 字阶（P4-2C 五级重定：核心数字 30/34px 星青加粗） —— */
+  --m-text-3xl: 30px;
+  --m-text-4xl: 34px;
+  --m-weight-num: 700;
+
+  /* —— 阴影与发光（卡片层次/主视觉光晕） —— */
+  --m-shadow-card: 0 2px 12px rgba(2, 8, 18, 0.45);
+  --m-shadow-float: 0 8px 28px rgba(2, 8, 18, 0.55);
+  --m-glow-primary: 0 0 16px rgba(84, 214, 255, 0.28);
+  --m-glow-violet: 0 0 16px rgba(139, 124, 255, 0.30);
+  --m-glow-gold: 0 0 14px rgba(255, 207, 107, 0.30);
+
   /* —— 安全区 —— */
   --m-safe-top: env(safe-area-inset-top, 0px);
   --m-safe-bottom: env(safe-area-inset-bottom, 0px);

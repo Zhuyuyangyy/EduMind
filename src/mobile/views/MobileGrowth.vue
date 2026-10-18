@@ -57,10 +57,14 @@
             </div>
           </div>
         </template>
-        <div v-else class="m-empty">
-          <span class="m-empty__icon">⌂</span>
-          <p class="m-empty__text">暂无学习路径<br />在「今日学习」生成知识路径后展示</p>
-        </div>
+        <MobileEmpty
+          v-else
+          title="暂无学习路径"
+          desc="在「今日学习」生成知识路径后展示"
+          action-text="去生成路径"
+          :action-icon="'path'"
+          @action="$router.push('/today')"
+        />
       </div>
 
       <!-- 评估与画像变化（仅存在结构化学习闭环证据时展示） -->
@@ -153,6 +157,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import MobileEmpty from '../components/MobileEmpty.vue'
 import {
   currentAccount,
   fetchAccountData,

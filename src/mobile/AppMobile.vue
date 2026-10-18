@@ -1,5 +1,7 @@
 <template>
   <div class="mobile-shell">
+    <!-- P4-2C A7：深空星点背景层（纯 CSS，无 canvas；opacity 极低不扰内容） -->
+    <div class="mobile-stars" aria-hidden="true" />
     <header class="mobile-header">
       <span class="mobile-logo">智学星枢</span>
       <span class="mobile-header__sub">{{ route.meta.title || 'Mobile' }}</span>
@@ -14,7 +16,7 @@
     </main>
     <nav v-if="showTabs" class="mobile-tabs">
       <RouterLink v-for="tab in tabs" :key="tab.to" :to="tab.to" class="tab">
-        <span class="tab__icon" aria-hidden="true">{{ tab.icon }}</span>
+        <span class="tab__icon" aria-hidden="true"><MobileIcon :name="tab.icon" :size="22" /></span>
         <span class="tab__label">{{ tab.label }}</span>
       </RouterLink>
     </nav>
@@ -25,14 +27,17 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getAuthSession } from '@/lib/auth'
+import MobileIcon from './components/MobileIcon.vue'
+import type { IconName } from './components/MobileIcon.vue'
 
 const route = useRoute()
 
-const tabs = [
-  { to: '/today', label: '今日学习', icon: '◎' },
-  { to: '/tutor', label: 'AI 导师', icon: '✦' },
-  { to: '/growth', label: '学习成长', icon: '⌂' },
-  { to: '/profile', label: '我的', icon: '☰' },
+// P4-2C A2：统一线性图标（MobileIcon 体系），禁止字符图标
+const tabs: { to: string; label: string; icon: IconName }[] = [
+  { to: '/today', label: '今日学习', icon: 'today' },
+  { to: '/tutor', label: 'AI 导师', icon: 'tutor' },
+  { to: '/growth', label: '学习成长', icon: 'growth' },
+  { to: '/profile', label: '我的', icon: 'profile' },
 ]
 
 const showTabs = computed(() => route.path !== '/login' && Boolean(getAuthSession()))
@@ -45,12 +50,42 @@ const isDemoData = computed(() => DEMO_ROUTES.includes(route.path))
 
 <style scoped>
 .mobile-shell {
+  position: relative;
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: var(--m-bg);
+  background:
+    radial-gradient(120% 60% at 50% -10%, rgba(31, 111, 235, 0.14), transparent 60%),
+    var(--m-bg);
   color: var(--m-text);
+  isolation: isolate;
+}
+
+/* 星点层：radial-gradient 平铺 + 超缓闪烁（transform 动画，GPU 友好） */
+.mobile-stars {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1.5px 1.5px at 18px 26px, rgba(233, 244, 255, 0.55) 50%, transparent 51%),
+    radial-gradient(1px 1px at 62px 88px, rgba(84, 214, 255, 0.45) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 108px 140px, rgba(233, 244, 255, 0.35) 50%, transparent 51%),
+    radial-gradient(1px 1px at 150px 40px, rgba(139, 124, 255, 0.40) 50%, transparent 51%);
+  background-size: 180px 180px;
+  opacity: 0.5;
+  animation: m-stars-drift 90s linear infinite;
+}
+@keyframes m-stars-drift {
+  to {
+    background-position: 180px 180px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-stars {
+    animation: none;
+  }
 }
 
 .mobile-header {
@@ -107,8 +142,15 @@ const isDemoData = computed(() => DEMO_ROUTES.includes(route.path))
 }
 
 .tab__icon {
-  font-size: 19px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  transition: transform var(--m-duration) var(--m-ease), filter var(--m-duration) var(--m-ease);
+}
+.tab.router-link-active .tab__icon {
+  filter: drop-shadow(0 0 5px rgba(84, 214, 255, 0.55));
+  transform: translateY(-1px);
 }
 
 .tab.router-link-active {
