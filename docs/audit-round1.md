@@ -75,6 +75,21 @@
 2. `server/index.js`：在唯一 `/api/resources/generate` 分支先校验再调用 Agent；生产模式拒绝三个固定演示结果接口。
 3. `server/resource-generate-validation.test.mjs`：覆盖空请求、错误类型和合法请求，验证校验发生在 fallback 前。
 
+### Review Follow-up：前端评估数据边界
+
+此前审计遗漏了前端评估页的第二条数据路径：`src/composables/useEvaluationTreeData.ts` 在请求失败后仍会调用 `createMockData()`，而 `src/views/Evaluation.vue` 还会用课程 ID 公式、`BASE_KNOWLEDGE_ITEMS` 和本地学习行为记录构造掌握度、历史变化和能力雷达。这会让后端 `503 demo-data-disabled` 在浏览器中仍显示看似真实的成绩。
+
+本次追加修复：
+
+- 后端静态评估、学习路径和工作流响应明确标记 `dataSource: demo-fixture` 与 `simulated: true`。
+- 前端只有 `VITE_EDUMIND_DEMO_MODE=true` 时才接受 demo fixture；默认值为 `false`。
+- 评估页增加 `loading`、`real`、`demo`、`no-data`、`unavailable`、`error` 状态。503、`demo-data-disabled` 和网络错误不会回退到模拟成绩。
+- 真实模式只消费服务端评估响应；本地课程完成率和 `useLearningProgressSync` 记录不再叠加到知识掌握度。没有真实知识点证据时，知识树、分布和 Top 5 为空，并显示“暂无真实测评数据”。
+- 趋势只使用服务端提供的 `trends`；能力雷达只使用服务端 `profileMetrics`，不再用当前掌握度加减固定公式生成。
+- 新增 `src/evaluation-data-policy.test.ts`，覆盖 503、网络失败、空数据、真实响应和显式 Demo 模式；`Evaluation.vue` 的生产路径由 `vue-tsc`/Vite 构建验证。
+
+仍需后续处理：评估页以外的学习路径、星图和部分 Admin 可视化仍包含演示进度或随机运营指标；它们尚未被本次评估页门禁统一，生产产品化前需要按同一 `dataSource` 契约逐页清理。
+
 ## 下一轮认证与数据模型方案
 
 ### 目标模型
