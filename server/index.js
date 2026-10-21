@@ -86,6 +86,7 @@ import {
   isProductionMode,
   runtimeMode,
 } from './identity.js'
+import { validateResourceGenerateInput } from './schemas.js'
 
 /* ———————————— P4-1A 认证辅助 ———————————— */
 
@@ -495,6 +496,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && pathname === '/api/resources/generate') {
       const body = await readJson(req)
+      const validation = validateResourceGenerateInput(body)
+      if (!validation.valid) {
+        sendJson(res, 400, { error: 'Bad Request', message: '资源生成请求无效。', details: validation.errors })
+        return
+      }
       const result = await runResourceGeneration(body)
       sendJson(res, 200, result)
       return
@@ -674,16 +680,28 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/api/learning-path') {
+      if (isProductionMode()) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'demo-data-disabled', message: '生产环境不提供演示学习路径，请先完成真实学习数据迁移。' })
+        return
+      }
       sendJson(res, 200, getLearningPathPayload())
       return
     }
 
     if (req.method === 'GET' && pathname === '/api/evaluation') {
+      if (isProductionMode()) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'demo-data-disabled', message: '生产环境不提供演示评估结果，请先完成真实学习数据迁移。' })
+        return
+      }
       sendJson(res, 200, getEvaluationPayload())
       return
     }
 
     if (req.method === 'GET' && pathname === '/api/agent/workflow') {
+      if (isProductionMode()) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'demo-data-disabled', message: '生产环境不提供演示工作流，请先完成真实学习数据迁移。' })
+        return
+      }
       sendJson(res, 200, getAgentWorkflow())
       return
     }

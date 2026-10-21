@@ -16,8 +16,16 @@ export function validateResourceGenerateInput(input) {
     errors.push('input must be an object')
     return { valid: false, errors }
   }
-  if (!input.topic) errors.push('topic is required')
-  if (!input.resourceType) errors.push('resourceType is required')
+  if (typeof input.topic !== 'string' || input.topic.trim().length === 0) {
+    errors.push('topic is required')
+  } else if (input.topic.trim().length > 200) {
+    errors.push('topic must be at most 200 characters')
+  }
+  if (typeof input.resourceType !== 'string' || input.resourceType.trim().length === 0) {
+    errors.push('resourceType is required')
+  } else if (input.resourceType.trim().length > 32) {
+    errors.push('resourceType must be at most 32 characters')
+  }
   return { valid: errors.length === 0, errors }
 }
 
