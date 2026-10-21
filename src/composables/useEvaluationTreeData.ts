@@ -8,9 +8,10 @@ import type {
   WeakPointItem,
   TrendPoint,
 } from '@/types/knowledge-tree'
-import type { EvaluationResponse, EvaluationDashboardMetric, EvaluationDashboardWeakness } from '@/types/api'
-import { fetchEvaluation, fetchLearningPath, fetchKnowledgePath, fetchLatestProfile, triggerKnowledgePath } from '@/lib/api'
+import type { EvaluationDashboardMetric, EvaluationDashboardWeakness } from '@/types/api'
+import { fetchEvaluation } from '@/lib/api'
 import { FALLBACK_DOMAINS } from './useKnowledgeGraphData'
+import { classifyEvaluationResponse, isEvaluationDemoEnabled, type EvaluationLoadState } from './evaluationDataPolicy'
 
 function masteryToStatus(mastery: number) {
   if (mastery === 0) return 'none'
@@ -21,10 +22,10 @@ function masteryToStatus(mastery: number) {
   return 'mastered'
 }
 
-function createKnowledgePoint(moduleName: string, unitId: string, unitName: string, topicId: string, topicLabel: string, masteryPct: number): KnowledgePoint {
-  const previous = Math.max(0, Math.min(100, masteryPct + (Math.random() - 0.5) * 16))
-  const confidence = 55 + Math.random() * 40
-  const weight = 0.8 + Math.random() * 1.2
+function createKnowledgePoint(moduleName: string, unitId: string, unitName: string, topicId: string, topicLabel: string, masteryPct: number, synthetic = false): KnowledgePoint {
+  const previous = synthetic ? Math.max(0, Math.min(100, masteryPct + (Math.random() - 0.5) * 16)) : masteryPct
+  const confidence = synthetic ? 55 + Math.random() * 40 : 0
+  const weight = synthetic ? 0.8 + Math.random() * 1.2 : 1
   const change = masteryPct - previous
   const issues = [
     '基础概念记忆不牢，需要重复练习',
@@ -57,10 +58,10 @@ function createKnowledgePoint(moduleName: string, unitId: string, unitName: stri
     prerequisiteIds: [],
     relatedIds: [],
     lastEvaluatedAt: new Date().toISOString(),
-    recommendation: masteryPct < 60 ? recommendations[Math.floor(Math.random() * recommendations.length)] : undefined,
-    issue: masteryPct < 60 ? issues[Math.floor(Math.random() * issues.length)] : undefined,
-    recentError: masteryPct < 70 ? '最近一次练习中出现了理解性错误' : undefined,
-    reasonAnalysis: '综合行为证据与任务结果，智能体判断该知识点掌握尚不稳定。',
+    recommendation: synthetic && masteryPct < 60 ? recommendations[Math.floor(Math.random() * recommendations.length)] : undefined,
+    issue: synthetic && masteryPct < 60 ? issues[Math.floor(Math.random() * issues.length)] : undefined,
+    recentError: synthetic && masteryPct < 70 ? '最近一次练习中出现了理解性错误' : undefined,
+    reasonAnalysis: synthetic ? '演示夹具：综合行为证据与任务结果，智能体判断该知识点掌握尚不稳定。' : undefined,
   }
   ;(point as any).knowledgePointId = topicId
   return point
@@ -70,7 +71,7 @@ function generateMockModules(): KnowledgeModule[] {
   return FALLBACK_DOMAINS.map((domain) => {
     const units: KnowledgeUnit[] = domain.topics.map((topic) => {
       const masteryPct = Math.round(topic.mastery * 100)
-      const point = createKnowledgePoint(domain.name, topic.id, topic.label, topic.id, topic.label, masteryPct)
+      const point = createKnowledgePoint(domain.name, topic.id, topic.label, topic.id, topic.label, masteryPct, true)
       ;(point as any).knowledgePointId = topic.id
       return {
         id: topic.id,
@@ -112,7 +113,7 @@ function buildModulesFromKnowledgePath(pathData: any): KnowledgeModule[] | null 
         const unitId = `${moduleId}-unit-${Math.floor(i / unitSize)}`
         const unitName = `单元 ${Math.floor(i / unitSize) + 1}`
         const points = slice.map((topic: any, ti: number) => {
-          const rawMastery = typeof topic.mastery === 'number' ? topic.mastery : typeof topic.progress === 'number' ? topic.progress / 100 : Math.random() * 0.6 + 0.2
+          const rawMastery = typeof topic.mastery === 'number' ? topic.mastery : typeof topic.progress === 'number' ? topic.progress / 100 : 0
           const masteryPct = Math.round(rawMastery * 100)
           return createKnowledgePoint(moduleName, unitId, unitName, topic.id || `${unitId}-topic-${ti}`, topic.name || topic.label || `知识点 ${ti + 1}`, masteryPct)
         })
@@ -178,6 +179,7 @@ export function createMockData(): EvaluationTreeData {
     courseName: '计算机科学基础',
     evaluatedAt: new Date().toLocaleString('zh-CN'),
     status: 'completed',
+    dataSource: 'demo-fixture',
     overallMastery,
     previousOverallMastery,
     modules,
@@ -193,6 +195,7 @@ export function useEvaluationTreeData() {
   const data = ref<EvaluationTreeData | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
+  const status = ref<EvaluationLoadState>('idle')
 
   const appleDistribution = computed(() => {
     if (!data.value) return []
@@ -214,107 +217,77 @@ export function useEvaluationTreeData() {
 
   async function load() {
     loading.value = true
+    status.value = 'loading'
     error.value = null
+    data.value = null
     try {
-      const [apiData, learningPathData, aiPathData, latestProfileData] = await Promise.allSettled([
-        fetchEvaluation(),
-        fetchLearningPath().catch(() => null),
-        fetchKnowledgePath().catch(() => null),
-        fetchLatestProfile().catch(() => null),
-      ])
-
-      const mock = createMockData()
-
-      // Prefer AI-generated knowledge path, then learning path, so the tree reflects the constellation data
-      let pathPayload =
-        (aiPathData.status === 'fulfilled' && aiPathData.value?.result) ? aiPathData.value.result :
-        (learningPathData.status === 'fulfilled' && learningPathData.value) ? learningPathData.value :
-        null
-
-      // If a profile exists but no AI knowledge path has been generated yet, generate it now
-      // so evaluation apples reflect this round's profile-derived course knowledge.
-      if (
-        !(aiPathData.status === 'fulfilled' && aiPathData.value?.result) &&
-        latestProfileData.status === 'fulfilled' &&
-        latestProfileData.value
-      ) {
-        try {
-          const generatedPath = await triggerKnowledgePath(latestProfileData.value)
-          if (generatedPath?.phases?.length) {
-            pathPayload = generatedPath
-          }
-        } catch {
-          // Keep the static learning path fallback if profile-driven generation is unavailable.
-        }
+      const apiData = await fetchEvaluation()
+      const state = classifyEvaluationResponse({
+        ok: true,
+        dataSource: apiData.dataSource,
+        hasData: Boolean(apiData.dashboard || apiData.stats?.length),
+        demoEnabled: isEvaluationDemoEnabled(),
+      })
+      if (state === 'unavailable') {
+        status.value = state
+        error.value = apiData.dataSource === 'demo-fixture'
+          ? '当前接口只提供演示评估数据；请明确启用演示模式，或先完成真实评估。'
+          : '评估服务当前不可用。'
+        return
+      }
+      if (state === 'demo') {
+        data.value = createMockData()
+        status.value = state
+        return
+      }
+      if (state === 'no-data') {
+        status.value = state
+        return
       }
 
-      const pathModules = buildModulesFromKnowledgePath(pathPayload)
-      if (pathModules && pathModules.length > 0) {
-        mock.modules = pathModules
+      const dashboard = apiData.dashboard
+      const capabilities = dashboard?.profileMetrics?.filter((metric: EvaluationDashboardMetric) => metric.key && metric.label).map((metric) => ({
+        key: metric.key,
+        label: metric.label,
+        value: metric.stage2,
+        previousValue: metric.stage1,
+      })) ?? []
+      const weakPoints = dashboard?.weaknesses?.slice(0, 5).map((weakness: EvaluationDashboardWeakness) => ({
+        id: weakness.id,
+        name: weakness.label,
+        module: '综合模块',
+        mastery: 0,
+        confidence: 0,
+        issue: weakness.reason,
+        action: weakness.action,
+      })) ?? []
+      const statSummary = apiData.stats?.map((stat) => `${stat.label}: ${stat.value}`).join('；')
+      data.value = {
+        learnerName: '当前学习者',
+        courseName: '当前课程',
+        evaluatedAt: apiData.generatedAt || new Date().toISOString(),
+        status: 'completed',
+        dataSource: 'real',
+        overallMastery: 0,
+        previousOverallMastery: 0,
+        modules: [],
+        capabilities,
+        weakPoints,
+        agentContributions: [],
+        agentConclusion: statSummary ? `当前评估统计：${statSummary}` : '评估已完成，等待更多知识点证据。',
+        trends: [],
       }
-
-      if (apiData.status === 'fulfilled' && apiData.value?.dashboard) {
-        const d = apiData.value.dashboard
-        mock.evaluatedAt = apiData.value.generatedAt ?? mock.evaluatedAt
-        if (d.profileMetrics?.length) {
-          mock.capabilities = d.profileMetrics
-            .filter((c: EvaluationDashboardMetric) => c.key && c.label)
-            .map((c: EvaluationDashboardMetric) => {
-              const total = Math.max(1, c.stage0 + c.stage1 + c.stage2)
-              const value = Math.round(((c.stage1 * 0.5 + c.stage2) / total) * 100)
-              return {
-                key: c.key,
-                label: c.label,
-                value,
-                previousValue: Math.max(0, value - 6),
-              }
-            })
-        }
-        if (d.weaknesses?.length) {
-          mock.weakPoints = d.weaknesses.slice(0, 5).map((w: EvaluationDashboardWeakness) => ({
-            id: w.id,
-            name: w.label,
-            module: '综合模块',
-            mastery: w.severity === 'high' ? 25 : w.severity === 'medium' ? 45 : 55,
-            confidence: 70,
-            issue: w.reason,
-            action: w.action,
-          }))
-        }
-        if (apiData.value.stats?.length) {
-          const statSummary = apiData.value.stats.map((s) => `${s.label}: ${s.value}`).join('；')
-          mock.agentConclusion = `当前学习路径统计：${statSummary}。建议根据薄弱模块调整后续学习重点。`
-        }
-      }
-
-      // Recompute overall mastery and weak points from the (possibly path-derived) modules
-      const allPoints = mock.modules.flatMap((m) => m.units.flatMap((u) => u.points))
-      if (allPoints.length > 0) {
-        mock.overallMastery = allPoints.reduce((s, p) => s + p.mastery * p.weight, 0) / allPoints.reduce((s, p) => s + p.weight, 0)
-        mock.previousOverallMastery = Math.max(0, mock.overallMastery - 6.2)
-        mock.weakPoints = allPoints
-          .filter((p) => p.mastery < 60)
-          .sort((a, b) => a.mastery - b.mastery)
-          .slice(0, 5)
-          .map((p) => ({
-            id: p.id,
-            name: p.name,
-            module: p.module,
-            mastery: p.mastery,
-            confidence: p.confidence,
-            issue: p.issue || '掌握度偏低',
-            action: p.recommendation || '针对性练习',
-          }))
-      }
-
-      data.value = mock
+      status.value = state
     } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
-      data.value = createMockData()
+      const failure = e as Error & { status?: number; code?: string }
+      status.value = classifyEvaluationResponse({ ok: false, status: failure.status, code: failure.code, demoEnabled: isEvaluationDemoEnabled() })
+      error.value = failure.status === 503 || failure.code === 'demo-data-disabled'
+        ? '评估服务当前不可用，未加载演示成绩。'
+        : (failure.message || '评估数据加载失败。')
     } finally {
       loading.value = false
     }
   }
 
-  return { data, loading, error, appleDistribution, overallChange, load }
+  return { data, loading, error, status, appleDistribution, overallChange, load }
 }

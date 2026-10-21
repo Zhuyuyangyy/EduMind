@@ -85,7 +85,8 @@ export interface EvaluationTreeData {
   learnerName: string
   courseName: string
   evaluatedAt: string
-  status: 'analyzing' | 'completed'
+  status: 'analyzing' | 'completed' | 'no-data' | 'unavailable' | 'error'
+  dataSource: 'real' | 'demo-fixture'
   overallMastery: number
   previousOverallMastery: number
   modules: KnowledgeModule[]
