@@ -59,8 +59,8 @@ const pathSteps = [
       <div v-for="p in moduleDetail.weak" :key="p.id" class="weak-item compact">
         <div class="weak-name">{{ p.name }}</div>
         <div class="weak-row">
-          <span class="weak-mastery">{{ p.mastery.toFixed(0) }}%</span>
-          <span class="weak-confidence">置信 {{ p.confidence.toFixed(0) }}%</span>
+          <span class="weak-mastery">{{ p.mastery == null ? '暂无' : `${p.mastery.toFixed(0)}%` }}</span>
+          <span class="weak-confidence">置信 {{ p.confidence == null ? '暂无' : `${p.confidence.toFixed(0)}%` }}</span>
         </div>
       </div>
     </div>
@@ -73,8 +73,8 @@ const pathSteps = [
           <span class="weak-name">{{ p.name }}</span>
         </div>
         <div class="weak-row">
-          <span class="weak-mastery">{{ p.mastery.toFixed(0) }}%</span>
-          <span class="weak-confidence">置信 {{ p.confidence.toFixed(0) }}%</span>
+          <span class="weak-mastery">{{ p.mastery == null ? '暂无' : `${p.mastery.toFixed(0)}%` }}</span>
+          <span class="weak-confidence">置信 {{ p.confidence == null ? '暂无' : `${p.confidence.toFixed(0)}%` }}</span>
         </div>
         <div class="weak-issue">{{ p.issue }}</div>
         <div class="weak-action">{{ p.action }}</div>
