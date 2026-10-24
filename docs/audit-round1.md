@@ -95,7 +95,7 @@
 - `classifyEvaluationResponse` 现在要求 `dataSource: "real"` 且 `simulated` 不能为 `true` 才能进入真实状态；缺少来源、未知来源和模拟标记进入未评估状态。
 - Demo 夹具只在显式 `VITE_EDUMIND_DEMO_MODE=true` 时进入评估页，并显示“演示数据，仅供体验”。
 - 缺少可验证历史测评时，摘要不再显示本周提升、较上周变化或默认 `+0%`；时间范围选择器已禁用并说明“时间筛选暂未接入”。真实统计摘要会渲染到诊断总结区域。
-- 新增 `scripts/evaluation-browser-smoke.mjs`，使用 Playwright Chromium 实际浏览器覆盖 503、空数据、真实数据、无历史、网络失败、Demo 未启用和 Demo 显式启用七个场景。
+- 新增 `scripts/evaluation-browser-smoke.mjs`，使用 Playwright Chromium 实际浏览器覆盖 503、空数据、空对象、真实数据、仅薄弱点、无历史、网络失败、Demo 未启用和 Demo 显式启用九个场景。
 - 本轮未接入按时间范围查询；需要后端提供历史测评查询契约后再启用筛选。
 
 ### Review follow-up：有效证据、薄弱点与输入规范化（2026-10-24）
@@ -134,6 +134,6 @@
 ## 验证记录
 
 - `npm test`：154 通过、46 跳过、0 失败；跳过项均为未配置 MySQL 的跨实例/真实库门禁。
-- `npm run test:evaluation-browser`：7 个实际 Chromium 场景通过。
+- `npm run test:evaluation-browser`：9 个实际 Chromium 场景通过。
 - `npm run build`：通过；保留既有 `/learning-path/knowledge-panel-bg.png` 运行时解析提示和大 chunk 警告。
 - `npm run build:mobile`：通过；Capacitor `dist-mobile` 产物生成成功。
