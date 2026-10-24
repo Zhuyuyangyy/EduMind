@@ -88,6 +88,20 @@ const realBody = {
   },
 }
 
+const weaknessOnlyBody = {
+  generatedAt: '2026-10-21T00:00:00.000Z',
+  dataSource: 'real',
+  simulated: false,
+  stats: [],
+  suggestions: [],
+  dashboard: {
+    flow: [],
+    profileMetrics: [],
+    weaknesses: [{ id: 'trees', label: '树结构', reason: '递归边界条件仍需观察', action: '完成专项练习' }],
+    evidenceRounds: [],
+  },
+}
+
 const browser = await chromium.launch({ headless: true })
 const normal = startVite(5174, false)
 const demo = startVite(5175, true)
@@ -116,10 +130,28 @@ try {
   }
 
   {
+    const { context, page } = await openEvaluation(browser, 5174, { body: { dataSource: 'real', simulated: false, stats: [], dashboard: {} } })
+    await waitForText(page, '暂无真实测评数据')
+    assert.equal((await page.locator('body').innerText()).includes('评估数据加载中'), false)
+    await context.close()
+  }
+
+  {
     const { context, page } = await openEvaluation(browser, 5174, { body: realBody })
     await waitForText(page, '当前评估统计：评估轮次: 2')
     await waitForText(page, '能力诊断')
+    await waitForText(page, '树结构')
+    await page.locator('.summary-card').filter({ hasText: '待提升项目' }).getByText('1', { exact: true }).waitFor({ state: 'visible' })
+    await page.locator('.topic-row').filter({ hasText: '树结构' }).getByText('暂无', { exact: true }).waitFor({ state: 'visible' })
     assert.equal(await page.getByText('演示数据，仅供体验').count(), 0)
+    await context.close()
+  }
+
+  {
+    const { context, page } = await openEvaluation(browser, 5174, { body: weaknessOnlyBody })
+    await waitForText(page, '树结构')
+    await page.locator('.topic-row').filter({ hasText: '树结构' }).getByText('暂无', { exact: true }).waitFor({ state: 'visible' })
+    assert.equal((await page.locator('body').innerText()).includes('待提升项目\n0'), false)
     await context.close()
   }
 
@@ -154,7 +186,7 @@ try {
     await context.close()
   }
 
-  console.log('evaluation browser smoke: 7 scenarios passed')
+  console.log('evaluation browser smoke: 9 scenarios passed')
 } finally {
   await browser.close()
   normal.child.kill('SIGTERM')

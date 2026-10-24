@@ -23,6 +23,16 @@ test('resource generation rejects malformed input before the agent/fallback bran
     })
     assert.equal(wrongType.status, 400)
 
+    const paddedOverLimit = await post('/api/resources/generate', { topic: `${' '.repeat(201)}BFS`, resourceType: 'concept' }, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    assert.equal(paddedOverLimit.status, 400)
+
+    const paddedValid = await post('/api/resources/generate', { topic: '  BFS  ', resourceType: ' concept ' }, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    assert.equal(paddedValid.status, 200)
+
     const valid = await post('/api/resources/generate', { topic: 'BFS', resourceType: 'concept' }, {
       headers: { Authorization: `Bearer ${token}` },
     })

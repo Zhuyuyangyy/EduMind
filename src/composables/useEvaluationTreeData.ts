@@ -11,7 +11,7 @@ import type {
 import type { EvaluationDashboardMetric, EvaluationDashboardWeakness } from '@/types/api'
 import { fetchEvaluation } from '@/lib/api'
 import { FALLBACK_DOMAINS } from './useKnowledgeGraphData'
-import { classifyEvaluationResponse, isEvaluationDemoEnabled, type EvaluationLoadState } from './evaluationDataPolicy'
+import { classifyEvaluationResponse, hasEvaluationEvidence, isEvaluationDemoEnabled, type EvaluationLoadState } from './evaluationDataPolicy'
 
 function masteryToStatus(mastery: number) {
   if (mastery === 0) return 'none'
@@ -226,7 +226,9 @@ export function useEvaluationTreeData() {
         ok: true,
         dataSource: apiData.dataSource,
         simulated: apiData.simulated,
-        hasData: Boolean(apiData.dashboard || apiData.stats?.length),
+        hasData: hasEvaluationEvidence(apiData),
+        dashboard: apiData.dashboard,
+        stats: apiData.stats,
         demoEnabled: isEvaluationDemoEnabled(),
       })
       if (state === 'unavailable') {
@@ -257,8 +259,8 @@ export function useEvaluationTreeData() {
         id: weakness.id,
         name: weakness.label,
         module: '综合模块',
-        mastery: 0,
-        confidence: 0,
+        mastery: null,
+        confidence: null,
         issue: weakness.reason,
         action: weakness.action,
       })) ?? []

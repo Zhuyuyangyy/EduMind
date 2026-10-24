@@ -7,7 +7,27 @@ export interface EvaluationPolicyInput {
   dataSource?: string
   simulated?: boolean
   hasData?: boolean
+  dashboard?: unknown
+  stats?: unknown
   demoEnabled?: boolean
+}
+
+export function hasEvaluationEvidence(input: { dashboard?: unknown; stats?: unknown }): boolean {
+  const dashboard = input.dashboard && typeof input.dashboard === 'object'
+    ? input.dashboard as Record<string, unknown>
+    : null
+  const hasDashboardEvidence = Boolean(dashboard && [
+    dashboard.flow,
+    dashboard.profileMetrics,
+    dashboard.weaknesses,
+    dashboard.evidenceRounds,
+  ].some((value) => Array.isArray(value) && value.length > 0))
+  const hasStatsEvidence = Array.isArray(input.stats) && input.stats.some((stat) => {
+    if (!stat || typeof stat !== 'object') return false
+    const record = stat as Record<string, unknown>
+    return Boolean(String(record.label ?? '').trim() || String(record.value ?? '').trim())
+  })
+  return hasDashboardEvidence || hasStatsEvidence
 }
 
 /**
@@ -19,7 +39,7 @@ export function classifyEvaluationResponse(input: EvaluationPolicyInput): Exclud
   if (!input.ok) return 'error'
   if (input.dataSource === 'demo-fixture') return input.demoEnabled ? 'demo' : 'unavailable'
   if (input.dataSource !== 'real' || input.simulated === true) return 'no-data'
-  if (!input.hasData) return 'no-data'
+  if (!(input.hasData ?? hasEvaluationEvidence(input))) return 'no-data'
   return 'real'
 }
 

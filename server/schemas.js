@@ -16,17 +16,23 @@ export function validateResourceGenerateInput(input) {
     errors.push('input must be an object')
     return { valid: false, errors }
   }
-  if (typeof input.topic !== 'string' || input.topic.trim().length === 0) {
+  const topic = typeof input.topic === 'string' ? input.topic.trim() : ''
+  const resourceType = typeof input.resourceType === 'string' ? input.resourceType.trim() : ''
+  if (typeof input.topic !== 'string' || topic.length === 0) {
     errors.push('topic is required')
-  } else if (input.topic.trim().length > 200) {
+  } else if (input.topic.length > 200) {
     errors.push('topic must be at most 200 characters')
   }
-  if (typeof input.resourceType !== 'string' || input.resourceType.trim().length === 0) {
+  if (typeof input.resourceType !== 'string' || resourceType.length === 0) {
     errors.push('resourceType is required')
-  } else if (input.resourceType.trim().length > 32) {
+  } else if (input.resourceType.length > 32) {
     errors.push('resourceType must be at most 32 characters')
   }
-  return { valid: errors.length === 0, errors }
+  return {
+    valid: errors.length === 0,
+    errors,
+    ...(errors.length === 0 ? { value: { ...input, topic, resourceType } } : {}),
+  }
 }
 
 export function createAgentResult({ agentName, input, output, confidence, evidence, riskFlags, securityRefused, durationMs, status, fallbackUsed }) {

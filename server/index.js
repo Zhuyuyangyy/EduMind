@@ -501,7 +501,7 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 400, { error: 'Bad Request', message: '资源生成请求无效。', details: validation.errors })
         return
       }
-      const result = await runResourceGeneration(body)
+      const result = await runResourceGeneration(validation.value)
       sendJson(res, 200, result)
       return
     }

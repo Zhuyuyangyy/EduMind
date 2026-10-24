@@ -41,8 +41,8 @@ interface DistributionItem {
 interface UpgradeTopic {
   id: string
   name: string
-  mastery: number
-  risk: '高风险' | '中风险' | '低风险'
+  mastery: number | null
+  risk: '高风险' | '中风险' | '低风险' | '待评估'
   action: string
   route: string
   domainId?: string
@@ -74,7 +74,8 @@ const courseName = computed(() => {
 
 const { data, loading, error, status, load } = useEvaluationTreeData()
 const isDemoData = computed(() => status.value === 'demo' || data.value?.dataSource === 'demo-fixture')
-const hasEvaluationSnapshot = computed(() => Boolean(data.value && (data.value.capabilities.length || data.value.modules.length || isDemoData.value)))
+const serverWeakPoints = computed(() => data.value?.weakPoints ?? [])
+const hasEvaluationSnapshot = computed(() => Boolean(data.value && (data.value.capabilities.length || data.value.modules.length || serverWeakPoints.value.length || isDemoData.value)))
 const hasKnowledgeEvidence = computed(() => Boolean(data.value?.modules.some((module) => module.units.some((unit) => unit.points.length > 0))))
 const reducedMotion = ref(false)
 const timeRange = ref('7d')
@@ -508,9 +509,9 @@ const summaryCards = computed<SummaryCard[]>(() => {
       icon: BookOpen,
     },
     {
-      label: '待提升知识点',
-      value: `${weakPoints.value.length}`,
-      sub: `高风险 ${highRiskCount.value} 个`,
+      label: weakPointCount.value && !weakPoints.value.length ? '待提升项目' : '待提升知识点',
+      value: `${weakPointCount.value}`,
+      sub: weakPoints.value.length ? `高风险 ${highRiskCount.value} 个` : serverWeakPoints.value.length ? '来自服务端评估，掌握度待补充' : '暂无',
       tone: 'amber',
       icon: AlertTriangle,
     },
@@ -532,6 +533,7 @@ const coveragePercent = computed(() => {
 })
 
 const highRiskCount = computed(() => weakPoints.value.filter((p) => p.mastery < 35).length)
+const weakPointCount = computed(() => weakPoints.value.length || serverWeakPoints.value.length)
 
 const distribution = computed<DistributionItem[]>(() => {
   const stats = analysisStats.value
@@ -552,7 +554,7 @@ const radarMetrics = computed<RadarMetric[]>(() => {
 
 const topUpgradeTopics = computed<UpgradeTopic[]>(() => {
   const source = selectedTreePoint.value ? focusedDomainTopics.value : weakPoints.value
-  return source.slice(0, 5).map((point) => {
+  if (source.length) return source.slice(0, 5).map((point) => {
     const domain = DOMAINS.find((item) => item.name === point.module)
     return {
       id: point.id,
@@ -565,6 +567,15 @@ const topUpgradeTopics = computed<UpgradeTopic[]>(() => {
       domainName: domain?.name,
     }
   })
+  return serverWeakPoints.value.slice(0, 5).map((point) => ({
+    id: point.id,
+    name: point.name,
+    mastery: null,
+    risk: '待评估' as const,
+    action: point.action,
+    route: '/resources',
+    domainName: point.module,
+  }))
 })
 
 const trendPolyline = computed(() => {
@@ -607,6 +618,9 @@ const aiDiagnosis = computed(() => {
     if (selectedTreePoint.value.mastery < 50) return `AI 诊断：${selectedTreePoint.value.name} 是当前薄弱苹果，建议右侧清单立即进入补弱路径。`
     if (selectedTreePoint.value.mastery < 80) return `AI 诊断：${selectedTreePoint.value.name} 已有基础，需要通过专项练习巩固迁移。`
     return `AI 诊断：${selectedTreePoint.value.name} 状态稳定，可作为关联知识点的支撑节点。`
+  }
+  if (serverWeakPoints.value.length && !weakPoints.value.length) {
+    return `AI 诊断：服务端评估识别了 ${serverWeakPoints.value.length} 个待提升项目，掌握度数据仍需补充。`
   }
   if ((currentMastery.value ?? 0) < 50) return 'AI 诊断：基础巩固不足，建议优先复习高频薄弱知识点。'
   if (weakPoints.value.length > 3) return 'AI 诊断：局部知识点波动明显，建议按 Top 5 清单逐个补强。'
@@ -935,10 +949,10 @@ function openPrimaryAction() {
         </div>
       </section>
 
-      <section v-if="hasKnowledgeEvidence" class="panel topic-panel breathe" :key="`topic-${analysisPanelKey}`">
+      <section v-if="hasKnowledgeEvidence || serverWeakPoints.length" class="panel topic-panel breathe" :key="`topic-${analysisPanelKey}`">
         <div class="topic-head">
-          <h2>Top 5 待提升知识点</h2>
-          <span>按掌握度升序</span>
+          <h2>Top 5 待提升{{ hasKnowledgeEvidence ? '知识点' : '项目' }}</h2>
+          <span>{{ hasKnowledgeEvidence ? '按掌握度升序' : '服务端评估结果' }}</span>
         </div>
         <div class="topic-table">
           <div class="topic-row topic-header">
@@ -955,7 +969,7 @@ function openPrimaryAction() {
             @click="openTopic(topic)"
           >
             <span class="topic-name"><i>{{ index + 1 }}</i>{{ topic.name }}</span>
-            <span class="mastery-cell">{{ topic.mastery }}% <b><em :style="{ width: `${topic.mastery}%` }" /></b></span>
+            <span class="mastery-cell">{{ topic.mastery === null ? '暂无' : `${topic.mastery}%` }} <b v-if="topic.mastery !== null"><em :style="{ width: `${topic.mastery}%` }" /></b></span>
             <span class="risk-pill" :class="topic.risk">{{ topic.risk }}</span>
             <span class="action-pill">{{ topic.action }}</span>
           </button>

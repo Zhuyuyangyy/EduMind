@@ -70,8 +70,8 @@ export interface WeakPointItem {
   id: string
   name: string
   module: string
-  mastery: number
-  confidence: number
+  mastery: number | null
+  confidence: number | null
   issue: string
   action: string
 }
