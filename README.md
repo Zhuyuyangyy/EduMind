@@ -160,8 +160,7 @@ npm run test:mobile-e2e  # 移动端 E2E（Playwright）
 
 - **维护级别**：MAINTAIN
 - **版本**：1.0.0
-- **当前分支**：`codex/audit-round1`（远程：https://github.com/Zhuyuyangyy/EduMind ，public）
-- **最近提交**：`4e5f352` docs: add round one product audit
+- **分支与提交**：请以当前 PR、分支页面和 Git 历史为准；README 不固定动态分支名或提交 SHA
 - **已知事项**：无 LICENSE；`docs/` 有首轮产品审计与移动端 backlog 文档可参考后续规划。
 
 ---
