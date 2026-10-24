@@ -225,6 +225,7 @@ export function useEvaluationTreeData() {
       const state = classifyEvaluationResponse({
         ok: true,
         dataSource: apiData.dataSource,
+        simulated: apiData.simulated,
         hasData: Boolean(apiData.dashboard || apiData.stats?.length),
         demoEnabled: isEvaluationDemoEnabled(),
       })

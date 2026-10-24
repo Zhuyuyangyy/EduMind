@@ -5,6 +5,7 @@ export interface EvaluationPolicyInput {
   status?: number
   code?: string
   dataSource?: string
+  simulated?: boolean
   hasData?: boolean
   demoEnabled?: boolean
 }
@@ -17,6 +18,7 @@ export function classifyEvaluationResponse(input: EvaluationPolicyInput): Exclud
   if (input.status === 503 || input.code === 'demo-data-disabled') return 'unavailable'
   if (!input.ok) return 'error'
   if (input.dataSource === 'demo-fixture') return input.demoEnabled ? 'demo' : 'unavailable'
+  if (input.dataSource !== 'real' || input.simulated === true) return 'no-data'
   if (!input.hasData) return 'no-data'
   return 'real'
 }

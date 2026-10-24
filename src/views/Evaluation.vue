@@ -397,6 +397,11 @@ const focusStatusLabel = computed(() => {
 })
 
 const trend = computed(() => data.value?.trends ?? [])
+const hasHistoricalEvaluation = computed(() => {
+  if (!data.value) return false
+  if (trend.value.length > 1) return true
+  return allPoints.value.some((point) => point.previousMastery !== point.mastery)
+})
 
 const currentMastery = computed<number | null>(() => (
   selectedTreePoint.value?.mastery ??
@@ -404,10 +409,11 @@ const currentMastery = computed<number | null>(() => (
   trend.value[trend.value.length - 1]?.mastery ?? null
 ))
 const masteryChange = computed(() => {
+  if (!hasHistoricalEvaluation.value) return null
   if (selectedTreePoint.value) return selectedTreePoint.value.recentChange
   if (trend.value.length > 1) return trend.value[trend.value.length - 1].mastery - trend.value[0].mastery
   if (data.value?.modules.length) return data.value.overallMastery - data.value.previousOverallMastery
-  return 0
+  return null
 })
 
 const detailRefreshStrength = computed(() => {
@@ -424,8 +430,8 @@ const selectedLearningDetails = computed(() => {
   if (!point) return []
   return [
     { label: '掌握度', value: `${Math.round(point.mastery)}%`, hint: focusStatusLabel.value },
-    { label: '本次变化', value: `${formatSigned(point.recentChange ?? 0)}%`, hint: '较上次评估' },
-    { label: '诊断置信度', value: `${Math.round(point.confidence)}%`, hint: `${point.evidenceCount || 1} 条证据` },
+    { label: '本次变化', value: hasHistoricalEvaluation.value ? `${formatSigned(point.recentChange)}%` : '暂无', hint: hasHistoricalEvaluation.value ? '较上次评估' : '暂无可验证记录' },
+    { label: '诊断置信度', value: `${Math.round(point.confidence)}%`, hint: `${point.evidenceCount} 条证据` },
     { label: '所属模块', value: point.module, hint: point.unit || '知识单元' },
   ]
 })
@@ -477,9 +483,9 @@ const summaryCards = computed<SummaryCard[]>(() => {
         icon: AlertTriangle,
       },
       {
-        label: '本周变化',
-        value: `${formatSigned(masteryChange.value)}%`,
-        sub: selectedTreePoint.value.mastery < 50 ? '建议立即补弱' : '继续强化',
+        label: hasHistoricalEvaluation.value ? '本次变化' : '历史变化',
+        value: hasHistoricalEvaluation.value ? `${formatSigned(masteryChange.value)}%` : '暂无',
+        sub: hasHistoricalEvaluation.value ? (selectedTreePoint.value.mastery < 50 ? '建议立即补弱' : '继续强化') : '暂无可验证记录',
         tone: 'green',
         icon: TrendingUp,
       },
@@ -490,7 +496,7 @@ const summaryCards = computed<SummaryCard[]>(() => {
     {
       label: '综合掌握度',
       value: currentMastery.value === null ? '暂无' : `${Math.round(masteryValue)}%`,
-      sub: `较上周 ${formatSigned(masteryChange.value)}`,
+      sub: hasHistoricalEvaluation.value ? `较上次评估 ${formatSigned(masteryChange.value)}` : '暂无可验证历史记录',
       tone: 'cyan',
       icon: CheckCircle2,
     },
@@ -509,9 +515,9 @@ const summaryCards = computed<SummaryCard[]>(() => {
       icon: AlertTriangle,
     },
     {
-      label: '本周提升',
-      value: `${formatSigned(masteryChange.value)}%`,
-      sub: '较上周',
+      label: hasHistoricalEvaluation.value ? '本次变化' : '历史变化',
+      value: hasHistoricalEvaluation.value ? `${formatSigned(masteryChange.value)}%` : '暂无',
+      sub: hasHistoricalEvaluation.value ? '较上次评估' : '暂无可验证记录',
       tone: 'green',
       icon: TrendingUp,
     },
@@ -611,6 +617,9 @@ const diagnosticSummary = computed(() => {
   if (status.value === 'unavailable') return '评估服务当前不可用，页面不会用模拟成绩替代真实结果。'
   if (status.value === 'error') return '评估数据加载失败，请重试。'
   if (status.value === 'no-data') return '暂无真实测评数据；课程完成率不会被当作知识掌握度。'
+  if (data.value?.agentConclusion && data.value.agentConclusion !== '评估已完成，等待更多知识点证据。') {
+    return data.value.agentConclusion
+  }
   if (currentMastery.value === null && !radarMetrics.value.length) return '当前响应未提供可展示的能力评分。'
   if (selectedTreePoint.value) {
     if (selectedTreePoint.value.mastery < 50) {
@@ -628,7 +637,8 @@ function clamp(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)))
 }
 
-function formatSigned(value: number) {
+function formatSigned(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return '暂无'
   const rounded = Math.round(value * 10) / 10
   return `${rounded >= 0 ? '+' : ''}${rounded}`
 }
@@ -694,17 +704,19 @@ function openPrimaryAction() {
             <span class="bot-badge"><Bot :size="24" /></span>
             <strong>{{ aiDiagnosis }}</strong>
           </div>
+          <p v-if="isDemoData" class="demo-data-badge" role="status">演示数据，仅供体验</p>
           <p class="course-line">{{ focusLine }}</p>
         </div>
 
         <div class="range-select">
           <CalendarDays :size="18" />
-          <select v-model="timeRange" aria-label="选择时间范围">
+          <select v-model="timeRange" aria-label="选择时间范围" disabled title="时间筛选暂未接入真实历史测评数据">
             <option value="7d">近 7 天</option>
             <option value="30d">近 30 天</option>
             <option value="today">今天</option>
           </select>
           <ChevronDown :size="18" />
+          <span class="range-note">时间筛选暂未接入</span>
         </div>
       </header>
 
@@ -859,9 +871,9 @@ function openPrimaryAction() {
             </div>
             <div v-else class="empty-chart">暂无真实历史趋势数据</div>
           </div>
-          <div v-if="trend.length" class="trend-tip">
+          <div v-if="trend.length && hasHistoricalEvaluation" class="trend-tip">
             <CheckCircle2 :size="20" />
-            <span>本周掌握度上升 <b>{{ formatSigned(masteryChange) }}%</b>，继续保持，稳步提升中！</span>
+            <span>掌握度较上次评估 <b>{{ formatSigned(masteryChange) }}%</b></span>
           </div>
         </article>
 
@@ -1089,6 +1101,19 @@ function openPrimaryAction() {
   font-size: 12px;
 }
 
+.demo-data-badge {
+  display: inline-flex;
+  width: fit-content;
+  margin: 10px 0 0;
+  padding: 4px 8px;
+  border: 1px solid rgba(245, 193, 74, 0.42);
+  border-radius: 999px;
+  background: rgba(245, 193, 74, 0.12);
+  color: #f8d477;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .range-select {
   display: flex;
   align-items: center;
@@ -1111,6 +1136,18 @@ function openPrimaryAction() {
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.range-select select:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.range-note {
+  flex: 0 0 auto;
+  color: rgba(184, 202, 226, 0.62);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .state-card {
