@@ -86,6 +86,9 @@ import {
   isProductionMode,
   runtimeMode,
 } from './identity.js'
+import { getProduct, listProducts } from './payment/catalog.js'
+import { applyPaymentEvent, createOrder, getOrder, getOrderForProvider, listEntitlements, setCheckoutUrl } from './payment/store.js'
+import { createCheckout, paymentProvider, providerConfigStatus, verifyNotification } from './payment/provider.js'
 
 /* ———————————— P4-1A 认证辅助 ———————————— */
 
@@ -171,6 +174,8 @@ const PUBLIC_API_PATHS = new Set([
   '/api/auth/login',
   '/api/auth/session',
   '/api/auth/logout',
+  '/api/payments/notify/alipay',
+  '/api/payments/return',
 ])
 
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -250,6 +255,27 @@ function readJson(req) {
         error.statusCode = 400
         reject(error)
       }
+    })
+    req.on('error', reject)
+  })
+}
+
+function readForm(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    let size = 0
+    req.on('data', chunk => {
+      size += chunk.length
+      if (size > MAX_BODY_SIZE) {
+        reject(Object.assign(new Error('Payload too large'), { statusCode: 413 }))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      const params = new URLSearchParams(Buffer.concat(chunks).toString('utf8'))
+      resolve(Object.fromEntries(params.entries()))
     })
     req.on('error', reject)
   })
@@ -336,6 +362,40 @@ const server = http.createServer(async (req, res) => {
         // 不返回 apiKey 和完整 apiUrl，仅返回域名前缀以备诊断
         apiHostHint,
       })
+      return
+    }
+
+    if (req.method === 'POST' && pathname === '/api/payments/notify/alipay') {
+      if (paymentProvider() !== 'vibe-pay' || !providerConfigStatus().configured) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'payment-provider-not-configured' })
+        return
+      }
+      const params = await readForm(req)
+      if (!verifyNotification(params)) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-payment-signature' })
+        return
+      }
+      const orderId = String(params.out_trade_no || '')
+      const order = await getOrderForProvider(orderId)
+      const product = order ? getProduct(order.productId) : null
+      if (!order || !product || params.app_id !== process.env.VIBE_PAY_APP_ID || Math.round(Number(params.total_amount) * 100) !== order.amountCents) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'payment-order-mismatch' })
+        return
+      }
+      await applyPaymentEvent({
+        provider: 'vibe-pay', eventId: params.notify_id || `${params.trade_no || orderId}:${params.trade_status || ''}`,
+        orderId, providerTradeNo: params.trade_no || null, amountCents: order.amountCents,
+        status: params.trade_status, payload: params, durationDays: product.durationDays,
+      })
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('success')
+      return
+    }
+
+    if (req.method === 'GET' && pathname === '/api/payments/return') {
+      const orderId = searchParams.get('out_trade_no') || ''
+      const order = await getOrderForProvider(orderId)
+      sendJson(res, 200, { order, message: '支付结果以服务端异步通知或交易查询为准。' })
       return
     }
 
@@ -458,6 +518,78 @@ const server = http.createServer(async (req, res) => {
       }
       await destroySession(extractToken(req))
       sendJson(res, 200, { ok: true }, { 'Set-Cookie': [clearSessionCookie(), clearCsrfCookie()] })
+      return
+    }
+
+    if (req.method === 'GET' && pathname === '/api/payments/products') {
+      sendJson(res, 200, { products: listProducts(), provider: paymentProvider() })
+      return
+    }
+
+    if (req.method === 'GET' && pathname === '/api/payments/entitlements') {
+      sendJson(res, 200, { entitlements: await listEntitlements(accountIdOf(req)) })
+      return
+    }
+
+    if (req.method === 'POST' && pathname === '/api/payments/orders') {
+      const body = await readJson(req)
+      const product = getProduct(String(body.productId || 'ai-7day-pack'))
+      const idempotencyKey = String(body.idempotencyKey || '').trim()
+      if (!product) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'unknown-product' })
+        return
+      }
+      if (!product.priceCents) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'payment-product-not-configured', message: '支付商品价格尚未配置。' })
+        return
+      }
+      if (idempotencyKey.length < 8 || idempotencyKey.length > 128) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-idempotency-key' })
+        return
+      }
+      const provider = paymentProvider()
+      const created = await createOrder({ accountId: accountIdOf(req), product, provider, idempotencyKey })
+      let checkout = null
+      if (!created.order.checkoutUrl && provider !== 'mock') {
+        const origin = process.env.PAYMENT_BASE_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
+        checkout = createCheckout({
+          order: created.order,
+          product,
+          notifyUrl: `${origin}/api/payments/notify/alipay`,
+          returnUrl: `${origin}/api/payments/return`,
+        })
+        if (checkout.checkoutUrl) await setCheckoutUrl(accountIdOf(req), created.order.id, checkout.checkoutUrl)
+      } else if (provider === 'mock') {
+        checkout = createCheckout({ order: created.order, product })
+        if (!created.order.checkoutUrl) await setCheckoutUrl(accountIdOf(req), created.order.id, checkout.checkoutUrl)
+      }
+      sendJson(res, created.duplicate ? 200 : 201, { order: await getOrder(accountIdOf(req), created.order.id), checkout, idempotent: created.duplicate })
+      return
+    }
+
+    const paymentOrderMatch = pathname.match(/^\/api\/payments\/orders\/([A-Za-z0-9_-]+)$/)
+    if (req.method === 'GET' && paymentOrderMatch) {
+      const order = await getOrder(accountIdOf(req), paymentOrderMatch[1])
+      if (!order) { sendJson(res, 404, { error: 'Not Found' }); return }
+      sendJson(res, 200, { order })
+      return
+    }
+
+    if (req.method === 'POST' && pathname === '/api/payments/mock/complete') {
+      if (paymentProvider() !== 'mock' || isProductionMode()) {
+        sendJson(res, 404, { error: 'Not Found' })
+        return
+      }
+      const body = await readJson(req)
+      const order = await getOrder(accountIdOf(req), String(body.orderId || ''))
+      if (!order) { sendJson(res, 404, { error: 'Not Found' }); return }
+      const product = getProduct(order.productId)
+      const result = await applyPaymentEvent({
+        provider: 'mock', eventId: String(body.eventId || `mock:${order.id}`), orderId: order.id,
+        providerTradeNo: String(body.providerTradeNo || `mock-trade-${order.id}`), amountCents: order.amountCents,
+        status: 'paid', payload: { source: 'mock', orderId: order.id }, accountId: accountIdOf(req), durationDays: product.durationDays,
+      })
+      sendJson(res, 200, { ...result, order: await getOrder(accountIdOf(req), order.id), entitlements: await listEntitlements(accountIdOf(req)) })
       return
     }
 

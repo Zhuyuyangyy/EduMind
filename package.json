@@ -13,6 +13,7 @@
     "test": "node --test --test-concurrency=4",
     "test:navigation": "node --test src/navigation-cleanup.test.mjs",
     "test:chat-api": "node --test server/chat-api.test.mjs",
+    "test:payment": "node --test server/payment.test.mjs",
     "experiment:anomaly": "node experiments/run-anomaly-tests.mjs",
     "experiment:baseline": "node experiments/capture-baseline.mjs",
     "experiment:learning-cycle": "node experiments/run-learning-cycle-cases.mjs",

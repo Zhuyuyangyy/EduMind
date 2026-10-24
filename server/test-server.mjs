@@ -55,6 +55,7 @@ export async function withTestServer(fn) {
       ZHIXUE_DATA_FILE: dataFile,
       ZHIXUE_CHAT_STORE_FILE: dataFile,
       ZHIXUE_TRACE_FILE: traceFile,
+      ZHIXUE_PAYMENT_FILE: `${dataFile}.payments.json`,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -82,6 +83,7 @@ export async function withTestServer(fn) {
     try {
       fs.rmSync(dataFile, { force: true })
       fs.rmSync(traceFile, { force: true })
+      fs.rmSync(`${dataFile}.payments.json`, { force: true })
     } catch {
       /* 临时文件清理失败不影响测试结果 */
     }
