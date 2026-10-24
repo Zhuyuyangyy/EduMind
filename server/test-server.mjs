@@ -82,6 +82,8 @@ export async function withTestServer(fn) {
     try {
       fs.rmSync(dataFile, { force: true })
       fs.rmSync(traceFile, { force: true })
+      fs.rmSync(`${dataFile}.identities.json`, { force: true })
+      fs.rmSync(`${dataFile}.sessions.json`, { force: true })
     } catch {
       /* 临时文件清理失败不影响测试结果 */
     }

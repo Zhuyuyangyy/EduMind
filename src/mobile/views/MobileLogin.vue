@@ -31,7 +31,7 @@
       </button>
     </form>
 
-    <p class="login__footnote">
+    <p v-if="demoMode" class="login__footnote">
       演示账号：reviewer / Zhixue2026!（学生端）<br />
       会话由服务端签发，有效期 7 天；退出或服务端失效后需重新登录。
     </p>
@@ -49,7 +49,8 @@ import { toFriendlyError, type FriendlyError } from '../errors'
 import MobileIcon from '../components/MobileIcon.vue'
 
 const router = useRouter()
-const account = ref('reviewer')
+const demoMode = import.meta.env.VITE_DEMO_MODE === 'true'
+const account = ref(demoMode ? 'reviewer' : '')
 const password = ref('')
 const loading = ref(false)
 const error = ref<FriendlyError | null>(null)

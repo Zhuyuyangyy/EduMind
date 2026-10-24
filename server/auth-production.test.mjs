@@ -45,6 +45,8 @@ function startServer(port, dataFile, extraEnv = {}) {
       ZHIXUE_IDENTITY_FILE: `${dataFile}.identities.json`,
       // 隔离：强制 JSON 模式（避免继承调用方 MYSQL_* 共库污染）
       MYSQL_URL: '', MYSQL_HOST: '', MYSQL_PORT: '', MYSQL_USER: '', MYSQL_PASSWORD: '', MYSQL_DATABASE: '',
+      // 本文件专门验证 JSON 身份契约；生产部署默认不设置此测试豁免。
+      ZHIXUE_ALLOW_JSON_PRODUCTION: '1',
       ...extraEnv,
     },
     stdio: 'ignore',

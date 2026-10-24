@@ -31,7 +31,7 @@ import {
 import { getTraces, getTraceSummary, buildTrace, recordTrace, runWithAccount } from './evidence/recorder.js'
 import { isLlmAvailable, getLlmConfig } from './llm/provider.js'
 import { getKnowledgeBaseStats, searchKnowledgeBase } from './knowledge-base/vector-store.js'
-import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, getStorageBackend, saveAccountSettings, saveLearningCycle } from './store/mysql.js'
+import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, getStorageBackend, isMySqlConfigured, saveAccountSettings, saveLearningCycle } from './store/mysql.js'
 import { summarizeLearningHistory } from './learner-memory.js'
 import {
   buildSessionCookie,
@@ -169,9 +169,16 @@ const PUBLIC_API_PATHS = new Set([
   '/api/health',
   '/api/llm/status',
   '/api/auth/login',
+  '/api/auth/register',
   '/api/auth/session',
   '/api/auth/logout',
 ])
+
+// JSON 文件存储只适合本地演示/测试。生产实例必须连接共享 MySQL；
+// 测试专用的显式豁免不会被部署配置默认打开。
+function productionStorageReady() {
+  return !isProductionMode() || isMySqlConfigured() || process.env.ZHIXUE_ALLOW_JSON_PRODUCTION === '1'
+}
 
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:5174',
@@ -311,12 +318,24 @@ const server = http.createServer(async (req, res) => {
   // 全部 /api 路由（公开路径也在内，只是没有账号上下文）
   const routeApi = async () => {
     if (req.method === 'GET' && pathname === '/api/health') {
-      sendJson(res, 200, {
-        ok: true,
+      const storageReady = productionStorageReady()
+      sendJson(res, storageReady ? 200 : 503, {
+        ok: storageReady,
         version: '2.0.0',
         features: ['multi-agent', 'llm-provider', 'evidence-recorder'],
         llmConfigured: isLlmAvailable(),
         storageBackend: getStorageBackend(),
+        productionStorageReady: storageReady,
+        ...(storageReady ? {} : { code: 'production-storage-not-configured' }),
+      })
+      return
+    }
+
+    if (isProductionMode() && !productionStorageReady()) {
+      sendJson(res, 503, {
+        error: 'Service Unavailable',
+        code: 'production-storage-not-configured',
+        message: '生产环境必须配置共享 MySQL 存储。',
       })
       return
     }
@@ -336,6 +355,36 @@ const server = http.createServer(async (req, res) => {
         // 不返回 apiKey 和完整 apiUrl，仅返回域名前缀以备诊断
         apiHostHint,
       })
+      return
+    }
+
+    if (req.method === 'POST' && pathname === '/api/auth/register') {
+      const body = await readJson(req)
+      const account = String(body.account || '').trim()
+      const password = String(body.password || '')
+      const displayName = String(body.displayName || '').trim()
+      if (!/^[\p{L}\p{N}._-]{3,64}$/u.test(account)) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-account', message: '账号需为 3-64 个字母、数字、点、下划线或短横线。' })
+        return
+      }
+      if (password.length < 8 || password.length > 128) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-password', message: '密码长度应为 8-128 个字符。' })
+        return
+      }
+      if (!displayName || displayName.length > 64) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-display-name', message: '姓名长度应为 1-64 个字符。' })
+        return
+      }
+      try {
+        const identity = await createIdentity({ account, password, role: 'student', displayName })
+        sendJson(res, 201, { account: identity.account, displayName: identity.displayName, role: identity.role })
+      } catch (error) {
+        if (error?.code === 'ER_DUP_ENTRY' || /账号已存在|Duplicate entry/i.test(error?.message || '')) {
+          sendJson(res, 409, { error: 'Conflict', code: 'account-exists', message: '账号已存在，请换一个账号。' })
+          return
+        }
+        throw error
+      }
       return
     }
 
@@ -1210,9 +1259,11 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, async () => {
   try {
-    if (!(await hasAnyCollaboration())) {
+    if (productionStorageReady() && !(await hasAnyCollaboration())) {
       await seedAllDays(saveCollaboration)
       console.log(`[agent-collaboration] seeded 7 days into ${getStorageBackend()}`)
+    } else if (!productionStorageReady()) {
+      console.error('[mysql] production startup blocked: shared MySQL is not configured')
     }
     // 协作看板改为「演示数据 + 当前账号真实活动」按请求实时合并，
     // 不再启动全局 sync、不再注册 trace hook（消除未处理 Promise rejection 风险）。

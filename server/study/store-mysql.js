@@ -52,7 +52,7 @@ export async function ensureStudySchema() {
       submitted_json JSON NULL,
       idempotency_key VARCHAR(191) NOT NULL,
       submitted_at DATETIME(3) NOT NULL,
-      UNIQUE KEY answer_submissions_idem (idempotency_key),
+      UNIQUE KEY answer_submissions_idem (account_id, session_id, idempotency_key),
       UNIQUE KEY answer_submissions_session_exercise (session_id, exercise_id),
       KEY answer_submissions_account (account_id, submitted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -62,6 +62,18 @@ export async function ensureStudySchema() {
     await db.query('ALTER TABLE answer_submissions ADD COLUMN submitted_json JSON NULL')
   } catch (error) {
     if (error?.code !== 'ER_DUP_FIELDNAME' && !/Duplicate column/i.test(error?.message || '')) throw error
+  }
+  // P4-3：幂等键只能在账号+会话范围内唯一。旧版本的全局唯一索引
+  // 会让不同账号意外共享一次作答结果，迁移时显式替换为复合索引。
+  try {
+    await db.query('ALTER TABLE answer_submissions DROP INDEX answer_submissions_idem')
+  } catch (error) {
+    if (error?.code !== 'ER_CANT_DROP_FIELD_OR_KEY' && !/check that column\/key exists|cannot drop/i.test(error?.message || '')) throw error
+  }
+  try {
+    await db.query('ALTER TABLE answer_submissions ADD UNIQUE KEY answer_submissions_idem (account_id, session_id, idempotency_key)')
+  } catch (error) {
+    if (error?.code !== 'ER_DUP_KEYNAME' && !/Duplicate key name/i.test(error?.message || '')) throw error
   }
   await db.query(`
     CREATE TABLE IF NOT EXISTS learning_events (
@@ -201,8 +213,8 @@ export async function createStudySession(accountId, { topicId, topicIds, phaseId
   return { session: publicSession({ ...session, created_at: session.createdAt, completed_at: null }), exercises: exercises.map(stripAnswer) }
 }
 
-async function loadSession(db, accountId, sessionId) {
-  const [rows] = await db.query('SELECT * FROM study_sessions WHERE id = ?', [sessionId])
+async function loadSession(db, accountId, sessionId, forUpdate = false) {
+  const [rows] = await db.query(`SELECT * FROM study_sessions WHERE id = ?${forUpdate ? ' FOR UPDATE' : ''}`, [sessionId])
   const row = rows[0]
   if (!row || row.account_id !== accountId) return null
   return row
@@ -247,7 +259,7 @@ export async function recordAnswer(accountId, sessionId, { exerciseId, submitted
   try {
     await connection.beginTransaction()
 
-    const row = await loadSession(connection, accountId, sessionId)
+    const row = await loadSession(connection, accountId, sessionId, true)
     if (!row) {
       await connection.rollback()
       return { ok: false, code: 'session-not-found', message: '会话不存在或不属于当前账号' }
@@ -259,10 +271,14 @@ export async function recordAnswer(accountId, sessionId, { exerciseId, submitted
 
     // 幂等 1：幂等键已存在 → 返回首次结果
     const [byKey] = await connection.query(
-      'SELECT exercise_id, correct, reason FROM answer_submissions WHERE idempotency_key = ?',
-      [idempotencyKey],
+      'SELECT exercise_id, correct, reason FROM answer_submissions WHERE account_id = ? AND session_id = ? AND idempotency_key = ?',
+      [accountId, sessionId, idempotencyKey],
     )
-    if (byKey[0] && byKey[0].exercise_id === exerciseId) {
+    if (byKey[0] && byKey[0].exercise_id !== exerciseId) {
+      await connection.rollback()
+      return { ok: false, code: 'idempotency-conflict', message: '幂等键已用于本会话的其他题目' }
+    }
+    if (byKey[0]) {
       await connection.commit()
       return { ok: true, correct: Boolean(byKey[0].correct), reason: byKey[0].reason, duplicate: true, ...(await progressOf(connection, sessionId)) }
     }
@@ -314,7 +330,7 @@ export async function recordAnswer(accountId, sessionId, { exerciseId, submitted
     await connection.rollback().catch(() => {})
     // 唯一约束冲突（极端并发双写）→ 按重复提交返回已有结果
     if (error?.code === 'ER_DUP_ENTRY') {
-      const existing = await db.query('SELECT exercise_id, correct, reason FROM answer_submissions WHERE session_id = ? AND exercise_id = ?', [sessionId, exerciseId])
+      const existing = await db.query('SELECT exercise_id, correct, reason FROM answer_submissions WHERE account_id = ? AND session_id = ? AND exercise_id = ?', [accountId, sessionId, exerciseId])
       if (existing[0]?.[0]) {
         return { ok: true, correct: Boolean(existing[0][0].correct), reason: existing[0][0].reason, duplicate: true, ...(await progressOf(db, sessionId)) }
       }
@@ -344,22 +360,38 @@ async function progressOf(db, sessionId) {
 export async function completeStudySession(accountId, sessionId) {
   await ensureStudySchema()
   const db = getMySqlPool()
-  const row = await loadSession(db, accountId, sessionId)
-  if (!row) return { ok: false, code: 'session-not-found', message: '会话不存在或不属于当前账号' }
-  if (row.status === 'completed') {
-    const [attempts] = await db.query('SELECT correct FROM answer_submissions WHERE session_id = ?', [sessionId])
-    return { ok: true, duplicate: true, assessment: summarizeAttempts(attempts.map(a => ({ correct: Boolean(a.correct) }))) }
+  const connection = await db.getConnection()
+  try {
+    await connection.beginTransaction()
+    const row = await loadSession(connection, accountId, sessionId, true)
+    if (!row) {
+      await connection.rollback()
+      return { ok: false, code: 'session-not-found', message: '会话不存在或不属于当前账号' }
+    }
+    const [attempts] = await connection.query('SELECT correct FROM answer_submissions WHERE account_id = ? AND session_id = ? ORDER BY id', [accountId, sessionId])
+    const assessment = summarizeAttempts(attempts.map(a => ({ correct: Boolean(a.correct) })))
+    if (row.status === 'completed') {
+      await connection.commit()
+      return { ok: true, duplicate: true, assessment }
+    }
+    if (attempts.length === 0) {
+      await connection.rollback()
+      return { ok: false, code: 'no-answers', message: '尚未提交任何作答，不能完成练习' }
+    }
+    const completedAt = sqlDate(nowIso())
+    await connection.query(`UPDATE study_sessions SET status = 'completed', completed_at = ? WHERE id = ? AND account_id = ? AND status = 'active'`, [completedAt, sessionId, accountId])
+    await connection.query(
+      `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'session-complete', CAST(? AS JSON), ?)`,
+      [newId('event'), accountId, sessionId, JSON.stringify(assessment), completedAt],
+    )
+    await connection.commit()
+    return { ok: true, duplicate: false, assessment }
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
   }
-  const [attempts] = await db.query('SELECT correct FROM answer_submissions WHERE session_id = ?', [sessionId])
-  if (attempts.length === 0) {
-    return { ok: false, code: 'no-answers', message: '尚未提交任何作答，不能完成练习' }
-  }
-  await db.query(`UPDATE study_sessions SET status = 'completed', completed_at = ? WHERE id = ?`, [sqlDate(nowIso()), sessionId])
-  await db.query(
-    `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'session-complete', CAST(? AS JSON), ?)`,
-    [newId('event'), accountId, sessionId, JSON.stringify(summarizeAttempts(attempts.map(a => ({ correct: Boolean(a.correct) })))), sqlDate(nowIso())],
-  )
-  return { ok: true, duplicate: false, assessment: summarizeAttempts(attempts.map(a => ({ correct: Boolean(a.correct) }))) }
 }
 
 export async function getStudyStats(accountId) {
