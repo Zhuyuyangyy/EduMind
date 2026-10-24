@@ -70,8 +70,8 @@ export interface WeakPointItem {
   id: string
   name: string
   module: string
-  mastery: number
-  confidence: number
+  mastery: number | null
+  confidence: number | null
   issue: string
   action: string
 }
@@ -85,7 +85,8 @@ export interface EvaluationTreeData {
   learnerName: string
   courseName: string
   evaluatedAt: string
-  status: 'analyzing' | 'completed'
+  status: 'analyzing' | 'completed' | 'no-data' | 'unavailable' | 'error'
+  dataSource: 'real' | 'demo-fixture'
   overallMastery: number
   previousOverallMastery: number
   modules: KnowledgeModule[]

@@ -173,7 +173,15 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
           window.location.assign(isMobileApp() ? '#/login' : '/login')
         }
       }
-      throw new Error(`Request failed: ${response.status}`)
+      const requestError = new Error(`Request failed: ${response.status}`) as Error & { status?: number; code?: string }
+      requestError.status = response.status
+      try {
+        const failure = await response.clone().json() as { code?: string }
+        requestError.code = failure.code
+      } catch {
+        // Preserve the HTTP status even when an upstream proxy returns non-JSON.
+      }
+      throw requestError
     }
 
     const data = await response.json() as T
