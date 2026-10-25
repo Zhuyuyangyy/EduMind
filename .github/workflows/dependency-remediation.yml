@@ -1,0 +1,39 @@
+name: Temporary dependency remediation artifact
+
+on:
+  push:
+    branches: [codex/payment-dependency-hardening]
+
+permissions:
+  contents: read
+
+jobs:
+  remediate:
+    name: Generate compatible npm audit fixes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Apply compatible fixes without force
+        run: npm audit fix
+        continue-on-error: true
+      - name: Report remaining advisories
+        shell: bash
+        run: |
+          npm audit --json > audit-after.json || true
+          node --input-type=commonjs -e "const a=require('./audit-after.json'); const rows=Object.entries(a.vulnerabilities||{}).map(([name,v])=>({name,severity:v.severity,range:v.range,fixAvailable:v.fixAvailable,via:(v.via||[]).map(x=>typeof x==='string'?x:{title:x.title,url:x.url,range:x.range})})); console.log(JSON.stringify({summary:a.metadata?.vulnerabilities,rows},null,2))"
+      - name: Upload regenerated manifests for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-remediation-output
+          path: |
+            package.json
+            package-lock.json
+            audit-after.json
+          if-no-files-found: error
