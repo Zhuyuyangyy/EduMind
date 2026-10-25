@@ -77,3 +77,36 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Payment return page and signed POST form smoke
         run: npm run test:payment-browser
+
+  deployment-smoke:
+    name: Production container smoke (sales disabled)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COMPOSE_PROJECT_NAME: edumind-ci-${{ github.run_id }}
+      APP_BIND_ADDRESS: 127.0.0.1
+      APP_PORT: '8255'
+      MYSQL_DATABASE: edumind_ci
+      MYSQL_USER: edumind_ci
+      MYSQL_PASSWORD: ci-fixture-only-password
+      MYSQL_ROOT_PASSWORD: ci-fixture-only-root-password
+      LLM_API_URL: https://api.deepseek.com/chat/completions
+      LLM_API_KEY: ci-fixture-not-a-key
+      EDUMIND_PAYMENT_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate deployment configuration without printing secrets
+        run: docker compose config --quiet
+      - name: Build and start isolated production containers
+        run: docker compose up --build --wait --wait-timeout 240
+      - name: Verify account and payment boundaries through Nginx
+        run: node scripts/production-compose-smoke.mjs
+      - name: Container failure diagnostics
+        if: failure()
+        run: docker compose logs --no-color --tail 80
+      - name: Remove only this isolated CI project and fixture volume
+        if: always()
+        run: docker compose down --volumes --remove-orphans

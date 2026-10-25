@@ -65,7 +65,7 @@ Web 与 Capacitor 后续可以复用这些账号、订单和权益接口；本�
 - 原评估页 Chromium Smoke：9/9。
 - Web 构建通过：首次在系统 TEMP 遇到 esbuild 清理文件 Access is denied，改用仓库 outputs/build-temp 作为该命令的 TEMP/TMP 后重跑成功。Mobile Web 构建通过；原生 Android APK 本轮未构建。
 - CI 已追加 Chromium 支付 Smoke。最初支付增量已获得三 job 全绿，后续沙箱加载变动继续跑当前 head 的 CI；远端执行结果以 PR 当前 GitHub Checks 为准，不能用本地通过替代。
-- 官方 npm registry 的 `npm audit` 当前报告 7 项（4 high / 3 moderate）。包括新增 SDK 的 urllib@4.9.0 跨源重定向风险及既有 Vite/构建依赖；当前 registry 的 urllib latest 仍为 4.9.0，兼容范围 update 未提供修复版本。本轮未强制升级或宣称依赖安全，正式收款前须解决并复验。
+- 正式测试前补查并修正了依赖判断：urllib 的修复版 4.9.1 已存在于 latest-4 标签，不能只按 latest=4.9.0 推断没有修复版本。锁文件已升级 urllib/Vite 等兼容修复版本；全依赖 audit 剩 3 项构建链中危、0 高危，运行时依赖 audit 为 0 项已知告警。新增真实跨来源凭据清理回归；范围与剩余风险见 [正式测试前调查](payment-production-readiness-2026-10-26.md)。
 
 ## 未完成与下一步
 
