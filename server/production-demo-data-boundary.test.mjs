@@ -31,6 +31,8 @@ test('production users cannot read fixed demo evaluation/path/workflow payloads'
   const env = {
     ...process.env,
     ZHIXUE_ENV: 'production',
+    // 只验证演示数据边界；生产缺少 MySQL 的拒绝行为由生产安全测试覆盖。
+    ZHIXUE_ALLOW_JSON_PRODUCTION: '1',
     PORT: String(port),
     ZHIXUE_DATA_FILE: dataFile,
     ZHIXUE_CHAT_STORE_FILE: dataFile,
@@ -42,7 +44,18 @@ test('production users cannot read fixed demo evaluation/path/workflow payloads'
   const { createIdentity } = await import('./identity.js')
   const previousIdentityFile = process.env.ZHIXUE_IDENTITY_FILE
   process.env.ZHIXUE_IDENTITY_FILE = identityFile
-  await createIdentity({ account: 'production-demo-boundary', password: 'strong-boundary-password-123', role: 'student', displayName: 'Boundary User' })
+  const mysqlKeys = ['MYSQL_URL', 'MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DATABASE']
+  const previousMysql = Object.fromEntries(mysqlKeys.map(key => [key, process.env[key]]))
+  try {
+    // 父进程与子进程必须使用同一 JSON fixture，不能继承全量回归的 MySQL。
+    for (const key of mysqlKeys) delete process.env[key]
+    await createIdentity({ account: 'production-demo-boundary', password: 'strong-boundary-password-123', role: 'student', displayName: 'Boundary User' })
+  } finally {
+    for (const key of mysqlKeys) {
+      if (previousMysql[key] === undefined) delete process.env[key]
+      else process.env[key] = previousMysql[key]
+    }
+  }
   const child = spawn(process.execPath, ['server/index.js'], { cwd: projectRoot, env, stdio: 'ignore' })
   try {
     assert.ok(await waitUp(baseUrl))

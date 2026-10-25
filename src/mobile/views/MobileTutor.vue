@@ -1,16 +1,17 @@
 <template>
   <section class="tutor">
-    <div class="tutor__intro">
-      <h1 class="tutor__title">你卡在了哪一步？</h1>
-      <p class="tutor__subtitle">把问题说清楚，AI 会按你的掌握程度启发式讲解。</p>
-    </div>
+    <nav class="tutor__modes" aria-label="导师服务">
+      <RouterLink to="/planning">制定学习计划</RouterLink>
+      <span aria-current="page">学科辅导</span>
+    </nav>
+    <div class="tutor__intro"><span class="tutor__symbol"><MobileIcon name="sparkle" :size="21" /></span><div><h1 class="tutor__title">一起，把问题想明白。</h1><p class="tutor__subtitle">可以从一个概念，也可以从一次不理解开始。</p></div></div>
 
     <!-- 今日主题上下文（从今日学习页携带，可追溯） -->
     <div v-if="topicContext" class="tutor__topic">
       <div class="tutor__topic-body">
         <span class="m-badge m-badge--info">今日主题</span>
         <span class="tutor__topic-name">{{ topicContext.name }}</span>
-        <span class="tutor__topic-id">#{{ topicContext.id }}</span>
+
       </div>
       <button class="m-btn m-btn--ghost m-btn--sm" @click="onUseTopic">就聊这个</button>
     </div>
@@ -24,11 +25,14 @@
 
     <!-- 对话区（真实数据） -->
     <div v-else class="tutor__thread" ref="thread">
-      <MobileEmpty
-        v-if="!messages.length && !loading"
-        title="还没有提问"
-        desc="先问我一个问题，例如「BFS 的 visited 什么时候标记？」"
-      />
+      <div v-if="!messages.length && !loading" class="tutor__welcome">
+        <MobileOrbit class="tutor__welcome-orbit" />
+        <h2>每个好问题，都是一个起点。</h2>
+        <p>试着从下面开始，或直接写下你的困惑。</p>
+        <div class="tutor__starters" aria-label="快捷提问">
+          <button v-for="starter in starters" :key="starter.label" type="button" @click="useStarter(starter.prompt)"><MobileIcon :name="starter.icon" :size="16" /><span>{{ starter.label }}</span><MobileIcon name="chevronRight" :size="13" /></button>
+        </div>
+      </div>
 
       <template v-for="item in messages" :key="item.id">
         <div class="m-bubble m-bubble--user">{{ item.question }}</div>
@@ -38,9 +42,9 @@
             <span v-if="item.source === 'fallback'" class="m-badge m-badge--warn" title="模型服务不可用，本次为规则降级回答">降级回答</span>
             <span v-else-if="item.source === 'unknown'" class="m-badge" title="该历史记录早于来源标注功能，无法确认生成方式">来源未记录</span>
             <span v-else class="m-badge m-badge--success" title="本次回答来自真实模型">模型生成</span>
-            <span v-if="item.time">{{ item.time }}</span>
+            <time v-if="item.time" :datetime="item.time">{{ formatMessageTime(item.time) }}</time>
           </div>
-          <div class="m-bubble m-bubble--ai">{{ item.answer }}</div>
+          <div class="m-bubble m-bubble--ai"><MobileTutorAnswer :text="item.answer" /></div>
         </div>
       </template>
 
@@ -75,13 +79,14 @@
         v-model="question"
         class="m-textarea"
         rows="2"
-        placeholder="例如：BFS 的 visited 标记在入队时还是出队时打？"
+        aria-label="向 AI 导师提问"
+        placeholder="把你的问题写在这里…"
         :disabled="loading"
         @focus="focused = true"
         @blur="focused = false"
       />
-      <button class="m-btn m-btn--primary tutor__send" type="submit" :disabled="loading || !question.trim()">
-        {{ loading ? '思考中' : '提问' }}
+      <button class="m-btn m-btn--primary tutor__send" type="submit" :aria-label="loading ? '思考中' : '发送问题'" :disabled="loading || !question.trim()">
+        <ArrowUp :size="19" /><span class="tutor__send-label">{{ loading ? '思考中' : '提问' }}</span>
       </button>
     </form>
   </section>
@@ -89,7 +94,10 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import MobileEmpty from '../components/MobileEmpty.vue'
+import MobileOrbit from '../components/MobileOrbit.vue'
+import MobileTutorAnswer from '../components/MobileTutorAnswer.vue'
+import MobileIcon, { type IconName } from '../components/MobileIcon.vue'
+import { ArrowUp } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { askTutoringQuestion } from '@/lib/api'
 import { toFriendlyError, type FriendlyError } from '../errors'
@@ -100,6 +108,19 @@ import {
 } from '@/mobile/data/learning-data'
 import type { TutorMessage } from '@/mobile/data/types'
 
+const starters: Array<{ label: string; prompt: string; icon: IconName }> = [
+  { label: '把一个概念讲简单一点', prompt: '请用一个生活中的例子，为我讲解这个知识点：', icon: 'book' },
+  { label: '带我一步一步想', prompt: '请不要直接给答案，用问题引导我理解：', icon: 'path' },
+  { label: '用一道题检验理解', prompt: '请给我一道关于当前学习主题的练习题，先不要展示答案。', icon: 'practice' },
+]
+function useStarter(prompt: string) {
+  question.value = topicContext.value ? `${prompt}「${topicContext.value.name}」` : prompt
+  nextTick(() => document.querySelector<HTMLTextAreaElement>('.tutor__composer textarea')?.focus())
+}
+function formatMessageTime(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? (value.length < 16 ? value : '历史记录') : date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai' })
+}
 const route = useRoute()
 const question = ref('')
 const loading = ref(false)
@@ -190,102 +211,38 @@ function onUseTopic() {
 </script>
 
 <style scoped>
-.tutor__topic {
-  display: flex;
-  align-items: center;
-  gap: var(--m-space-3);
-  background: var(--m-primary-soft);
-  border: 1px solid rgba(84, 214, 255, 0.25);
-  border-radius: var(--m-radius-md);
-  padding: var(--m-space-2) var(--m-space-3);
-  margin-bottom: var(--m-space-3);
-}
-
-.tutor__topic-body {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--m-space-2);
-  min-width: 0;
-  flex: 1;
-}
-
-.tutor__topic-name {
-  font-size: var(--m-text-md);
-  font-weight: 600;
-}
-
-.tutor__topic-id {
-  font-size: var(--m-text-xs);
-  color: var(--m-text-faint);
-}
-
-.tutor__intro {
-  margin-bottom: var(--m-space-4);
-}
-
-.tutor__title {
-  font-size: var(--m-text-xl);
-  margin: 0 0 var(--m-space-1);
-}
-
-.tutor__subtitle {
-  font-size: var(--m-text-sm);
-  color: var(--m-text-faint);
-  margin: 0;
-}
-
-.tutor__thread {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--m-space-3);
-  overflow-y: auto;
-  padding-bottom: var(--m-space-4);
-}
-
-.tutor__ai {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--m-space-1);
-}
-
-.tutor__thinking {
-  min-width: 180px;
-}
-
-.tutor__error {
-  margin-bottom: var(--m-space-3);
-}
-
-.tutor__retry {
-  align-self: flex-start;
-  margin-top: var(--m-space-2);
-}
-
-/* 输入区：sticky 在底部，键盘弹出时随视口上移（dvh + sticky） */
-.tutor__composer {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  gap: var(--m-space-2);
-  align-items: flex-end;
-  padding: var(--m-space-3) 0 var(--m-space-2);
-  background: var(--m-bg);
-  border-top: 1px solid var(--m-border);
-}
-
-.tutor__composer .m-textarea {
-  flex: 1;
-}
-
-.tutor__send {
-  flex: none;
-  padding: var(--m-space-3) var(--m-space-5);
-}
-
-.tutor__composer--focused {
-  border-top-color: var(--m-primary);
-}
+.tutor { display: flex; flex-direction: column; height: calc(100dvh - 196px); min-height: 490px; }
+.tutor__modes { display: flex; gap: 4px; background: #e9ecf4; padding: 4px; border-radius: 14px; flex: none; margin-bottom: 22px; }
+.tutor__modes > * { flex: 1; text-align: center; padding: 11px 6px; font-size: 12px; color: var(--m-text-dim); text-decoration: none; border-radius: 10px; }
+.tutor__modes > span { background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow-card); font-weight: 600; }
+.tutor__intro { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex: none; }
+.tutor__symbol { width: 42px; height: 44px; display: grid; place-items: center; border-radius: 14px; color: var(--m-primary); background: var(--m-primary-soft); flex: none; }
+.tutor__title { font-size: 22px; letter-spacing: -.7px; margin: 0 0 7px; }
+.tutor__subtitle { font-size: 11px; color: var(--m-text-faint); margin: 0; line-height: 1.7; }
+.tutor__topic { display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: var(--m-surface); border: 1px solid var(--m-border); border-radius: 16px; margin-top: 12px; flex: none; }
+.tutor__topic-body { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; flex: 1; }
+.tutor__topic-name { font-size: 12px; }
+.tutor__topic .m-btn { font-size: 11px; padding-inline: 10px; flex: none; }
+.tutor__thread { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; padding: 18px 0; scrollbar-width: thin; overscroll-behavior: contain; }
+.tutor__welcome { margin: auto 0; padding: 6px 4px 8px; text-align: center; }
+.tutor__welcome-orbit { width: 110px; height: 90px; object-fit: cover; margin: 0 auto 4px; }
+.tutor__welcome h2 { font-size: 16px; letter-spacing: -.4px; margin: 0 0 8px; }
+.tutor__welcome > p { color: var(--m-text-faint); font-size: 11px; margin: 0 0 20px; }
+.tutor__starters { display: grid; gap: 8px; text-align: left; }
+.tutor__starters button { display: flex; align-items: center; gap: 10px; min-height: 45px; padding: 11px 14px; border: 1px solid var(--m-border); border-radius: 13px; background: var(--m-surface); color: var(--m-text-dim); font: inherit; font-size: 12px; cursor: pointer; }
+.tutor__starters button > .m-icon:first-child { color: var(--m-primary); }
+.tutor__starters button > .m-icon:last-child { margin-left: auto; color: var(--m-text-faint); }
+.tutor__ai { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
+.tutor__ai .m-bubble { max-width: 94%; }
+.tutor .m-bubble { font-size: 14px; line-height: 1.8; }
+.tutor__thinking { min-width: 180px; }
+.tutor__error { flex: none; margin-bottom: 10px; }
+.tutor__retry { align-self: flex-start; margin-top: 6px; }
+.tutor__composer { display: flex; gap: 10px; align-items: flex-end; padding: 10px; flex: none; border: 1px solid var(--m-border-strong); background: var(--m-surface); border-radius: 22px; box-shadow: var(--m-shadow-card); }
+.tutor__composer .m-textarea { flex: 1; min-width: 0; background: transparent; border: 0; padding: 8px 4px 5px 8px; font-size: 16px; line-height: 1.5; }
+.tutor__composer .m-textarea:focus-visible { outline-offset: -2px; border-radius: 12px; }
+.tutor__composer--focused { border-color: var(--m-primary); }
+.tutor__send { display: grid; place-items: center; border-radius: 50%; min-width: 42px; width: 42px; min-height: 42px; height: 42px; padding: 0; flex: none; }
+.tutor__send-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 359px) { .tutor__title { font-size: 20px; } }
 </style>

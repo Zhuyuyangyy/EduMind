@@ -35,7 +35,7 @@ const ACCOUNT_A = { account: 'reviewer', password: 'Zhixue2026!' }
 const ACCOUNT_B = { account: 'student', password: 'student123' }
 
 // A 的专属内容标记（D4 用于扫描串号）
-const A_MARKERS = ['编程基础与语法', '数据结构入门', '算法思维培养', '知识基础', '旧历史问题（无来源标注）', '新历史问题（降级）', '今天先学这一件事']
+const A_MARKERS = ['编程基础与语法', '数据结构入门', '算法思维培养', '知识基础', '旧历史问题（无来源标注）', '新历史问题（降级）', '今日专注']
 
 const results = []
 function report(name, ok, detail) {
@@ -117,7 +117,12 @@ async function login(cdp, creds) {
   await cdp.type('.m-field input[type="text"]', creds.account)
   await cdp.type('.m-field input[type="password"]', creds.password)
   await cdp.eval("document.querySelector('.login__form .m-btn').click()")
-  return waitFor(() => cdp.eval("Boolean(document.querySelector('.mobile-tabs')) && location.hash !== '#/login'"), 20000)
+  const ready = await waitFor(() => cdp.eval("Boolean(document.querySelector('.mobile-tabs')) && location.hash !== '#/login'"), 20000)
+  if (ready) {
+    await waitFor(() => cdp.eval("document.querySelector('#mobile-content')?.getAttribute('aria-busy') === 'false'"))
+    await cdp.eval("document.querySelector('.welcome-card__bottom button')?.click()")
+  }
+  return ready
 }
 
 async function logout(cdp) {
@@ -248,7 +253,7 @@ async function main() {
     await cdp.eval("document.querySelectorAll('.tab')[0].click()")
     const todayA = await waitFor(async () => {
       const text = await cdp.bodyText()
-      return text.includes('今天先学这一件事') ? text : null
+      return text.includes('今日专注') ? text : null
     }, 15000)
     report('D1 A 今日页显示真实今日主题（可追溯 topic）', Boolean(todayA) && todayA.includes('编程基础与语法'),
       todayA ? `主题=编程基础与语法 掌握估计=${todayA.includes('掌握估计 0%') ? '0%（mastery=0 正确）' : '?'}` : '未显示')
@@ -259,10 +264,16 @@ async function main() {
       const text = await cdp.bodyText()
       return text.includes('能力画像') ? text : null
     }, 15000)
-    const hasAllMastery = growthA
-      && growthA.includes('估计未接触') // mastery 0
-      && growthA.includes('估计中等') // mastery 0.5
-      && growthA.includes('估计熟练') // mastery 1
+    const phaseCount = await cdp.eval("document.querySelectorAll('.learning-path__head').length")
+    let expandedLabels = ''
+    for (let index = 0; index < phaseCount; index++) {
+      await cdp.eval(`(() => { const button = document.querySelectorAll('.learning-path__head')[${index}]; if (button.getAttribute('aria-expanded') !== 'true') button.click() })()`)
+      expandedLabels += await cdp.bodyText()
+    }
+    const hasAllMastery = (growthA + expandedLabels)
+      && expandedLabels.includes('估计未接触') // mastery 0
+      && expandedLabels.includes('估计中等') // mastery 0.5
+      && expandedLabels.includes('估计熟练') // mastery 1
     report('D2 A 成长页三种掌握度（0/0.5/1）标签可区分', Boolean(hasAllMastery),
       hasAllMastery ? '估计未接触/中等/熟练 均正确渲染' : (growthA ? '标签缺失' : '页面未就绪'))
     report('D2 A 成长页显示真实画像维度', Boolean(growthA?.includes('知识基础')), growthA?.includes('知识基础') ? '知识基础 72' : '未显示')
@@ -283,9 +294,9 @@ async function main() {
     await cdp.eval("document.querySelectorAll('.tab')[0].click()")
     const todayB = await waitFor(async () => {
       const text = await cdp.bodyText()
-      return text.includes('先做一次 6 维学习自评') ? text : null
+      return text.includes('从了解你开始') && text.includes('开始学习诊断') ? text : null
     }, 15000)
-    report('D4 B（无数据）今日页显示自评入口而非 A 的主题', Boolean(todayB), todayB ? '显示诊断入口' : '未显示入口')
+    report('D4 B（无数据）今日页显示需求采集入口而非 A 的主题', Boolean(todayB), todayB ? '显示诊断入口' : '未显示入口')
 
     await cdp.eval("document.querySelectorAll('.tab')[2].click()")
     const growthB = await waitFor(async () => {
@@ -299,11 +310,11 @@ async function main() {
     await cdp.eval("document.querySelectorAll('.tab')[1].click()")
     const tutorB = await waitFor(async () => {
       const text = await cdp.bodyText()
-      return text.includes('还没有提问') ? text : null
+      return await cdp.eval("Boolean(document.querySelector('.tutor__welcome'))") ? text : null
     }, 15000)
     const bTutorLeak = A_MARKERS.filter(m => tutorB?.includes(m))
     report('D4 B 导师页空态且无 A 历史', Boolean(tutorB) && bTutorLeak.length === 0,
-      bTutorLeak.length ? `泄漏: ${bTutorLeak.join(',')}` : '空态正确')
+      bTutorLeak.length ? `泄漏: ${bTutorLeak.join(',')}` : tutorB ? '空态正确' : '空态未就绪')
 
     /* ---------- D5：B 退出 → A 登录：数据恢复 ---------- */
     await logout(cdp)
@@ -320,7 +331,7 @@ async function main() {
     await sleep(1200)
     const afterReload = await waitFor(async () => {
       const text = await cdp.bodyText()
-      return text.includes('编程基础与语法') || text.includes('先做一次') || text.includes('登录') ? text : null
+      return text.includes('编程基础与语法') || text.includes('从了解你开始') || text.includes('登录') ? text : null
     }, 15000)
     // 刷新后若被守卫打回登录页（会话 Cookie 失效场景），重新登录再验证
     let consistent = afterReload?.includes('编程基础与语法')

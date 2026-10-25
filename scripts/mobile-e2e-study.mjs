@@ -105,10 +105,18 @@ async function login(cdp, creds) {
   await cdp.type('.m-field input[type="text"]', creds.account)
   await cdp.type('.m-field input[type="password"]', creds.password)
   await cdp.eval("document.querySelector('.login__form .m-btn').click()")
-  return waitFor(() => cdp.eval("Boolean(document.querySelector('.mobile-tabs')) && location.hash !== '#/login'"), 20000)
+  const ready = await waitFor(() => cdp.eval("Boolean(document.querySelector('.mobile-tabs')) && location.hash !== '#/login'"), 20000)
+  if (ready) {
+    await waitFor(() => cdp.eval("document.querySelector('#mobile-content')?.getAttribute('aria-busy') === 'false'"))
+    await cdp.eval("document.querySelector('.welcome-card__bottom button')?.click()")
+  }
+  return ready
 }
 
 async function logout(cdp) {
+  // 练习与结果使用专注布局；先经品牌入口回主界面，再进入个人中心。
+  await cdp.eval("if (!document.querySelector('.mobile-tabs')) document.querySelector('.mobile-brand').click()")
+  await waitFor(() => cdp.eval("Boolean(document.querySelector('.mobile-tabs'))"))
   await cdp.eval("document.querySelectorAll('.tab')[3].click()")
   await waitFor(() => cdp.eval("Boolean(document.querySelector('.profile__logout'))"))
   await cdp.eval("document.querySelector('.profile__logout').click()")
@@ -305,7 +313,7 @@ async function main() {
     }
 
     /* ---------- S7：成长页真实统计 ---------- */
-    await cdp.eval("document.querySelectorAll('.tab')[2].click()")
+    await cdp.eval("document.querySelector('.result__actions a.m-btn--ghost').click()")
     const growthReady = await waitFor(async () => {
       const text = await cdp.bodyText()
       return text.includes('学习记录') ? text : null

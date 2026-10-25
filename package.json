@@ -30,6 +30,8 @@
     "test:mobile-e2e": "node scripts/mobile-e2e.mjs",
     "test:mobile-e2e-data": "node scripts/mobile-e2e-data.mjs",
     "test:mobile-e2e-study": "node scripts/mobile-e2e-study.mjs",
+    "test:mobile-onboarding": "node scripts/mobile-onboarding-e2e.mjs",
+    "test:welcome-cards": "node scripts/mobile-welcome-e2e.mjs",
     "test:evaluation-browser": "node scripts/evaluation-browser-smoke.mjs",
     "verify:mysql": "node scripts/verify-mysql.mjs",
     "postinstall": "node scripts/patch-secure-storage.mjs"

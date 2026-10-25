@@ -1,0 +1,122 @@
+import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { chromium } from '@playwright/test'
+const root = fileURLToPath(new URL('..', import.meta.url))
+const output = path.join(root, 'outputs/glass-cards')
+fs.mkdirSync(output, { recursive: true })
+const stamp = Date.now()
+const data = path.join(output, `runtime-${stamp}`)
+const api = spawn(process.execPath, ['server/index.js'], { cwd: root, windowsHide: true, stdio: 'ignore', env: { ...process.env, PORT: '18894', ZHIXUE_ENV: 'demo', MYSQL_URL: '', MYSQL_HOST: '', MYSQL_USER: '', MYSQL_DATABASE: '', ZHIXUE_DATA_FILE: `${data}.json`, ZHIXUE_CHAT_STORE_FILE: `${data}.chat.json`, ZHIXUE_SESSION_FILE: `${data}.sessions.json`, ZHIXUE_IDENTITY_FILE: `${data}.identities.json`, ZHIXUE_TRACE_FILE: `${data}.traces.json` } })
+const web = spawn(process.execPath, ['scripts/serve-mobile.mjs', '5184', 'http://127.0.0.1:18894'], { cwd: root, windowsHide: true, stdio: 'ignore' })
+let browser, page
+const checks = []
+const pass = name => { checks.push(name); console.log(`PASS ${name}`) }
+try {
+  for (const url of ['http://127.0.0.1:18894/api/health', 'http://127.0.0.1:5184/']) {
+    let ready = false
+    for (let i = 0; i < 100; i++) { try { if ((await fetch(url)).ok) { ready = true; break } } catch {} await new Promise(resolve => setTimeout(resolve, 150)) }
+    assert.ok(ready)
+  }
+  browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || 'D:/cloakbrowser-windows-x64/chrome.exe', headless: true })
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true })
+  context.setDefaultTimeout(15000)
+  page = await context.newPage()
+  const errors = []
+  page.on('pageerror', error => errors.push(error.message))
+  const go = route => page.goto(`http://127.0.0.1:5184/#/${route}`)
+  const read = endpoint => page.evaluate(async url => { const response = await fetch(url, { credentials: 'include' }); if (!response.ok) throw new Error(String(response.status)); return response.json() }, endpoint)
+  const shot = name => page.screenshot({ path: path.join(output, `${name}.png`) })
+  const register = async (account, name) => {
+    await go('login')
+    await page.getByRole('button', { name: '第一次来？创建学习账号', exact: true }).click()
+    await page.getByLabel('昵称', { exact: true }).fill(name)
+    await page.getByLabel('账号', { exact: true }).fill(account)
+    await page.getByLabel('密码', { exact: true }).fill('Welcome-card-test-2026')
+    await page.getByRole('button', { name: '创建账号并开始学习', exact: true }).click()
+    await page.getByRole('dialog').waitFor()
+  }
+  const next = () => page.getByRole('button', { name: '下一张', exact: true }).click()
+  await register(`glass${stamp}a`, '好奇的学习者')
+  assert.equal((await read('/api/profile/latest')).result, null)
+  assert.equal(await page.locator('.mobile-shell').evaluate(el => el.inert), true)
+  await shot('01-first-card')
+  await page.locator('.welcome-close').focus()
+  await page.keyboard.press('Shift+Tab')
+  assert.equal(await page.getByRole('button', { name: '稍后再说', exact: true }).evaluate(el => el === document.activeElement), true)
+  pass('登录后自动出现毛玻璃卡片，背景不可交互，焦点留在弹窗内')
+  await next()
+  await page.getByRole('alert').filter({ hasText: '选一个适合你的答案' }).waitFor()
+  pass('未选择不能直接进入下一张')
+  await page.getByRole('radio', { name: '在校学生', exact: true }).check()
+  await shot('02-selected-role')
+  await next()
+  await page.getByRole('radio', { name: '其他（请注明）', exact: true }).check()
+  await page.getByLabel('你想学习什么？').fill('生物信息学')
+  await page.getByRole('button', { name: '上一张', exact: false }).click()
+  assert.equal(await page.getByRole('radio', { name: '在校学生', exact: true }).isChecked(), true)
+  await next()
+  assert.equal(await page.getByLabel('你想学习什么？').inputValue(), '生物信息学')
+  await shot('03-learning-direction')
+  await next()
+  await page.getByRole('radio', { name: '初级', exact: true }).check(); await next()
+  await page.getByRole('radio', { name: '完成一个项目', exact: true }).check()
+  await page.getByLabel('想再具体一点？（选填）').fill('用 Python 完成第一个序列分析小项目')
+  await next()
+  await page.getByRole('radio', { name: '5 ~ 10 小时', exact: true }).check(); await next()
+  await page.getByRole('radio', { name: '动手练习/习题', exact: true }).check(); await next()
+  await shot('04-review')
+  assert.equal((await read('/api/account/onboarding')).result, null)
+  await page.route('**/api/account/onboarding', route => route.request().method() === 'POST' ? route.abort() : route.continue())
+  await page.getByRole('button', { name: '保存并完善档案', exact: false }).click()
+  await page.getByRole('alert').filter({ hasText: '暂时没能保存' }).waitFor()
+  assert.match(await page.locator('.welcome-summary').innerText(), /完成一个项目/)
+  await page.unroute('**/api/account/onboarding')
+  await page.getByRole('button', { name: '保存并完善档案', exact: false }).click()
+  await page.getByLabel('想学习的方向', { exact: true }).waitFor()
+  assert.equal(await page.getByLabel('想学习的方向', { exact: true }).inputValue(), 'other')
+  assert.equal(await page.getByLabel('具体学习方向', { exact: true }).inputValue(), '生物信息学')
+  assert.equal((await read('/api/account/onboarding')).result.status, 'completed')
+  assert.equal((await read('/api/profile/latest')).result, null)
+  pass('六张选择可回退修改，失败重试保留选择，保存后回填档案且不生成虚构分数')
+  await go('profile'); await page.locator('.profile__logout').click()
+  await register(`glass${stamp}b`, '另一位学习者')
+  assert.equal(await page.getByRole('radio', { name: '在校学生', exact: true }).isChecked(), false)
+  await page.getByRole('radio', { name: '职场人士', exact: true }).check()
+  const skipped = page.waitForResponse(response => response.url().endsWith('/api/account/onboarding') && response.request().method() === 'POST')
+  await page.getByRole('button', { name: '稍后再说', exact: true }).click()
+  assert.equal((await skipped).status(), 200)
+  assert.equal((await read('/api/account/onboarding')).result.status, 'skipped')
+  assert.equal((await read('/api/account/onboarding')).result.answers.customField, undefined)
+  await go('profile'); await page.locator('.profile__logout').click()
+  await page.getByLabel('账号', { exact: true }).fill(`glass${stamp}b`)
+  await page.getByLabel('密码', { exact: true }).fill('Welcome-card-test-2026')
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await page.locator('.today__hello').waitFor()
+  await page.locator('#mobile-content[aria-busy="false"]').waitFor()
+  assert.equal(await page.getByRole('dialog').count(), 0)
+  pass('双账号草稿不串号，跳过后重登不再打扰')
+  await go('profile')
+  await page.getByRole('button', { name: '重新认识我', exact: true }).click()
+  await page.getByRole('dialog').waitFor()
+  assert.equal(await page.getByRole('radio', { name: '职场人士', exact: true }).isChecked(), true)
+  for (const width of [320, 390, 430]) {
+    await page.setViewportSize({ width, height: 700 })
+    const rect = await page.getByRole('dialog').boundingBox()
+    assert.ok(rect && rect.x >= 12 && rect.x + rect.width <= width - 12 && rect.height <= 652)
+  }
+  await page.setViewportSize({ width: 390, height: 844 })
+  await shot('05-reopened-card')
+  await page.keyboard.press('Escape')
+  await page.getByRole('dialog').waitFor({ state: 'detached' })
+  assert.equal(await page.locator('.mobile-shell').evaluate(el => el.inert), false)
+  pass('我的入口恢复选择，三种屏宽布局通过，Esc 可关闭并恢复背景交互')
+  assert.deepEqual(errors, [])
+  fs.writeFileSync(path.join(output, 'verification.json'), JSON.stringify({ checks, pageErrors: errors }, null, 2))
+  console.log(`${checks.length}/${checks.length} checks passed`)
+} catch (error) {
+  if (page && !page.isClosed()) { await page.screenshot({ path: path.join(output, 'failure.png') }).catch(() => {}); fs.writeFileSync(path.join(output, 'failure.txt'), await page.locator('body').innerText().catch(() => '')) }
+  throw error
+} finally { await browser?.close(); api.kill(); web.kill() }

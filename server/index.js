@@ -33,6 +33,8 @@ import { isLlmAvailable, getLlmConfig } from './llm/provider.js'
 import { getKnowledgeBaseStats, searchKnowledgeBase } from './knowledge-base/vector-store.js'
 import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, getStorageBackend, isMySqlConfigured, saveAccountSettings, saveLearningCycle } from './store/mysql.js'
 import { summarizeLearningHistory } from './learner-memory.js'
+import { getLearnerOnboarding, saveLearnerOnboarding } from './store/mysql.js'
+import { normalizeOnboarding } from './learner-onboarding.js'
 import {
   buildSessionCookie,
   clearSessionCookie,
@@ -567,6 +569,16 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
+    if (pathname === '/api/account/onboarding' && req.method === 'GET') {
+      sendJson(res, 200, { result: await getLearnerOnboarding(accountIdOf(req)) })
+      return
+    }
+    if (pathname === '/api/account/onboarding' && req.method === 'POST') {
+      const payload = normalizeOnboarding(await readJson(req))
+      if (!payload) { sendJson(res, 400, { error: 'Bad Request', message: '请检查学习需求选项是否完整、有效。' }); return }
+      sendJson(res, 200, { result: await saveLearnerOnboarding(accountIdOf(req), payload) })
+      return
+    }
     if (req.method === 'POST' && pathname === '/api/profile/analyze') {
       const body = await readJson(req)
       const agentResult = await orchestrateProfileAnalysis(body)
