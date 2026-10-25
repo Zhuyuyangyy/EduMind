@@ -40,7 +40,8 @@ before(async () => {
 after(async () => { server?.close(); if (server) await once(server, 'close') })
 
 test('official SDK signs raw Chinese/special characters and verifies once-decoded notifications', () => {
-  const result = createCheckout({ order: { id: 'ord-signature', amountCents: 100 }, product: { name: '智学星枢 & + % 专项包' }, returnUrl: 'https://example.test/api/payments/return?a=1&b=%25' })
+  const notifyUrl = 'https://payathon-staging.example.test/api/payments/notify/alipay'
+  const result = createCheckout({ order: { id: 'ord-signature', amountCents: 100 }, product: { name: '智学星枢 & + % 专项包' }, returnUrl: 'https://example.test/api/payments/return?a=1&b=%25', notifyUrl })
   const action = result.paymentHtml.match(/action="([^"]+)"/)[1].replaceAll('&amp;', '&')
   const params = Object.fromEntries(new URL(action).searchParams)
   const hidden = [...result.paymentHtml.matchAll(/<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"/g)]
@@ -48,6 +49,7 @@ test('official SDK signs raw Chinese/special characters and verifies once-decode
   for (const [, key, value] of hidden) params[key] = value.replaceAll('&quot;', '"').replaceAll('&#39;', "'").replaceAll('&amp;', '&').replaceAll('&lt;', '<').replaceAll('&gt;', '>')
   assert.equal(crypto.verify('RSA-SHA256', Buffer.from(canonical(params)), merchant.publicKey, Buffer.from(params.sign, 'base64')), true)
   assert.match(params.timestamp, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
+  assert.equal(params.notify_url, notifyUrl, 'checkout must carry the exact public HTTPS notification URL')
   const notification = sign({ app_id: process.env.VIBE_PAY_APP_ID, sign_type: 'RSA2', subject: '中文 + % &', total_amount: '1.00' })
   assert.equal(verifyNotification(notification), true)
   assert.equal(verifyNotification({ ...notification, total_amount: '1.01' }), false)
