@@ -9,11 +9,21 @@ import {
 } from '../store/mysql.js'
 import { loadExerciseBank, findExercise } from './exercise-bank.js'
 import { scoreAnswer, summarizeAttempts } from './scoring.js'
+import { ensureAnswerIdempotencyIndex } from './answer-index-migration.js'
 
-let studySchemaReady = false
+let studySchemaReady
 
-export async function ensureStudySchema() {
-  if (studySchemaReady) return
+export function ensureStudySchema() {
+  if (!studySchemaReady) {
+    studySchemaReady = initializeStudySchema().catch(error => {
+      studySchemaReady = undefined
+      throw error
+    })
+  }
+  return studySchemaReady
+}
+
+async function initializeStudySchema() {
   await ensureMySqlSchema()
   const db = getMySqlPool()
   await db.query(`
@@ -63,18 +73,7 @@ export async function ensureStudySchema() {
   } catch (error) {
     if (error?.code !== 'ER_DUP_FIELDNAME' && !/Duplicate column/i.test(error?.message || '')) throw error
   }
-  // P4-3：幂等键只能在账号+会话范围内唯一。旧版本的全局唯一索引
-  // 会让不同账号意外共享一次作答结果，迁移时显式替换为复合索引。
-  try {
-    await db.query('ALTER TABLE answer_submissions DROP INDEX answer_submissions_idem')
-  } catch (error) {
-    if (error?.code !== 'ER_CANT_DROP_FIELD_OR_KEY' && !/check that column\/key exists|cannot drop/i.test(error?.message || '')) throw error
-  }
-  try {
-    await db.query('ALTER TABLE answer_submissions ADD UNIQUE KEY answer_submissions_idem (account_id, session_id, idempotency_key)')
-  } catch (error) {
-    if (error?.code !== 'ER_DUP_KEYNAME' && !/Duplicate key name/i.test(error?.message || '')) throw error
-  }
+  await ensureAnswerIdempotencyIndex(db)
   await db.query(`
     CREATE TABLE IF NOT EXISTS learning_events (
       id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -125,7 +124,6 @@ export async function ensureStudySchema() {
     // ER_DUP_ENTRY：历史数据存在同会话多条修订——保留数据，由人工核对
     // （不做猜测性删除；唯一约束对后续写入生效）
   }
-  studySchemaReady = true
 }
 
 function nowIso() {
