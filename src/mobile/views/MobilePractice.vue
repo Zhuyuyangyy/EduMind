@@ -16,11 +16,14 @@
     <template v-else>
       <!-- 进度 -->
       <header class="practice__head">
+        <p class="practice__eyebrow">给理解一点练习的空间</p>
+        <h1 class="practice__title">专注这一题。</h1>
         <div class="practice__meta">
           <span class="m-badge m-badge--info">{{ current?.domain || '练习' }}</span>
           <span class="practice__count">{{ answeredCount }} / {{ exercises.length }} 已作答</span>
         </div>
         <div class="m-progress"><div class="m-progress__fill" :style="{ width: progressPercent + '%' }" /></div>
+        <div class="practice__steps" aria-label="题目进度"><span v-for="(exercise, index) in exercises" :key="exercise.id" :class="{ current: index === currentIndex, answered: isAnswered(exercise.id) }">{{ index + 1 }}</span></div>
       </header>
 
       <!-- 当前题目 -->
@@ -98,6 +101,7 @@ const loading = ref(true)
 const fatal = ref('')
 const exercises = ref<StudyExercise[]>([])
 const answeredMap = ref<Record<string, { correct: boolean; duplicate: boolean }>>({})
+const chosenAnswers = ref<Record<string, number>>({})
 const currentIndex = ref(0)
 const submitting = ref(false)
 const submitError = ref('')
@@ -123,6 +127,10 @@ function choiceClass(index: number): string[] {
   if (current.value && isAnswered(current.value.id)) {
     // 已作答题：只标记对错，不提前公开标准答案（结果页才展示）
     classes.push('practice__choice--locked')
+    if (chosenAnswers.value[current.value.id] === index) {
+      classes.push('practice__choice--selected')
+      classes.push(answeredMap.value[current.value.id].correct ? 'practice__choice--correct' : 'practice__choice--incorrect')
+    }
   }
   return classes
 }
@@ -136,6 +144,7 @@ onMounted(async () => {
     return
   }
   exercises.value = state.exercises
+  chosenAnswers.value = Object.fromEntries(state.answered.filter(item => Number.isInteger(Number(item.submitted))).map(item => [item.exerciseId, Number(item.submitted)]))
   answeredMap.value = Object.fromEntries(
     state.answered.map(item => [item.exerciseId, { correct: item.correct, duplicate: false }]),
   )
@@ -158,6 +167,7 @@ async function onChoose(index: number) {
   try {
     const result = await submitAnswer(sessionId, exercise.id, index)
     if (result.ok && typeof result.correct === 'boolean') {
+      chosenAnswers.value = { ...chosenAnswers.value, [exercise.id]: index }
       answeredMap.value = {
         ...answeredMap.value,
         [exercise.id]: { correct: result.correct, duplicate: Boolean(result.duplicate) },
@@ -194,6 +204,12 @@ async function onComplete() {
 </script>
 
 <style scoped>
+.practice__eyebrow { margin: 4px 0 8px; color: var(--m-text-faint); font-size: 12px; }
+.practice__title { margin: 0 0 24px; font-size: 30px; letter-spacing: -1px; }
+.practice__steps { display: flex; gap: 8px; margin-top: 20px; }
+.practice__steps span { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; background: var(--m-surface-2); color: var(--m-text-faint); font-size: 11px; border: 1px solid transparent; }
+.practice__steps span.current { color: var(--m-primary); background: var(--m-primary-soft); border-color: var(--m-primary-border); }
+.practice__steps span.answered { background: var(--m-primary); color: white; }
 .practice__head {
   margin-bottom: var(--m-space-4);
 }
@@ -263,8 +279,11 @@ async function onComplete() {
   cursor: default;
 }
 .practice__choice--locked {
-  opacity: 0.75;
+  opacity: 0.65;
 }
+.practice__choice--selected { opacity: 1; box-shadow: 0 0 0 1px currentColor; }
+.practice__choice--correct { border-color: var(--m-success); background: var(--m-success-soft); color: var(--m-success); }
+.practice__choice--incorrect { border-color: var(--m-danger); background: var(--m-danger-soft); color: var(--m-danger); }
 
 .practice__choice-key {
   flex: none;

@@ -28,8 +28,14 @@ export async function orchestrateProfileAnalysis(answers) {
   })
   recordTrace(trace)
 
+  // 学习需求随账号画像一起持久化，来源由服务端决定，不接受客户端覆盖。
+  const needsKeys = ['role', 'field', 'customField', 'level', 'experience', 'shortTermGoal', 'shortTermDetail',
+    'longTermGoal', 'motivation', 'bestTime', 'resourcePreference', 'weeklyHours', 'learningPace',
+    'knowledgeBase', 'learningSpeed', 'logicalThinking', 'creativity', 'focus', 'selfDiscipline']
+  const learnerNeeds = Object.fromEntries(needsKeys.filter(key => typeof answers?.[key] === 'string' || Number.isFinite(answers?.[key]))
+    .map(key => [key, typeof answers[key] === 'string' ? answers[key].slice(0, 600) : Math.max(0, Math.min(100, answers[key]))]))
   return {
-    profile: profileResult.output,
+    profile: { ...profileResult.output, source: 'questionnaire', analysisSource: profileResult.fallbackUsed ? 'rule' : 'model', learnerNeeds, savedAt: new Date().toISOString() },
     agentResults: [profileResult],
     trace,
   }

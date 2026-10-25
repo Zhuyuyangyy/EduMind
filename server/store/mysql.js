@@ -110,6 +110,13 @@ export async function ensureMySqlSchema() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `)
       await db.query(`
+        CREATE TABLE IF NOT EXISTS learner_onboarding (
+          account_id VARCHAR(191) NOT NULL PRIMARY KEY,
+          payload_json JSON NOT NULL,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      await db.query(`
         CREATE TABLE IF NOT EXISTS agent_collaboration (
           day_of_week TINYINT UNSIGNED NOT NULL PRIMARY KEY,
           day_name VARCHAR(32) NOT NULL,
@@ -217,6 +224,25 @@ export async function getAccountSettings(accountId = 'default') {
     displayName: row.display_name,
     updatedAt: row.updated_at,
   } : null
+}
+
+export async function getLearnerOnboarding(accountId) {
+  if (!isMySqlConfigured()) return readFallbackStore().learnerOnboarding?.[accountId] || null
+  await ensureMySqlSchema()
+  const [rows] = await getMySqlPool().query('SELECT payload_json FROM learner_onboarding WHERE account_id = ?', [accountId])
+  return rows[0] ? parseJsonColumn(rows[0].payload_json) : null
+}
+
+export async function saveLearnerOnboarding(accountId, payload) {
+  if (!isMySqlConfigured()) {
+    const store = readFallbackStore()
+    store.learnerOnboarding = { ...store.learnerOnboarding, [accountId]: payload }
+    writeFallbackStore(store)
+  } else {
+    await ensureMySqlSchema()
+    await getMySqlPool().query('INSERT INTO learner_onboarding (account_id, payload_json) VALUES (?, ?) ON DUPLICATE KEY UPDATE payload_json = VALUES(payload_json)', [accountId, JSON.stringify(payload)])
+  }
+  return payload
 }
 
 export async function saveAccountSettings(accountId = 'default', { displayName }) {

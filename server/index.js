@@ -31,8 +31,10 @@ import {
 import { getTraces, getTraceSummary, buildTrace, recordTrace, runWithAccount } from './evidence/recorder.js'
 import { isLlmAvailable, getLlmConfig } from './llm/provider.js'
 import { getKnowledgeBaseStats, searchKnowledgeBase } from './knowledge-base/vector-store.js'
-import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, getStorageBackend, saveAccountSettings, saveLearningCycle } from './store/mysql.js'
+import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, getStorageBackend, isMySqlConfigured, saveAccountSettings, saveLearningCycle } from './store/mysql.js'
 import { summarizeLearningHistory } from './learner-memory.js'
+import { getLearnerOnboarding, saveLearnerOnboarding } from './store/mysql.js'
+import { normalizeOnboarding } from './learner-onboarding.js'
 import {
   buildSessionCookie,
   clearSessionCookie,
@@ -89,6 +91,7 @@ import {
 import { getProduct, listProducts } from './payment/catalog.js'
 import { applyPaymentEvent, createOrder, getOrder, getOrderForProvider, listEntitlements, setCheckoutUrl } from './payment/store.js'
 import { createCheckout, paymentProvider, providerConfigStatus, verifyNotification } from './payment/provider.js'
+import { validateResourceGenerateInput } from './schemas.js'
 
 /* ———————————— P4-1A 认证辅助 ———————————— */
 
@@ -172,11 +175,18 @@ const PUBLIC_API_PATHS = new Set([
   '/api/health',
   '/api/llm/status',
   '/api/auth/login',
+  '/api/auth/register',
   '/api/auth/session',
   '/api/auth/logout',
   '/api/payments/notify/alipay',
   '/api/payments/return',
 ])
+
+// JSON 文件存储只适合本地演示/测试。生产实例必须连接共享 MySQL（fail-closed），
+// 不存在任何环境变量豁免；生产模式行为测试一律使用真实 MySQL fixture。
+function productionStorageReady() {
+  return !isProductionMode() || isMySqlConfigured()
+}
 
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:5174',
@@ -337,12 +347,24 @@ const server = http.createServer(async (req, res) => {
   // 全部 /api 路由（公开路径也在内，只是没有账号上下文）
   const routeApi = async () => {
     if (req.method === 'GET' && pathname === '/api/health') {
-      sendJson(res, 200, {
-        ok: true,
+      const storageReady = productionStorageReady()
+      sendJson(res, storageReady ? 200 : 503, {
+        ok: storageReady,
         version: '2.0.0',
         features: ['multi-agent', 'llm-provider', 'evidence-recorder'],
         llmConfigured: isLlmAvailable(),
         storageBackend: getStorageBackend(),
+        productionStorageReady: storageReady,
+        ...(storageReady ? {} : { code: 'production-storage-not-configured' }),
+      })
+      return
+    }
+
+    if (isProductionMode() && !productionStorageReady()) {
+      sendJson(res, 503, {
+        error: 'Service Unavailable',
+        code: 'production-storage-not-configured',
+        message: '生产环境必须配置共享 MySQL 存储。',
       })
       return
     }
@@ -396,6 +418,36 @@ const server = http.createServer(async (req, res) => {
       const orderId = searchParams.get('out_trade_no') || ''
       const order = await getOrderForProvider(orderId)
       sendJson(res, 200, { order, message: '支付结果以服务端异步通知或交易查询为准。' })
+      return
+    }
+
+    if (req.method === 'POST' && pathname === '/api/auth/register') {
+      const body = await readJson(req)
+      const account = String(body.account || '').trim()
+      const password = String(body.password || '')
+      const displayName = String(body.displayName || '').trim()
+      if (!/^[\p{L}\p{N}._-]{3,64}$/u.test(account)) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-account', message: '账号需为 3-64 个字母、数字、点、下划线或短横线。' })
+        return
+      }
+      if (password.length < 8 || password.length > 128) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-password', message: '密码长度应为 8-128 个字符。' })
+        return
+      }
+      if (!displayName || displayName.length > 64) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-display-name', message: '姓名长度应为 1-64 个字符。' })
+        return
+      }
+      try {
+        const identity = await createIdentity({ account, password, role: 'student', displayName })
+        sendJson(res, 201, { account: identity.account, displayName: identity.displayName, role: identity.role })
+      } catch (error) {
+        if (error?.code === 'ER_DUP_ENTRY' || /账号已存在|Duplicate entry/i.test(error?.message || '')) {
+          sendJson(res, 409, { error: 'Conflict', code: 'account-exists', message: '账号已存在，请换一个账号。' })
+          return
+        }
+        throw error
+      }
       return
     }
 
@@ -627,7 +679,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && pathname === '/api/resources/generate') {
       const body = await readJson(req)
-      const result = await runResourceGeneration(body)
+      const validation = validateResourceGenerateInput(body)
+      if (!validation.valid) {
+        sendJson(res, 400, { error: 'Bad Request', message: '资源生成请求无效。', details: validation.errors })
+        return
+      }
+      const result = await runResourceGeneration(validation.value)
       sendJson(res, 200, result)
       return
     }
@@ -644,6 +701,16 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
+    if (pathname === '/api/account/onboarding' && req.method === 'GET') {
+      sendJson(res, 200, { result: await getLearnerOnboarding(accountIdOf(req)) })
+      return
+    }
+    if (pathname === '/api/account/onboarding' && req.method === 'POST') {
+      const payload = normalizeOnboarding(await readJson(req))
+      if (!payload) { sendJson(res, 400, { error: 'Bad Request', message: '请检查学习需求选项是否完整、有效。' }); return }
+      sendJson(res, 200, { result: await saveLearnerOnboarding(accountIdOf(req), payload) })
+      return
+    }
     if (req.method === 'POST' && pathname === '/api/profile/analyze') {
       const body = await readJson(req)
       const agentResult = await orchestrateProfileAnalysis(body)
@@ -806,16 +873,28 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/api/learning-path') {
+      if (isProductionMode()) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'demo-data-disabled', message: '生产环境不提供演示学习路径，请先完成真实学习数据迁移。' })
+        return
+      }
       sendJson(res, 200, getLearningPathPayload())
       return
     }
 
     if (req.method === 'GET' && pathname === '/api/evaluation') {
+      if (isProductionMode()) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'demo-data-disabled', message: '生产环境不提供演示评估结果，请先完成真实学习数据迁移。' })
+        return
+      }
       sendJson(res, 200, getEvaluationPayload())
       return
     }
 
     if (req.method === 'GET' && pathname === '/api/agent/workflow') {
+      if (isProductionMode()) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'demo-data-disabled', message: '生产环境不提供演示工作流，请先完成真实学习数据迁移。' })
+        return
+      }
       sendJson(res, 200, getAgentWorkflow())
       return
     }
@@ -1342,9 +1421,11 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, async () => {
   try {
-    if (!(await hasAnyCollaboration())) {
+    if (productionStorageReady() && !(await hasAnyCollaboration())) {
       await seedAllDays(saveCollaboration)
       console.log(`[agent-collaboration] seeded 7 days into ${getStorageBackend()}`)
+    } else if (!productionStorageReady()) {
+      console.error('[mysql] production startup blocked: shared MySQL is not configured')
     }
     // 协作看板改为「演示数据 + 当前账号真实活动」按请求实时合并，
     // 不再启动全局 sync、不再注册 trace hook（消除未处理 Promise rejection 风险）。
