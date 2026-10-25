@@ -18,6 +18,7 @@
 ## 独立修复
 
 1. 更新兼容范围内的锁文件，包括 urllib 4.9.0 → 4.9.1、Vite 6.4.2 → 6.4.5、brace-expansion、fflate、browserslist 等修复版本。
+   在 SDK 范围内限定 urllib 最低 4.9.1，并提高 Vite 声明下限，避免以后重建锁文件时因旧 latest 标签回退到已知受影响版本。
 2. 更正此前判断：urllib 的 latest 标签仍为 4.9.0，但修复版本 4.9.1 已存在于 latest-4 标签。只检查 latest 并据此说没有可用修复版本不准确。
 3. 增加真实 HTTP 重定向行为回归，使用官方支付宝 SDK 解析到的 urllib：跨来源不转发 Authorization / Cookie / Proxy-Authorization，同来源保留，且不修改调用者参数。没有声称所有自定义敏感头都会自动清除。
 4. Dockerfile 在 npm ci 前复制 postinstall 脚本，在 Web 构建前复制构建脚本，修复干净容器中找不到脚本的确定性缺口。
@@ -43,7 +44,7 @@
 - Mobile Web 首次遇到 Windows 旧 dist-mobile 重命名 EPERM；未修改构建脚本，使用仓库临时目录重试同一 npm run build:mobile 后通过。
 - 依赖升级后的官方沙箱查询再次验签成功，已退款订单仍为 TRADE_CLOSED，金额 ¥0.01；没有新付款。
 - docker compose config --quiet 使用本地无效占位测试值校验，不输出解析后的密钥环境。
-- 本机 Docker Linux Engine 未运行，未在 Windows 本机宣称容器启动或镜像构建已通过；实际容器验收交由新增 Linux CI，结果以当前 PR Checks 为准。
+- 本机 Docker Linux Engine 未运行，未在 Windows 本机宣称容器启动或镜像构建已通过。新增 Linux [CI run 40234709147](https://github.com/Zhuyuyangyy/EduMind/actions/runs/40234709147) 的四个 job 均成功，其中容器 job 实际构建并启动 Nginx/API/MySQL，执行了生产 smoke；后续版本下限声明使用相同已验证版本，最终状态仍以当前 PR Checks 为准。
 - 原生 Android APK、镜像漏洞扫描、生产 MySQL 升级和备份恢复均未执行。
 
 ## 正式测试还缺什么
