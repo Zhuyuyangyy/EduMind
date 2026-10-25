@@ -96,3 +96,19 @@ Web 与 Capacitor 后续可以复用这些账号、订单和权益接口；本�
 后续先处理依赖风险及公网通知联调，再单独验收商品实际交付与权益执行、用户退款政策、定时补偿/对账和 Web/App 入口。正式上线前还需产品开通、生产配置、HTTPS、运维与备份恢复验收。当前仍不能真实收款，不合并或发布任何分支。
 
 官方依据：[AI 网页应用收款指南](https://aipay.alipay.com/docs/vibe-pay/ai-web-app-payment-qianyi/ai-web-app-payment-integration-guide.html)，[Vibe Pay](https://aipay.alipay.com/docs/vibe-pay.html)。本轮使用 [alipay-aipay-pre Skill](https://www.npmjs.com/package/@alipay/alipay-aipay) 的预发版流程，未办理签约或开通。
+
+
+## 2026-10-26 Dependency hardening
+
+- The locked `alipay-sdk@4.14.0` dependency tree selected `urllib@4.9.0`, affected by [CVE-2026-55553](https://github.com/advisories/GHSA-hq3h-g68c-hp78). The project now pins `urllib@4.9.1`, the fixed release, using an explicit npm override and the published tarball SHA-512 integrity.
+- The initial audit reported 6 advisories after the urllib patch: 3 high and 3 moderate. A non-forced `npm audit fix` updated compatible transitive versions, and the tested override `postcss-selector-parser@7.1.6` avoided a Tailwind major-version migration.
+- GitHub Actions on Node 24/npm 11.19.0 then reported **0 vulnerabilities**. The permanent CI audit step is a strict `npm audit` gate. This is dependency-audit evidence only; the final PR CI must also pass the real-MySQL suite, JSON suite, web/mobile builds and browser payment smoke on the final commit.
+- No production secrets or sandbox credentials were added to the repository. The temporary remediation workflow is removed from the final branch.
+
+## Public notification readiness
+
+The server callback route is `POST /api/payments/notify/alipay`. The signed local protocol tests verify unauthenticated callback handling, signature/business-field validation, replay idempotency, and rejection of malformed or mismatched events. This is not proof that Alipay can reach a deployed host.
+
+For an external sandbox callback test, deploy this branch to a **dedicated HTTPS staging hostname** with shared MySQL, set `PAYMENT_BASE_URL=https://<staging-host>`, and configure sandbox credentials as protected server-side environment secrets. Keep `NODE_ENV=production` to retain production storage/security gates while setting `ZHIXUE_ENV=staging` so the payment provider remains on the official sandbox gateway. Use `EDUMIND_PAYMENT_PRICE_CENTS=1` and enable payment only in this isolated staging environment. Do not expose `.alipay-sandbox.json`, private keys, full notification bodies, buyer identifiers, or signatures in logs.
+
+Acceptance evidence must show: the generated checkout includes the exact HTTPS notify URL; an actual sandbox payment triggers the public callback; the callback returns the expected acknowledgement; the MySQL order becomes paid exactly once; duplicate notifications do not extend or duplicate entitlements; and refund/close reconciliation remains correct. This public callback test is still pending a staging hostname and deployment authorization. No production collection is enabled.

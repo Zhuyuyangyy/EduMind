@@ -79,7 +79,7 @@ jobs:
         run: npm run test:payment-browser
 
   dependency-audit:
-    name: Dependency audit (high severity gate)
+    name: Dependency audit (zero known advisories)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -90,4 +90,4 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Audit direct and transitive dependencies
-        run: npm audit --audit-level=high
+        run: npm audit
