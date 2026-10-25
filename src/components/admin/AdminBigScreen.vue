@@ -22,7 +22,6 @@ import resourcesData from '../../../server/content/resources.json'
 import recommendedResourcesData from '../../../server/content/recommended-resources.json'
 import learningPathData from '../../../server/content/learning-path.json'
 import evaluationData from '../../../server/content/evaluation.json'
-import evidenceTracesData from '../../../server/evidence-data/traces.json'
 
 /* ---------- 动效开关 ---------- */
 const reducedMotion = typeof window !== 'undefined'
@@ -56,7 +55,13 @@ const resources = resourcesData as ResourceItem[]
 const recommendedResources = recommendedResourcesData as ResourceItem[]
 const learningPhases = (learningPathData as { phases?: PathPhase[] }).phases ?? []
 const evaluationContent = evaluationData as EvaluationContent
-const evidenceTraces = evidenceTracesData as EvidenceTrace[]
+// traces.json 是运行时产物（.gitignore 忽略）：构建时存在则随包带上，
+// 干净检出（CI/新克隆）没有该文件，回退为空数组而不是让构建失败。
+const evidenceTracesModules = import.meta.glob<{ default: EvidenceTrace[] }>(
+  '../../../server/evidence-data/*.json',
+  { eager: true },
+)
+const evidenceTraces = Object.values(evidenceTracesModules)[0]?.default ?? []
 const evaluationDashboard = evaluationContent.dashboard ?? {}
 const profileMetrics = evaluationDashboard.profileMetrics ?? []
 const weaknesses = evaluationDashboard.weaknesses ?? []
