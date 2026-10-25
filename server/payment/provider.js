@@ -1,4 +1,5 @@
 import { AlipaySdk } from 'alipay-sdk'
+import { readSandboxSdkConfig } from './config.js'
 
 export function isProductionPayment() {
   return ['production', 'prod'].includes((process.env.ZHIXUE_ENV || process.env.NODE_ENV || '').trim().toLowerCase())
@@ -9,6 +10,12 @@ export function paymentProvider() {
 }
 
 export function paymentConfig() {
+  const source = process.env.VIBE_PAY_CONFIG_SOURCE || 'environment'
+  if (source === 'sandbox-file') {
+    if (isProductionPayment()) throw paymentError('payment-sandbox-config-forbidden', 503)
+    return readSandboxSdkConfig()
+  }
+  if (source !== 'environment') throw paymentError('payment-config-source-invalid', 503)
   return {
     appId: process.env.VIBE_PAY_APP_ID || '',
     privateKey: process.env.VIBE_PAY_PRIVATE_KEY || '',

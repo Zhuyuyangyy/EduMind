@@ -18,9 +18,11 @@
 
 `EDUMIND_PAYMENT_ENABLED=false` 为默认值，且价格默认为空。只有显式设为 true 并配置合法正整数分值才允许下单；本轮没有授权/设定商品正式售价，也不代表 7 天商品服务已可交付。保持停售直到真实学习交付、权益执行点、退款政策与支付验收均完成。
 
-真实 Provider 需要环境变量 `VIBE_PAY_APP_ID`、`VIBE_PAY_PRIVATE_KEY`、`VIBE_PAY_ALIPAY_PUBLIC_KEY`、`VIBE_PAY_SELLER_ID`。密钥只在服务端密钥环境配置，不发给 Agent、不写进前端、仓库或日志。Node.js 使用官方配置原始 PKCS#1 字符串，不自动转换密钥。
+真实 Provider 默认 `VIBE_PAY_CONFIG_SOURCE=environment`，需要环境变量 `VIBE_PAY_APP_ID`、`VIBE_PAY_PRIVATE_KEY`、`VIBE_PAY_ALIPAY_PUBLIC_KEY`、`VIBE_PAY_SELLER_ID`。生产密钥只在服务端密钥环境配置，不发给 Agent、不写进前端、仓库或日志。Node.js 使用官方配置原始 PKCS#1 字符串，不自动转换密钥。
 
-`PAYMENT_BASE_URL` 必须由运营端明确配置，不能从 Host / X-Forwarded-Proto 推导。非生产允许回环 HTTP 回跳并省略不可公网访问的 notify_url；生产必须使用公网 HTTPS 和生产网关，且必须另做公网通知联调。当前没有真实沙箱配置，未读取或使用任何真实支付宝凭据。
+非生产可显式设 `VIBE_PAY_CONFIG_SOURCE=sandbox-file`，服务端从模块位置定位项目根目录的 `.alipay-sandbox.json`，直接读取同一 appIds[0] 的 appId / appPrivatePkcsKey / alipayPublicKey 和 sandboxAccounts.partner.userId。拒绝符号链接或无效配置；生产禁止这个来源。该文件仅由官方 Skill 创建并校验，已忽略且未提交，密钥没有复制到 .env 或源码。
+
+`PAYMENT_BASE_URL` 必须由运营端明确配置，不能从 Host / X-Forwarded-Proto 推导。非生产允许回环 HTTP 回跳并省略不可公网访问的 notify_url；生产必须使用公网 HTTPS 和生产网关，且必须另做公网通知联调。本轮仅使用官方创建的快速沙箱配置，未使用生产凭据。
 
 ## API
 
@@ -55,19 +57,25 @@ Web 与 Capacitor 后续可以复用这些账号、订单和权益接口；本�
 ## 本轮验证
 
 - Node 24 / Windows x64。
-- `npm test`：232 项，173 通过、59 明确跳过、0 失败；跳过为既有 58 个 MySQL 门控与新增 1 个支付多进程 MySQL 用例。
-- 隔离 MySQL 8.0 全量：232/232 通过，0 跳过、0 失败；随机临时凭据、回环 33319，未使用个人开发数据库。
+- `npm test`：234 项，175 通过、59 明确跳过、0 失败；跳过为既有 58 个 MySQL 门控与新增 1 个支付多进程 MySQL 用例。
+- 隔离 MySQL 8.0 全量：234/234 通过，0 跳过、0 失败；随机临时凭据、回环 33319，未使用个人开发数据库。
 - 支付协议测试使用运行时生成的临时测试密钥及回环测试网关，覆盖签名、错误签名/金额/商家/应用、重复表单字段、通知重放、退款事件不发权益、查询状态、网络断开、退款请求号稳定、查询确认退款和撤销权益。它们不是支付宝沙箱交易。
 - 支付存储测试覆盖多连接并发和三个独立 Node 进程共享 MySQL 的下单、到账、退款；JSON 损坏、过期、旧订单、跨账号及模拟权益边界。
 - Chromium 支付 Smoke：4/4，中性回跳、篡改参数不泄露订单、mock 标识、浏览器实际解析并提交的 POST 表单签名。
 - 原评估页 Chromium Smoke：9/9。
 - Web 构建通过：首次在系统 TEMP 遇到 esbuild 清理文件 Access is denied，改用仓库 outputs/build-temp 作为该命令的 TEMP/TMP 后重跑成功。Mobile Web 构建通过；原生 Android APK 本轮未构建。
-- CI 已追加 Chromium 支付 Smoke。远端执行结果以当前 PR 的 GitHub Checks 为准，不能用本地通过替代。
+- CI 已追加 Chromium 支付 Smoke。最初支付增量已获得三 job 全绿，后续沙箱加载变动继续跑当前 head 的 CI；远端执行结果以 PR 当前 GitHub Checks 为准，不能用本地通过替代。
 - 官方 npm registry 的 `npm audit` 当前报告 7 项（4 high / 3 moderate）。包括新增 SDK 的 urllib@4.9.0 跨源重定向风险及既有 Vite/构建依赖；当前 registry 的 urllib latest 仍为 4.9.0，兼容范围 update 未提供修复版本。本轮未强制升级或宣称依赖安全，正式收款前须解决并复验。
 
 ## 未完成与下一步
 
-本轮 Skill 为内测版，Windows 检查缺 jq 后选择 CODE_ONLY，sandboxConfigState=VERIFY_PENDING。官方快速沙箱创建、同应用密钥后置校验、真实收银台付款、支付宝公网异步通知、真实查询/退款/关单均未验证；本地协议夹具不能替代这些证据。
+本轮使用 Skill 内测版。最初缺 jq 后以 CODE_ONLY 开发，随后补齐并获得 READY，通过官方 ensure / reverify 创建并校验同一项目快速沙箱，完成服务端字段映射与官方 SDK 签名后置校验。内测版摘要脚本遇到 Windows jq 输出 CRLF 的格式错误；用无敏感常量验证 jq -r 会带 CR、-br 不带 CR 后，仅在本机 Skill 的 render_summary 中调整为 jq -br，保留原模板和所有校验，再经官方 summary 成功展示。这个本机兼容修正不属于仓库代码，重新安装 Skill 后可能需要上游修复。
+
+真实 Chromium 已通过本地体验入口打开官方 excashier-sandbox.dl.alipaydev.com 收银台，显示 ¥0.01，未见验签错误。未代用户登录或付款。真实交易查询响应通过 SDK 验签，返回 code=40004 / ACQ.TRADE_NOT_EXIST，表示当前还没有支付宝交易；已补充这一已验证业务结果的 not-created 状态和协议回归，不将其误报为网关故障或支付成功。
+
+`npm run payment:sandbox` 是仅本机的开发体验工具，预览与后端均绑定 127.0.0.1；使用独立 outputs 数据文件、仅子进程启用的 ¥0.01 沙箱价格，提供收银台和服务端查询按钮，正式商品默认停售不变。输出真实本机入口和回跳地址，退出用 Ctrl+C。它不是正式收银台业务 UI，也不代表 App 支付接入。
+
+实际沙箱付款、付款后成功查询、支付宝公网异步通知、真实退款/退款查询和关单仍待验证；本地协议夹具不能替代这些证据。因用户尚未付款，不宣称沙箱支付闭环完成。
 
 后续先恢复 Skill 快速沙箱环境并使用官方沙箱配置完成联调，再单独验收商品实际交付与权益执行、用户退款政策、定时补偿/对账和 Web/App 入口。正式上线前还需产品开通、生产配置、HTTPS、运维与备份恢复验收。当前仍不能真实收款，不合并或发布任何分支。
 

@@ -16,6 +16,9 @@ export async function reconcileOrder(accountId, orderId) {
   const order = await getOrder(accountId, orderId)
   checkOrder(order)
   const result = await executeTrade('alipay.trade.query', { out_trade_no: order.id })
+  // A verified business response: opening the cashier need not create an Alipay
+  // trade until the buyer proceeds. This is not a transport/signature failure.
+  if (result.code === '40004' && result.sub_code === 'ACQ.TRADE_NOT_EXIST' && order.status === 'pending') return { order, providerState: 'not-created' }
   checkResponse(result, order, 'total_amount')
   const paid = ['TRADE_SUCCESS', 'TRADE_FINISHED'].includes(result.trade_status)
   if (paid) await applyPaymentEvent({ provider: 'vibe-pay', eventId: `query:${order.id}:${result.trade_no}:${result.trade_status}`, orderId, providerTradeNo: result.trade_no, amountCents: order.amountCents, status: result.trade_status, accountId })

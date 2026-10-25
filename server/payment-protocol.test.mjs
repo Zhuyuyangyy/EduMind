@@ -112,6 +112,8 @@ test('signed query/refund/close reject unverified responses and preserve pending
     assert.equal((await act('refund', student)).status, 403)
     mode = { tradeStatus: 'WAIT_BUYER_PAY' }
     assert.equal((await (await act('query')).json()).result.providerState, 'pending')
+    mode = { fields: { code: '40004', sub_code: 'ACQ.TRADE_NOT_EXIST' } }
+    assert.equal((await (await act('query')).json()).result.providerState, 'not-created')
     mode = { tradeStatus: 'UNRECOGNIZED' }
     assert.equal((await (await act('query')).json()).result.providerState, 'unknown')
     mode = { badSignature: true }

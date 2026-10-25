@@ -1445,7 +1445,7 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
-server.listen(PORT, async () => {
+server.listen(PORT, process.env.ZHIXUE_API_HOST || undefined, async () => {
   try {
     if (productionStorageReady() && !(await hasAnyCollaboration())) {
       await seedAllDays(saveCollaboration)
