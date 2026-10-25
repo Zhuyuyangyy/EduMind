@@ -35,6 +35,17 @@ services:
       MYSQL_USER: ${MYSQL_USER:-edumind_app}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
       MYSQL_POOL_SIZE: ${MYSQL_POOL_SIZE:-10}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      PAYMENT_PROVIDER: vibe-pay
+      VIBE_PAY_CONFIG_SOURCE: environment
+      EDUMIND_PAYMENT_ENABLED: ${EDUMIND_PAYMENT_ENABLED:-false}
+      EDUMIND_PAYMENT_PRICE_CENTS: ${EDUMIND_PAYMENT_PRICE_CENTS:-}
+      PAYMENT_BASE_URL: ${PAYMENT_BASE_URL:-}
+      VIBE_PAY_GATEWAY: https://openapi.alipay.com/gateway.do
+      VIBE_PAY_APP_ID: ${VIBE_PAY_APP_ID:-}
+      VIBE_PAY_SELLER_ID: ${VIBE_PAY_SELLER_ID:-}
+      VIBE_PAY_PRIVATE_KEY: ${VIBE_PAY_PRIVATE_KEY:-}
+      VIBE_PAY_ALIPAY_PUBLIC_KEY: ${VIBE_PAY_ALIPAY_PUBLIC_KEY:-}
     depends_on:
       db:
         condition: service_healthy
@@ -53,7 +64,7 @@ services:
       target: web
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-8255}:80"
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-8255}:80"
     depends_on:
       api:
         condition: service_healthy

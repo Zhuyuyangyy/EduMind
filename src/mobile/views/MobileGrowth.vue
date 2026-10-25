@@ -1,5 +1,6 @@
 <template>
   <section class="growth">
+    <div class="growth__heading"><p>把点滴积累，连成成长轨迹</p><h1>学习成长</h1></div>
     <!-- 加载中 -->
     <template v-if="loading">
       <div class="m-card">
@@ -21,6 +22,40 @@
     </div>
 
     <template v-else>
+      <!-- 学习记录（P3-3B：真实完成事件统计 + 修订历史） -->
+      <h2 class="m-section-title">学习记录 <span class="m-section-title__sub">每次完成，都会记录</span></h2>
+      <div class="m-card">
+        <div v-if="stats" class="growth__stats">
+          <div class="growth__stat">
+            <span class="growth__stat-num">{{ stats.completedSessions }}</span>
+            <span class="growth__stat-label">完成练习</span>
+          </div>
+          <div class="growth__stat">
+            <span class="growth__stat-num">{{ stats.totalAnswers }}</span>
+            <span class="growth__stat-label">累计答题</span>
+          </div>
+          <div class="growth__stat">
+            <span class="growth__stat-num">{{ stats.correctAnswers }}</span>
+            <span class="growth__stat-label">答对</span>
+          </div>
+          <div class="growth__stat">
+            <span class="growth__stat-num">{{ stats.studyDays }}</span>
+            <span class="growth__stat-label">学习天数</span>
+          </div>
+          <div class="growth__stat">
+            <span class="growth__stat-num">{{ stats.streakDays }}</span>
+            <span class="growth__stat-label">连续学习</span>
+          </div>
+        </div>
+        <div v-else class="m-empty">
+          <MobileIcon class="m-empty__icon" name="chart" :size="28" />
+          <p class="m-empty__text">暂无练习记录<br />完成一次练习后，这里会显示真实统计</p>
+        </div>
+        <p class="growth__note">
+          只统计已完成的练习；浏览页面不会计入学习天数。
+        </p>
+      </div>
+
       <!-- 能力画像（真实账号数据） -->
       <h2 class="m-section-title">能力画像 <span class="m-section-title__sub">{{ profileSourceLabel }}</span></h2>
       <div class="m-card">
@@ -34,38 +69,14 @@
           </div>
         </div>
         <div v-else class="m-empty">
-          <span class="m-empty__icon">◌</span>
+          <MobileIcon class="m-empty__icon" name="chart" :size="28" />
           <p class="m-empty__text">暂无画像<br />完成一次学习自评后展示</p>
         </div>
       </div>
 
-      <!-- 学习路径（真实账号数据，掌握度为模型估计） -->
       <h2 class="m-section-title">学习路径 <span class="m-section-title__sub">掌握度为模型估计</span></h2>
-      <div class="m-card">
-        <template v-if="path">
-          <div v-for="phase in path.phases" :key="phase.id" class="growth__phase">
-            <div class="growth__phase-head">
-              <span class="growth__phase-dot" :style="{ background: phase.color || '#54d6ff' }" />
-              <span class="growth__phase-name">{{ phase.name }}</span>
-            </div>
-            <div v-for="topic in phase.topics || []" :key="topic.id" class="growth__topic">
-              <div class="growth__topic-head">
-                <span class="growth__topic-name">{{ topic.name }}</span>
-                <span class="m-badge" :class="masteryBadge(topic.mastery)">{{ masteryLabel(topic.mastery) }}</span>
-              </div>
-              <div class="m-progress"><div class="m-progress__fill" :style="{ width: Math.round(topic.mastery * 100) + '%' }" /></div>
-            </div>
-          </div>
-        </template>
-        <MobileEmpty
-          v-else
-          title="暂无学习路径"
-          desc="在「今日学习」生成知识路径后展示"
-          action-text="去生成路径"
-          :action-icon="'path'"
-          @action="$router.push('/today')"
-        />
-      </div>
+      <MobileLearningPath v-if="path" :path="path" />
+      <MobileEmpty v-else title="暂无学习路径" desc="在「今日学习」生成知识路径后展示" action-text="去生成路径" action-icon="path" @action="$router.push('/today')" />
 
       <!-- 评估与画像变化（仅存在结构化学习闭环证据时展示） -->
       <h2 class="m-section-title">评估记录 <span class="m-section-title__sub">{{ cycleSourceLabel }}</span></h2>
@@ -93,43 +104,9 @@
           <p v-if="!masteryItems.length && !profileChanges.length" class="growth__empty-inline">闭环记录存在，但暂无结构化评估字段</p>
         </template>
         <div v-else class="m-empty">
-          <span class="m-empty__icon">✧</span>
+          <MobileIcon class="m-empty__icon" name="sparkle" :size="28" />
           <p class="m-empty__text">暂无评估记录<br />完成一次学习测评后，这里会展示有依据的画像变化</p>
         </div>
-      </div>
-
-      <!-- 学习记录（P3-3B：真实完成事件统计 + 修订历史） -->
-      <h2 class="m-section-title">学习记录 <span class="m-section-title__sub">来自真实完成事件</span></h2>
-      <div class="m-card">
-        <div v-if="stats" class="growth__stats">
-          <div class="growth__stat">
-            <span class="growth__stat-num">{{ stats.completedSessions }}</span>
-            <span class="growth__stat-label">完成练习</span>
-          </div>
-          <div class="growth__stat">
-            <span class="growth__stat-num">{{ stats.totalAnswers }}</span>
-            <span class="growth__stat-label">累计答题</span>
-          </div>
-          <div class="growth__stat">
-            <span class="growth__stat-num">{{ stats.correctAnswers }}</span>
-            <span class="growth__stat-label">答对</span>
-          </div>
-          <div class="growth__stat">
-            <span class="growth__stat-num">{{ stats.studyDays }}</span>
-            <span class="growth__stat-label">学习天数</span>
-          </div>
-          <div class="growth__stat">
-            <span class="growth__stat-num">{{ stats.streakDays }}</span>
-            <span class="growth__stat-label">连续学习</span>
-          </div>
-        </div>
-        <div v-else class="m-empty">
-          <span class="m-empty__icon">◌</span>
-          <p class="m-empty__text">暂无练习记录<br />完成一次练习后，这里会显示真实统计</p>
-        </div>
-        <p class="growth__note">
-          学习天数按账号时区的自然日计算，只统计真实完成的练习会话；页面访问不计入。
-        </p>
       </div>
 
       <!-- 画像修订历史（证据可追溯） -->
@@ -147,7 +124,7 @@
           </article>
         </div>
         <div v-else class="m-empty">
-          <span class="m-empty__icon">✧</span>
+          <MobileIcon class="m-empty__icon" name="sparkle" :size="28" />
           <p class="m-empty__text">暂无画像修订<br />练习证据满足更新条件后，每次变化都会记录在这里</p>
         </div>
       </div>
@@ -157,6 +134,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import MobileIcon from '../components/MobileIcon.vue'
+import MobileLearningPath from '../components/MobileLearningPath.vue'
 import MobileEmpty from '../components/MobileEmpty.vue'
 import {
   currentAccount,
@@ -186,6 +165,7 @@ const dimensions = computed(() => profileDimensions(profile.value))
 const profileSourceLabel = computed(() => {
   const source = profile.value?.source
   if (source === 'dialogue' || source === 'mobile-self-assessment') return '自评画像'
+  if (source === 'questionnaire') return profile.value?.analysisSource === 'rule' ? '问卷画像 · 规则降级分析' : '问卷画像 · 模型分析'
   if (source === 'profile-save') return '建档画像'
   return source ? `来源：${source}` : '账号记录'
 })
@@ -260,10 +240,13 @@ async function load() {
 </script>
 
 <style scoped>
+.growth__heading { margin: 8px 0 24px; }
+.growth__heading p { margin: 0 0 6px; font-size: 13px; color: var(--m-text-faint); }
+.growth__heading h1 { margin: 0; font-size: var(--m-text-2xl); letter-spacing: -1px; }
 .growth__dims {
-  display: flex;
-  flex-direction: column;
-  gap: var(--m-space-3);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px 20px;
 }
 
 .growth__dim-head {
@@ -407,23 +390,25 @@ async function load() {
 
 <style scoped>
 .growth__stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--m-space-4);
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 20px 12px;
 }
 
 .growth__stat {
   display: flex;
   flex-direction: column;
   gap: var(--m-space-1);
-  min-width: 56px;
+  min-width: 0;
+  grid-column: span 2;
 }
 
+.growth__stat:nth-child(n + 4) { grid-column: span 3; padding-top: 16px; border-top: 1px solid var(--m-border); }
 .growth__stat-num {
-  font-size: var(--m-text-xl);
-  font-weight: 700;
-  color: var(--m-primary);
+  font-size: 27px;
+  font-weight: 600;
+  letter-spacing: -1px;
+  color: var(--m-text);
 }
 
 .growth__stat-label {

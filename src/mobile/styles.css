@@ -1,7 +1,7 @@
 @import './styles/tokens.css';
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -17,6 +17,9 @@ body {
   font-family: var(--m-font);
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
 }
 
 #app {
@@ -37,3 +40,7 @@ textarea {
 main {
   -webkit-overflow-scrolling: touch;
 }
+
+button, a, input, textarea, select { touch-action: manipulation; }
+select { font: inherit; }
+p, h1, h2, h3, a, span { overflow-wrap: anywhere; }

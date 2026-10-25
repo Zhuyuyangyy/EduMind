@@ -101,14 +101,23 @@ test('A1 dry-run 严格只读：空目标库上无任何 DDL / 数据写入', { 
   const sourcePath = tmp('src')
   fs.writeFileSync(sourcePath, JSON.stringify(store), 'utf8')
 
-  // 独立空库（模拟全新目标）：migrator 不得创建任何表
+  // 独立空库（模拟全新目标）：migrator 不得创建任何表。
+  // 连接参数跟随测试环境的 MySQL（CI 服务容器/便携实例），
+  // 不再硬编码本机开发库凭据。
+  const auditMysql = {
+    host: process.env.MYSQL_HOST || '127.0.0.1',
+    port: Number(process.env.MYSQL_PORT || 3306),
+    user: process.env.MYSQL_USER || 'root',
+    password: process.env.MYSQL_PASSWORD || '',
+  }
   const probeEnv = {
     ...process.env,
-    MYSQL_HOST: '127.0.0.1', MYSQL_PORT: '3306', MYSQL_USER: 'root', MYSQL_PASSWORD: '1234',
+    MYSQL_HOST: auditMysql.host, MYSQL_PORT: String(auditMysql.port),
+    MYSQL_USER: auditMysql.user, MYSQL_PASSWORD: auditMysql.password,
     MYSQL_DATABASE: 'edumind_audit_empty',
   }
   const mysql2 = (await import('mysql2/promise')).default
-  const admin = await mysql2.createConnection({ host: '127.0.0.1', port: 3306, user: 'root', password: '1234' })
+  const admin = await mysql2.createConnection(auditMysql)
   await admin.query('DROP DATABASE IF EXISTS edumind_audit_empty')
   await admin.query('CREATE DATABASE edumind_audit_empty CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
   await admin.end()
@@ -118,13 +127,13 @@ test('A1 dry-run 严格只读：空目标库上无任何 DDL / 数据写入', { 
     assert.equal(report.ok, true, `dry-run 应成功: ${JSON.stringify(report.errors)}`)
 
     // 验证空库仍然为空（无表被创建）
-    const check = await mysql2.createConnection({ host: '127.0.0.1', port: 3306, user: 'root', password: '1234', database: 'edumind_audit_empty' })
+    const check = await mysql2.createConnection({ ...auditMysql, database: 'edumind_audit_empty' })
     const [tables] = await check.query('SHOW TABLES')
     await check.end()
     assert.equal(tables.length, 0, `dry-run 不得创建任何表，实际存在 ${tables.length} 张表`)
     void account
   } finally {
-    const cleanup = await mysql2.createConnection({ host: '127.0.0.1', port: 3306, user: 'root', password: '1234' })
+    const cleanup = await mysql2.createConnection(auditMysql)
     await cleanup.query('DROP DATABASE IF EXISTS edumind_audit_empty')
     await cleanup.end()
     fs.rmSync(sourcePath, { force: true })

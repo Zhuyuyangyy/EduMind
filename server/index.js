@@ -31,8 +31,10 @@ import {
 import { getTraces, getTraceSummary, buildTrace, recordTrace, runWithAccount } from './evidence/recorder.js'
 import { isLlmAvailable, getLlmConfig } from './llm/provider.js'
 import { getKnowledgeBaseStats, searchKnowledgeBase } from './knowledge-base/vector-store.js'
-import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, getStorageBackend, saveAccountSettings, saveLearningCycle } from './store/mysql.js'
+import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, getStorageBackend, isMySqlConfigured, saveAccountSettings, saveLearningCycle } from './store/mysql.js'
 import { summarizeLearningHistory } from './learner-memory.js'
+import { getLearnerOnboarding, saveLearnerOnboarding } from './store/mysql.js'
+import { normalizeOnboarding } from './learner-onboarding.js'
 import {
   buildSessionCookie,
   clearSessionCookie,
@@ -86,6 +88,11 @@ import {
   isProductionMode,
   runtimeMode,
 } from './identity.js'
+import { getProduct, listProducts } from './payment/catalog.js'
+import { applyPaymentEvent, createOrder, getOrder, getOrderForProvider, listEntitlements, setCheckoutUrl } from './payment/store.js'
+import { amountCents, createCheckout, paymentConfig, paymentProvider, paymentUrls, paymentError, providerConfigStatus, verifyNotification } from './payment/provider.js'
+import { closeOrder, reconcileOrder, reconcileRefund, refundOrder } from './payment/service.js'
+import { validateResourceGenerateInput } from './schemas.js'
 
 /* ———————————— P4-1A 认证辅助 ———————————— */
 
@@ -169,9 +176,18 @@ const PUBLIC_API_PATHS = new Set([
   '/api/health',
   '/api/llm/status',
   '/api/auth/login',
+  '/api/auth/register',
   '/api/auth/session',
   '/api/auth/logout',
+  '/api/payments/notify/alipay',
+  '/api/payments/return',
 ])
+
+// JSON 文件存储只适合本地演示/测试。生产实例必须连接共享 MySQL（fail-closed），
+// 不存在任何环境变量豁免；生产模式行为测试一律使用真实 MySQL fixture。
+function productionStorageReady() {
+  return !isProductionMode() || isMySqlConfigured()
+}
 
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:5174',
@@ -255,6 +271,28 @@ function readJson(req) {
   })
 }
 
+function readForm(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    let size = 0
+    req.on('data', chunk => {
+      size += chunk.length
+      if (size > MAX_BODY_SIZE) {
+        reject(Object.assign(new Error('Payload too large'), { statusCode: 413 }))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      const params = new URLSearchParams(Buffer.concat(chunks).toString('utf8'))
+      if ([...params.keys()].some(key => params.getAll(key).length !== 1)) { reject(paymentError('duplicate-payment-parameter')); return }
+      resolve(Object.fromEntries(params.entries()))
+    })
+    req.on('error', reject)
+  })
+}
+
 function listResources(searchParams) {
   const type = searchParams.get('type')
   const q = (searchParams.get('q') || '').trim().toLowerCase()
@@ -311,12 +349,24 @@ const server = http.createServer(async (req, res) => {
   // 全部 /api 路由（公开路径也在内，只是没有账号上下文）
   const routeApi = async () => {
     if (req.method === 'GET' && pathname === '/api/health') {
-      sendJson(res, 200, {
-        ok: true,
+      const storageReady = productionStorageReady()
+      sendJson(res, storageReady ? 200 : 503, {
+        ok: storageReady,
         version: '2.0.0',
         features: ['multi-agent', 'llm-provider', 'evidence-recorder'],
         llmConfigured: isLlmAvailable(),
         storageBackend: getStorageBackend(),
+        productionStorageReady: storageReady,
+        ...(storageReady ? {} : { code: 'production-storage-not-configured' }),
+      })
+      return
+    }
+
+    if (isProductionMode() && !productionStorageReady()) {
+      sendJson(res, 503, {
+        error: 'Service Unavailable',
+        code: 'production-storage-not-configured',
+        message: '生产环境必须配置共享 MySQL 存储。',
       })
       return
     }
@@ -336,6 +386,73 @@ const server = http.createServer(async (req, res) => {
         // 不返回 apiKey 和完整 apiUrl，仅返回域名前缀以备诊断
         apiHostHint,
       })
+      return
+    }
+
+    if (req.method === 'POST' && pathname === '/api/payments/notify/alipay') {
+      if (paymentProvider() !== 'vibe-pay' || !providerConfigStatus().configured) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'payment-provider-not-configured' })
+        return
+      }
+      try {
+        if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/x-www-form-urlencoded')) throw paymentError('invalid-payment-content-type')
+        const params = await readForm(req)
+        if (!verifyNotification(params)) throw paymentError('invalid-payment-signature')
+        const order = await getOrderForProvider(String(params.out_trade_no || ''))
+        const cfg = paymentConfig()
+        if (!order || params.app_id !== cfg.appId || params.seller_id !== cfg.sellerId || amountCents(params.total_amount) !== order.amountCents ||
+            order.provider !== 'vibe-pay' || order.dataSource !== providerConfigStatus().dataSource || order.appId !== cfg.appId || order.sellerId !== cfg.sellerId) throw paymentError('payment-order-mismatch')
+        if (!params.notify_id || params.notify_id.length > 191 || !params.trade_no || params.trade_no.length > 128) throw paymentError('invalid-payment-event')
+        // Refund/split events must never grant or restore an entitlement.
+        const auxiliary = Boolean(params.out_biz_no || params.gmt_refund || params.refund_fee)
+        await applyPaymentEvent({
+          provider: 'vibe-pay', eventId: params.notify_id, orderId: order.id,
+          providerTradeNo: params.trade_no, amountCents: order.amountCents,
+          status: auxiliary ? 'auxiliary' : params.trade_status,
+        })
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('success')
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('fail')
+      }
+      return
+    }
+
+    if (req.method === 'GET' && pathname === '/api/payments/return') {
+      // Public page intentionally ignores all return parameters and reveals no order.
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'", 'X-Content-Type-Options': 'nosniff' })
+      res.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>支付结果确认</title><main><h1>正在确认支付结果</h1><p>本页面不代表支付成功。请返回智学星枢，登录后查询订单；支付状态以服务端验签通知或交易查询为准。</p></main></html>')
+      return
+    }
+
+    if (req.method === 'POST' && pathname === '/api/auth/register') {
+      const body = await readJson(req)
+      const account = String(body.account || '').trim()
+      const password = String(body.password || '')
+      const displayName = String(body.displayName || '').trim()
+      if (!/^[\p{L}\p{N}._-]{3,64}$/u.test(account)) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-account', message: '账号需为 3-64 个字母、数字、点、下划线或短横线。' })
+        return
+      }
+      if (password.length < 8 || password.length > 128) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-password', message: '密码长度应为 8-128 个字符。' })
+        return
+      }
+      if (!displayName || displayName.length > 64) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-display-name', message: '姓名长度应为 1-64 个字符。' })
+        return
+      }
+      try {
+        const identity = await createIdentity({ account, password, role: 'student', displayName })
+        sendJson(res, 201, { account: identity.account, displayName: identity.displayName, role: identity.role })
+      } catch (error) {
+        if (error?.code === 'ER_DUP_ENTRY' || /账号已存在|Duplicate entry/i.test(error?.message || '')) {
+          sendJson(res, 409, { error: 'Conflict', code: 'account-exists', message: '账号已存在，请换一个账号。' })
+          return
+        }
+        throw error
+      }
       return
     }
 
@@ -461,6 +578,92 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
+    if (req.method === 'GET' && pathname === '/api/payments/products') {
+      sendJson(res, 200, { products: listProducts(), provider: paymentProvider() })
+      return
+    }
+
+    if (req.method === 'GET' && pathname === '/api/payments/entitlements') {
+      sendJson(res, 200, { entitlements: await listEntitlements(accountIdOf(req)) })
+      return
+    }
+
+    if (req.method === 'POST' && pathname === '/api/payments/orders') {
+      const body = await readJson(req)
+      const product = getProduct(String(body.productId || 'ai-7day-pack'))
+      const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : ''
+      if (!product) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'unknown-product' })
+        return
+      }
+      if (!product.available || !product.priceCents) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'payment-product-not-configured', message: '支付商品尚未开放购买。' })
+        return
+      }
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(idempotencyKey)) {
+        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-idempotency-key' })
+        return
+      }
+      const provider = paymentProvider()
+      if (!providerConfigStatus().configured) throw paymentError('payment-provider-not-configured', 503)
+      const urls = provider === 'mock' ? {} : paymentUrls()
+      const created = await createOrder({ accountId: accountIdOf(req), product, provider, idempotencyKey })
+      let checkout = null
+      if (created.order.status === 'pending') {
+        checkout = createCheckout({ order: created.order, product, ...urls })
+        if (checkout.checkoutUrl && !created.order.checkoutUrl) await setCheckoutUrl(accountIdOf(req), created.order.id, checkout.checkoutUrl)
+      }
+      sendJson(res, created.duplicate ? 200 : 201, { order: await getOrder(accountIdOf(req), created.order.id), checkout, idempotent: created.duplicate })
+      return
+    }
+
+    const paymentOrderMatch = pathname.match(/^\/api\/payments\/orders\/([A-Za-z0-9_-]+)$/)
+    if (req.method === 'GET' && paymentOrderMatch) {
+      const order = await getOrder(accountIdOf(req), paymentOrderMatch[1])
+      if (!order) { sendJson(res, 404, { error: 'Not Found' }); return }
+      sendJson(res, 200, { order })
+      return
+    }
+
+    const paymentActionMatch = pathname.match(/^\/api\/payments\/orders\/([A-Za-z0-9_-]+)\/(query|refund|refund-query|close)$/)
+    if (req.method === 'POST' && paymentActionMatch) {
+      const [, orderId, action] = paymentActionMatch
+      // Refunds are an operator action until a user refund policy is implemented.
+      // Even administrators may only operate on their authenticated account here.
+      if (action === 'refund' && req.session?.role !== 'admin') { sendJson(res, 403, { error: 'Forbidden' }); return }
+      const accountId = accountIdOf(req)
+      const result = action === 'query' ? await reconcileOrder(accountId, orderId)
+        : action === 'refund' ? await refundOrder(accountId, orderId)
+        : action === 'refund-query' ? await reconcileRefund(accountId, orderId)
+        : await closeOrder(accountId, orderId)
+      sendJson(res, result.status === 'pending' && action.startsWith('refund') ? 202 : 200, { result })
+      return
+    }
+
+    if (req.method === 'GET' && pathname === '/api/payments/mock/checkout' && paymentProvider() === 'mock' && !isProductionMode()) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+      res.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>支付演示</title><h1>模拟支付，仅供开发测试</h1><p>不会发起真实收款，不代表真实用户权益。</p></html>')
+      return
+    }
+
+    if (req.method === 'POST' && pathname === '/api/payments/mock/complete') {
+      if (paymentProvider() !== 'mock' || isProductionMode()) {
+        sendJson(res, 404, { error: 'Not Found' })
+        return
+      }
+      const body = await readJson(req)
+      const order = await getOrder(accountIdOf(req), String(body.orderId || ''))
+      if (!order) { sendJson(res, 404, { error: 'Not Found' }); return }
+      const product = getProduct(order.productId)
+      const result = await applyPaymentEvent({
+        provider: 'mock', eventId: String(body.eventId || `mock:${order.id}`), orderId: order.id,
+        providerTradeNo: String(body.providerTradeNo || `mock-trade-${order.id}`), amountCents: order.amountCents,
+        status: 'paid', payload: { source: 'mock', orderId: order.id }, accountId: accountIdOf(req), durationDays: product.durationDays,
+      })
+      sendJson(res, 200, { ...result, order: await getOrder(accountIdOf(req), order.id), entitlements: await listEntitlements(accountIdOf(req)) })
+      return
+    }
+
     if (req.method === 'GET' && pathname === '/api/account/settings') {
       sendJson(res, 200, { result: await getAccountSettings(accountIdOf(req)) })
       return
@@ -495,7 +698,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && pathname === '/api/resources/generate') {
       const body = await readJson(req)
-      const result = await runResourceGeneration(body)
+      const validation = validateResourceGenerateInput(body)
+      if (!validation.valid) {
+        sendJson(res, 400, { error: 'Bad Request', message: '资源生成请求无效。', details: validation.errors })
+        return
+      }
+      const result = await runResourceGeneration(validation.value)
       sendJson(res, 200, result)
       return
     }
@@ -512,6 +720,16 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
+    if (pathname === '/api/account/onboarding' && req.method === 'GET') {
+      sendJson(res, 200, { result: await getLearnerOnboarding(accountIdOf(req)) })
+      return
+    }
+    if (pathname === '/api/account/onboarding' && req.method === 'POST') {
+      const payload = normalizeOnboarding(await readJson(req))
+      if (!payload) { sendJson(res, 400, { error: 'Bad Request', message: '请检查学习需求选项是否完整、有效。' }); return }
+      sendJson(res, 200, { result: await saveLearnerOnboarding(accountIdOf(req), payload) })
+      return
+    }
     if (req.method === 'POST' && pathname === '/api/profile/analyze') {
       const body = await readJson(req)
       const agentResult = await orchestrateProfileAnalysis(body)
@@ -674,16 +892,28 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/api/learning-path') {
+      if (isProductionMode()) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'demo-data-disabled', message: '生产环境不提供演示学习路径，请先完成真实学习数据迁移。' })
+        return
+      }
       sendJson(res, 200, getLearningPathPayload())
       return
     }
 
     if (req.method === 'GET' && pathname === '/api/evaluation') {
+      if (isProductionMode()) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'demo-data-disabled', message: '生产环境不提供演示评估结果，请先完成真实学习数据迁移。' })
+        return
+      }
       sendJson(res, 200, getEvaluationPayload())
       return
     }
 
     if (req.method === 'GET' && pathname === '/api/agent/workflow') {
+      if (isProductionMode()) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'demo-data-disabled', message: '生产环境不提供演示工作流，请先完成真实学习数据迁移。' })
+        return
+      }
       sendJson(res, 200, getAgentWorkflow())
       return
     }
@@ -1200,6 +1430,13 @@ const server = http.createServer(async (req, res) => {
     }
     await routeApi()
   } catch (error) {
+    if (pathname.startsWith('/api/payments/')) {
+      const known = error?.code?.startsWith('payment-') || error?.code?.startsWith('invalid-payment-')
+      sendJson(res, known ? (error.statusCode || 400) : error?.code === 'ER_DUP_ENTRY' ? 409 : 503, {
+        error: 'Payment request failed', code: known ? error.code : error?.code === 'ER_DUP_ENTRY' ? 'payment-conflict' : 'payment-service-unavailable',
+      })
+      return
+    }
     const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 500
     sendJson(res, statusCode, {
       error: statusCode === 413 ? 'Payload Too Large' : statusCode === 400 ? 'Bad Request' : 'Internal Server Error',
@@ -1208,11 +1445,13 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
-server.listen(PORT, async () => {
+server.listen(PORT, process.env.ZHIXUE_API_HOST || undefined, async () => {
   try {
-    if (!(await hasAnyCollaboration())) {
+    if (productionStorageReady() && !(await hasAnyCollaboration())) {
       await seedAllDays(saveCollaboration)
       console.log(`[agent-collaboration] seeded 7 days into ${getStorageBackend()}`)
+    } else if (!productionStorageReady()) {
+      console.error('[mysql] production startup blocked: shared MySQL is not configured')
     }
     // 协作看板改为「演示数据 + 当前账号真实活动」按请求实时合并，
     // 不再启动全局 sync、不再注册 trace hook（消除未处理 Promise rejection 风险）。

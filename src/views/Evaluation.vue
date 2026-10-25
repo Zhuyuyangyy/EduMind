@@ -15,7 +15,6 @@ import {
 import ThreeKnowledgeTree from '@/components/knowledge-tree/ThreeKnowledgeTree.vue'
 import { useEvaluationTreeData } from '@/composables/useEvaluationTreeData'
 import { useLearningProgressSync } from '@/composables/useLearningProgressSync'
-import { BASE_KNOWLEDGE_ITEMS } from '@/components/resources/mapTransforms'
 import { courses, galaxies } from '@/data/courses'
 import { DOMAINS } from '@/data/learning-resources'
 import type { KnowledgePoint } from '@/types/knowledge-tree'
@@ -42,8 +41,8 @@ interface DistributionItem {
 interface UpgradeTopic {
   id: string
   name: string
-  mastery: number
-  risk: '高风险' | '中风险' | '低风险'
+  mastery: number | null
+  risk: '高风险' | '中风险' | '低风险' | '待评估'
   action: string
   route: string
   domainId?: string
@@ -53,9 +52,6 @@ interface UpgradeTopic {
 const route = useRoute()
 const router = useRouter()
 const {
-  applyProgressToMastery,
-  progressPoints,
-  progressRevision,
   recordKnowledgeAction,
   recentFocus,
 } = useLearningProgressSync()
@@ -76,7 +72,11 @@ const courseName = computed(() => {
   return resolveCourseNameAlias(getQueryText(route.query.topic)) || '计算机科学基础'
 })
 
-const { data, loading, error, load } = useEvaluationTreeData()
+const { data, loading, error, status, load } = useEvaluationTreeData()
+const isDemoData = computed(() => status.value === 'demo' || data.value?.dataSource === 'demo-fixture')
+const serverWeakPoints = computed(() => data.value?.weakPoints ?? [])
+const hasEvaluationSnapshot = computed(() => Boolean(data.value && (data.value.capabilities.length || data.value.modules.length || serverWeakPoints.value.length || isDemoData.value)))
+const hasKnowledgeEvidence = computed(() => Boolean(data.value?.modules.some((module) => module.units.some((unit) => unit.points.length > 0))))
 const reducedMotion = ref(false)
 const timeRange = ref('7d')
 const selectedTreePoint = ref<KnowledgePoint | null>(null)
@@ -191,80 +191,22 @@ function createCourseTreePoint(course: (typeof courses)[number]): KnowledgePoint
   }
 }
 
-function domainMeta(domainId: string) {
-  return DOMAINS.find((domain) => domain.id === domainId)
-}
-
-function createGraphTreePoint(item: (typeof BASE_KNOWLEDGE_ITEMS)[number]): KnowledgePoint {
-  progressRevision.value
-  const mastery = applyProgressToMastery(item.id, item.mastery, item.label)
-  const syncedPoint = progressPoints.value.find((point) => point.id === item.id)
-  const meta = domainMeta(item.domain)
-  const sourceLabel = humanizeProgressSource(syncedPoint?.lastSource)
-
-  return {
-    id: item.id,
-    name: item.label,
-    module: meta?.name || item.domain,
-    unit: sourceLabel || meta?.short || 'knowledge',
-    mastery,
-    previousMastery: syncedPoint?.previousMastery ?? Math.max(0, mastery - 8),
-    confidence: syncedPoint ? 92 : 78,
-    weight: item.importance,
-    status: masteryStatusFromProgress(mastery),
-    recentChange: mastery - (syncedPoint?.previousMastery ?? Math.max(0, mastery - 8)),
-    agentEvidence: [],
-    evidenceCount: Math.max(1, item.relations.length + (syncedPoint?.completedResources.length ?? 0)),
-    prerequisiteIds: BASE_KNOWLEDGE_ITEMS
-      .filter((candidate) => candidate.relations.includes(item.id))
-      .map((candidate) => candidate.id),
-    relatedIds: item.relations,
-    lastEvaluatedAt: new Date(syncedPoint?.lastUpdatedAt ?? Date.now()).toISOString(),
-    recommendation: syncedPoint
-      ? `已接收来自${sourceLabel}的学习证据，建议继续查看同领域资源并完成阶段测评。`
-      : `建议围绕${item.label}完成一组讲解、练习和阶段测评，形成可回写画像的证据。`,
-    issue: mastery < 60 ? `${item.label}仍是${meta?.name || item.domain}中的待提升知识点。` : undefined,
-  }
-}
-
-function humanizeProgressSource(source?: string) {
-  if (!source) return ''
-  const labels: Record<string, string> = {
-    'evaluation-route': '智能评估',
-    'evaluation-cockpit': '智能评估',
-    'evaluation-tree': '知识树评估',
-    'resource-center-complete': '学习资源',
-    'resource-center-favorite': '学习资源',
-    'resource-constellation': '知识星图',
-    'reverse-update': '反向更新',
-  }
-  return labels[source] ?? '学习闭环'
-}
-
 async function onReload() {
   await load()
   applyIncomingConstellationFocus()
 }
 
 const allPoints = computed<KnowledgePoint[]>(() => {
-  progressRevision.value
-  const graphPoints = BASE_KNOWLEDGE_ITEMS.map(createGraphTreePoint)
   const backendPoints = data.value?.modules
     ? data.value.modules.flatMap((m) => m.units.flatMap((u) => u.points)).map((point) => {
-      const mastery = applyProgressToMastery(point.id, point.mastery, point.name)
       return {
         ...point,
-        mastery,
-        status: masteryStatusFromProgress(mastery),
-        recentChange: mastery - point.previousMastery,
+        // Local task completion is evidence for a future assessment, not a mastery score.
+        status: masteryStatusFromProgress(point.mastery),
       }
     })
     : []
-  const knownKeys = new Set(graphPoints.map((point) => normalizeKnowledgeKey(point.name)))
-  return [
-    ...graphPoints,
-    ...backendPoints.filter((point) => !knownKeys.has(normalizeKnowledgeKey(point.name))),
-  ]
+  return backendPoints
 })
 
 const incomingKnowledgePointId = computed(() => getQueryText(route.query.knowledgePointId) || getQueryText(route.query.nodeId))
@@ -275,7 +217,7 @@ const isConstellationLightAction = computed(() => (
   getQueryText(route.query.light) === '1'
 ))
 
-const courseTreePoints = computed<KnowledgePoint[]>(() => courses.map(createCourseTreePoint))
+const courseTreePoints = computed<KnowledgePoint[]>(() => isDemoData.value ? courses.map(createCourseTreePoint) : [])
 
 const incomingEvaluationPoint = computed(() => (
   allPoints.value.find((point) => matchesIncomingPoint(point)) ??
@@ -412,7 +354,7 @@ function applyIncomingConstellationFocus() {
   }
 }
 
-watch([data, incomingKnowledgePointId, incomingTopicName, incomingCourseName, isConstellationLightAction, progressRevision], applyIncomingConstellationFocus)
+watch([data, incomingKnowledgePointId, incomingTopicName, incomingCourseName, isConstellationLightAction], applyIncomingConstellationFocus)
 
 const totalStats = computed(() => {
   const points = allPoints.value
@@ -455,43 +397,25 @@ const focusStatusLabel = computed(() => {
   return '已掌握'
 })
 
-const rangeMeta = computed(() => {
-  if (timeRange.value === 'today') {
-    return { label: '今天', points: 6, startDelta: 4, timeLabels: ['08:00', '10:00', '12:00', '14:00', '16:00', '现在'] }
-  }
-  if (timeRange.value === '30d') {
-    return { label: '近 30 天', points: 30, startDelta: 18, timeLabels: null }
-  }
-  return { label: '近 7 天', points: 7, startDelta: 8, timeLabels: null }
+const trend = computed(() => data.value?.trends ?? [])
+const hasHistoricalEvaluation = computed(() => {
+  if (!data.value) return false
+  if (trend.value.length > 1) return true
+  return allPoints.value.some((point) => point.previousMastery !== point.mastery)
 })
 
-const trend = computed(() => {
-  const today = new Date()
-  const base = selectedTreePoint.value?.mastery ?? analysisStats.value.avgMastery
-  const meta = rangeMeta.value
-  const endValue = Math.max(0, Math.min(100, base))
-  const startValue = Math.max(0, endValue - (selectedTreePoint.value ? meta.startDelta * 0.65 : meta.startDelta))
-
-  return Array.from({ length: meta.points }).map((_, i) => {
-    const progress = meta.points === 1 ? 1 : i / (meta.points - 1)
-    const wave = Math.sin(i * 1.7) * 1.2 + Math.cos(i * 0.73) * 0.7
-    const mastery = i === meta.points - 1
-      ? endValue
-      : Math.max(0, Math.min(100, startValue + (endValue - startValue) * progress + wave))
-
-    if (meta.timeLabels) return { date: meta.timeLabels[i], mastery }
-
-    const d = new Date(today)
-    d.setDate(d.getDate() - (meta.points - 1 - i))
-    return {
-      date: `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
-      mastery,
-    }
-  })
+const currentMastery = computed<number | null>(() => (
+  selectedTreePoint.value?.mastery ??
+  (data.value?.modules.length ? data.value.overallMastery : null) ??
+  trend.value[trend.value.length - 1]?.mastery ?? null
+))
+const masteryChange = computed(() => {
+  if (!hasHistoricalEvaluation.value) return null
+  if (selectedTreePoint.value) return selectedTreePoint.value.recentChange
+  if (trend.value.length > 1) return trend.value[trend.value.length - 1].mastery - trend.value[0].mastery
+  if (data.value?.modules.length) return data.value.overallMastery - data.value.previousOverallMastery
+  return null
 })
-
-const currentMastery = computed(() => trend.value[trend.value.length - 1]?.mastery ?? totalStats.value.avgMastery)
-const masteryChange = computed(() => currentMastery.value - (trend.value[0]?.mastery ?? currentMastery.value))
 
 const detailRefreshStrength = computed(() => {
   const point = selectedTreePoint.value
@@ -507,8 +431,8 @@ const selectedLearningDetails = computed(() => {
   if (!point) return []
   return [
     { label: '掌握度', value: `${Math.round(point.mastery)}%`, hint: focusStatusLabel.value },
-    { label: '本次变化', value: `${formatSigned(point.recentChange ?? 0)}%`, hint: '较上次评估' },
-    { label: '诊断置信度', value: `${Math.round(point.confidence)}%`, hint: `${point.evidenceCount || 1} 条证据` },
+    { label: '本次变化', value: hasHistoricalEvaluation.value ? `${formatSigned(point.recentChange)}%` : '暂无', hint: hasHistoricalEvaluation.value ? '较上次评估' : '暂无可验证记录' },
+    { label: '诊断置信度', value: `${Math.round(point.confidence)}%`, hint: `${point.evidenceCount} 条证据` },
     { label: '所属模块', value: point.module, hint: point.unit || '知识单元' },
   ]
 })
@@ -535,6 +459,7 @@ const focusedDomainTopics = computed(() => {
 })
 
 const summaryCards = computed<SummaryCard[]>(() => {
+  const masteryValue = currentMastery.value ?? 0
   if (selectedTreePoint.value) {
     return [
       {
@@ -559,9 +484,9 @@ const summaryCards = computed<SummaryCard[]>(() => {
         icon: AlertTriangle,
       },
       {
-        label: '本周变化',
-        value: `${formatSigned(masteryChange.value)}%`,
-        sub: selectedTreePoint.value.mastery < 50 ? '建议立即补弱' : '继续强化',
+        label: hasHistoricalEvaluation.value ? '本次变化' : '历史变化',
+        value: hasHistoricalEvaluation.value ? `${formatSigned(masteryChange.value)}%` : '暂无',
+        sub: hasHistoricalEvaluation.value ? (selectedTreePoint.value.mastery < 50 ? '建议立即补弱' : '继续强化') : '暂无可验证记录',
         tone: 'green',
         icon: TrendingUp,
       },
@@ -571,8 +496,8 @@ const summaryCards = computed<SummaryCard[]>(() => {
   return [
     {
       label: '综合掌握度',
-      value: `${Math.round(currentMastery.value)}%`,
-      sub: `较上周 ${formatSigned(masteryChange.value)}`,
+      value: currentMastery.value === null ? '暂无' : `${Math.round(masteryValue)}%`,
+      sub: hasHistoricalEvaluation.value ? `较上次评估 ${formatSigned(masteryChange.value)}` : '暂无可验证历史记录',
       tone: 'cyan',
       icon: CheckCircle2,
     },
@@ -584,16 +509,16 @@ const summaryCards = computed<SummaryCard[]>(() => {
       icon: BookOpen,
     },
     {
-      label: '待提升知识点',
-      value: `${weakPoints.value.length}`,
-      sub: `高风险 ${highRiskCount.value} 个`,
+      label: weakPointCount.value && !weakPoints.value.length ? '待提升项目' : '待提升知识点',
+      value: `${weakPointCount.value}`,
+      sub: weakPoints.value.length ? `高风险 ${highRiskCount.value} 个` : serverWeakPoints.value.length ? '来自服务端评估，掌握度待补充' : '暂无',
       tone: 'amber',
       icon: AlertTriangle,
     },
     {
-      label: '本周提升',
-      value: `${formatSigned(masteryChange.value)}%`,
-      sub: '较上周',
+      label: hasHistoricalEvaluation.value ? '本次变化' : '历史变化',
+      value: hasHistoricalEvaluation.value ? `${formatSigned(masteryChange.value)}%` : '暂无',
+      sub: hasHistoricalEvaluation.value ? '较上次评估' : '暂无可验证记录',
       tone: 'green',
       icon: TrendingUp,
     },
@@ -608,6 +533,7 @@ const coveragePercent = computed(() => {
 })
 
 const highRiskCount = computed(() => weakPoints.value.filter((p) => p.mastery < 35).length)
+const weakPointCount = computed(() => weakPoints.value.length || serverWeakPoints.value.length)
 
 const distribution = computed<DistributionItem[]>(() => {
   const stats = analysisStats.value
@@ -620,19 +546,15 @@ const distribution = computed<DistributionItem[]>(() => {
 })
 
 const radarMetrics = computed<RadarMetric[]>(() => {
-  const avg = currentMastery.value
-  const weakPenalty = Math.min(24, weakPoints.value.length * 2)
-  return [
-    { label: '基础巩固', value: clamp(avg - weakPenalty * 0.55) },
-    { label: '实战应用', value: clamp(avg + 8 - weakPenalty * 0.35) },
-    { label: '深度学习', value: clamp(avg + 4 - weakPenalty * 0.2) },
-    { label: '核心技能', value: clamp(avg + 10 - weakPenalty * 0.25) },
-  ]
+  return (data.value?.capabilities ?? []).slice(0, 4).map((metric) => ({
+    label: metric.label,
+    value: clamp(metric.value),
+  }))
 })
 
 const topUpgradeTopics = computed<UpgradeTopic[]>(() => {
   const source = selectedTreePoint.value ? focusedDomainTopics.value : weakPoints.value
-  return source.slice(0, 5).map((point) => {
+  if (source.length) return source.slice(0, 5).map((point) => {
     const domain = DOMAINS.find((item) => item.name === point.module)
     return {
       id: point.id,
@@ -645,6 +567,15 @@ const topUpgradeTopics = computed<UpgradeTopic[]>(() => {
       domainName: domain?.name,
     }
   })
+  return serverWeakPoints.value.slice(0, 5).map((point) => ({
+    id: point.id,
+    name: point.name,
+    mastery: null,
+    risk: '待评估' as const,
+    action: point.action,
+    route: '/resources',
+    domainName: point.module,
+  }))
 })
 
 const trendPolyline = computed(() => {
@@ -679,44 +610,49 @@ const radarPolygon = computed(() => {
 })
 
 const aiDiagnosis = computed(() => {
+  if (status.value === 'unavailable') return 'AI 诊断：评估服务不可用，未生成掌握度或历史趋势。'
+  if (status.value === 'error') return 'AI 诊断：评估数据加载失败，请重试。'
+  if (status.value === 'no-data') return 'AI 诊断：暂无真实测评证据，完成练习后再进行评估。'
   if (!analysisStats.value.total) return 'AI 诊断：正在等待评估数据写入。'
   if (selectedTreePoint.value) {
     if (selectedTreePoint.value.mastery < 50) return `AI 诊断：${selectedTreePoint.value.name} 是当前薄弱苹果，建议右侧清单立即进入补弱路径。`
     if (selectedTreePoint.value.mastery < 80) return `AI 诊断：${selectedTreePoint.value.name} 已有基础，需要通过专项练习巩固迁移。`
     return `AI 诊断：${selectedTreePoint.value.name} 状态稳定，可作为关联知识点的支撑节点。`
   }
-  if (currentMastery.value < 50) return 'AI 诊断：基础巩固不足，建议优先复习高频薄弱知识点。'
+  if (serverWeakPoints.value.length && !weakPoints.value.length) {
+    return `AI 诊断：服务端评估识别了 ${serverWeakPoints.value.length} 个待提升项目，掌握度数据仍需补充。`
+  }
+  if ((currentMastery.value ?? 0) < 50) return 'AI 诊断：基础巩固不足，建议优先复习高频薄弱知识点。'
   if (weakPoints.value.length > 3) return 'AI 诊断：局部知识点波动明显，建议按 Top 5 清单逐个补强。'
   return 'AI 诊断：整体状态稳定，建议继续推进实战应用与迁移练习。'
 })
 
 const diagnosticSummary = computed(() => {
+  if (status.value === 'unavailable') return '评估服务当前不可用，页面不会用模拟成绩替代真实结果。'
+  if (status.value === 'error') return '评估数据加载失败，请重试。'
+  if (status.value === 'no-data') return '暂无真实测评数据；课程完成率不会被当作知识掌握度。'
+  if (data.value?.agentConclusion && data.value.agentConclusion !== '评估已完成，等待更多知识点证据。') {
+    return data.value.agentConclusion
+  }
+  if (currentMastery.value === null && !radarMetrics.value.length) return '当前响应未提供可展示的能力评分。'
   if (selectedTreePoint.value) {
     if (selectedTreePoint.value.mastery < 50) {
       return `当前选中「${selectedTreePoint.value.name}」，掌握度 ${Math.round(selectedTreePoint.value.mastery)}%，会直接影响「${selectedTreePoint.value.module}」模块的后续学习。建议先看讲解，再做 2 轮针对练习。`
     }
     return `当前选中「${selectedTreePoint.value.name}」，模块内状态相对稳定。建议用同模块题目保持手感，并把关联薄弱点一起扫掉。`
   }
-  if (currentMastery.value < 50) {
+  if ((currentMastery.value ?? 0) < 50) {
     return '基础巩固能力相对薄弱，影响整体掌握度。建议加强基础概念与原理的复习。'
   }
   return '能力结构较均衡，薄弱点集中在少量知识点。建议保持节奏，并通过专项练习拉高短板。'
 })
 
-const updatedAt = computed(() => new Date().toLocaleString('zh-CN', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-}))
-
 function clamp(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)))
 }
 
-function formatSigned(value: number) {
+function formatSigned(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return '暂无'
   const rounded = Math.round(value * 10) / 10
   return `${rounded >= 0 ? '+' : ''}${rounded}`
 }
@@ -782,28 +718,38 @@ function openPrimaryAction() {
             <span class="bot-badge"><Bot :size="24" /></span>
             <strong>{{ aiDiagnosis }}</strong>
           </div>
+          <p v-if="isDemoData" class="demo-data-badge" role="status">演示数据，仅供体验</p>
           <p class="course-line">{{ focusLine }}</p>
         </div>
 
         <div class="range-select">
           <CalendarDays :size="18" />
-          <select v-model="timeRange" aria-label="选择时间范围">
+          <select v-model="timeRange" aria-label="选择时间范围" disabled title="时间筛选暂未接入真实历史测评数据">
             <option value="7d">近 7 天</option>
             <option value="30d">近 30 天</option>
             <option value="today">今天</option>
           </select>
           <ChevronDown :size="18" />
+          <span class="range-note">时间筛选暂未接入</span>
         </div>
       </header>
 
-      <div v-if="loading && !data" class="state-card breathe-subtle">评估数据加载中...</div>
-      <div v-else-if="error && !data" class="state-card error breathe-subtle">
+      <div v-if="loading" class="state-card breathe-subtle">评估数据加载中...</div>
+      <div v-else-if="status === 'unavailable'" class="state-card error breathe-subtle">
+        评估暂不可用：{{ error || '服务未提供真实评估数据。' }}
+        <button type="button" @click="onReload">重试</button>
+      </div>
+      <div v-else-if="status === 'no-data'" class="state-card breathe-subtle">
+        暂无真实测评数据。完成学习任务后，需要经过服务端评估才会显示掌握度。
+        <button type="button" @click="onReload">刷新</button>
+      </div>
+      <div v-else-if="status === 'error'" class="state-card error breathe-subtle">
         数据加载失败：{{ error }}
         <button type="button" @click="onReload">重试</button>
       </div>
 
       <section
-        v-if="selectedTreePoint"
+        v-if="selectedTreePoint && hasEvaluationSnapshot"
         :key="`point-detail-${detailRefreshKey}`"
         class="selected-point-panel panel breathe"
         :style="{ '--refresh-strength': `${detailRefreshStrength}%` }"
@@ -841,7 +787,7 @@ function openPrimaryAction() {
         </button>
       </section>
 
-      <section class="summary-grid" :key="`summary-${analysisPanelKey}`">
+      <section v-if="hasEvaluationSnapshot" class="summary-grid" :key="`summary-${analysisPanelKey}`">
         <article
           v-for="card in summaryCards"
           :key="card.label"
@@ -857,7 +803,7 @@ function openPrimaryAction() {
         </article>
       </section>
 
-      <section class="tree-panel panel breathe-glow">
+      <section v-if="hasKnowledgeEvidence" class="tree-panel panel breathe-glow">
         <div class="tree-panel-head">
           <div>
             <h2>知识树状态</h2>
@@ -885,7 +831,7 @@ function openPrimaryAction() {
         </div>
       </section>
 
-      <section class="main-grid" :key="`main-${analysisPanelKey}`">
+      <section v-if="hasEvaluationSnapshot" class="main-grid" :key="`main-${analysisPanelKey}`">
         <article class="panel trend-panel breathe">
           <div class="panel-title">
             <h2>掌握度变化趋势</h2>
@@ -896,6 +842,7 @@ function openPrimaryAction() {
             <span><i class="dash" />目标线</span>
           </div>
           <div class="trend-chart">
+            <div v-if="trend.length">
             <svg viewBox="0 0 520 300" preserveAspectRatio="none" aria-label="掌握度趋势图">
               <defs>
                 <linearGradient id="trendArea" x1="0" x2="0" y1="0" y2="1">
@@ -926,7 +873,7 @@ function openPrimaryAction() {
               />
               <g class="latest-badge" :transform="`translate(${latestTrendPoint.x - 34}, ${latestTrendPoint.y - 42})`">
                 <rect width="58" height="32" rx="7" />
-                <text x="29" y="21" text-anchor="middle">{{ Math.round(currentMastery) }}%</text>
+                <text x="29" y="21" text-anchor="middle">{{ Math.round(currentMastery ?? 0) }}%</text>
               </g>
             </svg>
             <div class="y-axis">
@@ -935,10 +882,12 @@ function openPrimaryAction() {
             <div class="x-axis">
               <span v-for="item in trend" :key="item.date">{{ item.date }}</span>
             </div>
+            </div>
+            <div v-else class="empty-chart">暂无真实历史趋势数据</div>
           </div>
-          <div class="trend-tip">
+          <div v-if="trend.length && hasHistoricalEvaluation" class="trend-tip">
             <CheckCircle2 :size="20" />
-            <span>本周掌握度上升 <b>{{ formatSigned(masteryChange) }}%</b>，继续保持，稳步提升中！</span>
+            <span>掌握度较上次评估 <b>{{ formatSigned(masteryChange) }}%</b></span>
           </div>
         </article>
 
@@ -956,7 +905,7 @@ function openPrimaryAction() {
                 <line x1="140" y1="32" x2="140" y2="220" />
                 <line x1="46" y1="126" x2="234" y2="126" />
               </g>
-              <polygon class="radar-shape" :points="radarPolygon" />
+              <polygon v-if="radarMetrics.length" class="radar-shape" :points="radarPolygon" />
               <circle
                 v-for="(metric, i) in radarMetrics"
                 :key="metric.label"
@@ -969,6 +918,7 @@ function openPrimaryAction() {
               <text x="140" y="244" text-anchor="middle">深度学习</text>
               <text x="34" y="131" text-anchor="end">核心技能</text>
             </svg>
+            <p v-if="!radarMetrics.length" class="empty-chart">暂无能力评估数据</p>
           </div>
           <div class="diagnosis-box">
             <h3>诊断总结</h3>
@@ -980,7 +930,7 @@ function openPrimaryAction() {
         </article>
       </section>
 
-      <section class="panel distribution-panel breathe" :key="`distribution-${analysisPanelKey}`">
+      <section v-if="hasKnowledgeEvidence" class="panel distribution-panel breathe" :key="`distribution-${analysisPanelKey}`">
         <div class="panel-title">
           <h2>知识点掌握度分布</h2>
           <Info :size="17" />
@@ -999,10 +949,10 @@ function openPrimaryAction() {
         </div>
       </section>
 
-      <section class="panel topic-panel breathe" :key="`topic-${analysisPanelKey}`">
+      <section v-if="hasKnowledgeEvidence || serverWeakPoints.length" class="panel topic-panel breathe" :key="`topic-${analysisPanelKey}`">
         <div class="topic-head">
-          <h2>Top 5 待提升知识点</h2>
-          <span>按掌握度升序</span>
+          <h2>Top 5 待提升{{ hasKnowledgeEvidence ? '知识点' : '项目' }}</h2>
+          <span>{{ hasKnowledgeEvidence ? '按掌握度升序' : '服务端评估结果' }}</span>
         </div>
         <div class="topic-table">
           <div class="topic-row topic-header">
@@ -1019,7 +969,7 @@ function openPrimaryAction() {
             @click="openTopic(topic)"
           >
             <span class="topic-name"><i>{{ index + 1 }}</i>{{ topic.name }}</span>
-            <span class="mastery-cell">{{ topic.mastery }}% <b><em :style="{ width: `${topic.mastery}%` }" /></b></span>
+            <span class="mastery-cell">{{ topic.mastery === null ? '暂无' : `${topic.mastery}%` }} <b v-if="topic.mastery !== null"><em :style="{ width: `${topic.mastery}%` }" /></b></span>
             <span class="risk-pill" :class="topic.risk">{{ topic.risk }}</span>
             <span class="action-pill">{{ topic.action }}</span>
           </button>
@@ -1027,8 +977,8 @@ function openPrimaryAction() {
         </div>
       </section>
 
-      <footer class="cockpit-footer">
-        <span><CheckCircle2 :size="16" /> 数据更新于 {{ updatedAt }}</span>
+      <footer v-if="hasEvaluationSnapshot" class="cockpit-footer">
+        <span><CheckCircle2 :size="16" /> 数据更新于 {{ data?.evaluatedAt || '暂无' }}</span>
         <button type="button" @click="onReload"><RefreshCw :size="16" /> 刷新</button>
       </footer>
     </main>
@@ -1165,6 +1115,19 @@ function openPrimaryAction() {
   font-size: 12px;
 }
 
+.demo-data-badge {
+  display: inline-flex;
+  width: fit-content;
+  margin: 10px 0 0;
+  padding: 4px 8px;
+  border: 1px solid rgba(245, 193, 74, 0.42);
+  border-radius: 999px;
+  background: rgba(245, 193, 74, 0.12);
+  color: #f8d477;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .range-select {
   display: flex;
   align-items: center;
@@ -1187,6 +1150,18 @@ function openPrimaryAction() {
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.range-select select:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.range-note {
+  flex: 0 0 auto;
+  color: rgba(184, 202, 226, 0.62);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .state-card {

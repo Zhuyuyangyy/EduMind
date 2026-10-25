@@ -111,6 +111,10 @@ async function login(cdp) {
   await cdp.eval("document.querySelector('.login__form .m-btn').click()")
   // 登录成功标志：底部导航出现（hash 可能是 /today，也可能被 redirect 参数带回 /tutor）
   const ok = await waitFor(() => cdp.eval("Boolean(document.querySelector('.mobile-tabs')) && location.hash !== '#/login'"), 20000)
+  if (ok) {
+    await waitFor(() => cdp.eval("document.querySelector('#mobile-content')?.getAttribute('aria-busy') === 'false'"))
+    await cdp.eval("document.querySelector('.welcome-card__bottom button')?.click()")
+  }
   if (!ok) {
     // 失败时 dump 现场便于诊断
     const text = await cdp.bodyText()
@@ -199,6 +203,8 @@ async function main() {
 
     // D. 「我的」页（账号 + 服务诊断）
     await cdp.eval("document.querySelectorAll('.tab')[3].click()")
+    await waitFor(() => cdp.eval("Boolean(document.querySelector('.profile__diagnostics'))"))
+    await cdp.eval("document.querySelector('.profile__diagnostics').open = true")
     const statusOk = await waitFor(async () => {
       const text = await cdp.bodyText()
       return text.includes('服务连接诊断') && (text.includes('正常') || text.includes('不可达'))

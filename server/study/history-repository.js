@@ -130,7 +130,21 @@ function parseJsonColumn(value) {
  *
  * @returns {{duplicate:boolean, reply?:object, interactionId?:string}}
  */
-export async function appendChatInteraction(accountId, { userMessage, reply, multimodalContents, interactionId, idempotencyKey }) {
+export async function appendChatInteraction(accountId, input) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await appendChatInteractionOnce(accountId, input)
+    } catch (error) {
+      // InnoDB may choose either of two competing inserts as a deadlock victim.
+      // The whole transaction has rolled back and its connection was released.
+      // Retry persistence only (never call the model again), with a strict bound.
+      if (error?.code !== 'ER_LOCK_DEADLOCK' || attempt >= 2) throw error
+      await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1)))
+    }
+  }
+}
+
+async function appendChatInteractionOnce(accountId, { userMessage, reply, multimodalContents, interactionId, idempotencyKey }) {
   assertMultimodalWithinLimit(multimodalContents)
   const key = idempotencyKey ? String(idempotencyKey).slice(0, 64) : null
 

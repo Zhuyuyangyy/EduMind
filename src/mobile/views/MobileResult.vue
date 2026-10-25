@@ -13,11 +13,13 @@
     <template v-else>
       <!-- 权威评分（服务端判分，唯一事实源） -->
       <header class="result__hero">
+        <span class="result__completion-mark"><MobileIcon name="check" :size="24" /></span>
+        <h1>练习完成。</h1>
         <div class="result__score">
           <span class="result__score-num">{{ assessment.correct }} / {{ assessment.total }}</span>
           <span class="result__score-rate">{{ correctRateLabel }}</span>
         </div>
-        <p class="result__hero-note">真实正确率 · 由服务端根据你的实际提交计算</p>
+        <p class="result__hero-note">本次正确率 · 按已提交答案统计</p>
       </header>
 
       <!-- 逐题回顾 -->
@@ -96,6 +98,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import MobileIcon from '../components/MobileIcon.vue'
 import { useRoute } from 'vue-router'
 import { fetchFeedback, fetchSessionQuestions } from '@/mobile/data/study'
 import type { FeedbackResult, StudyExercise } from '@/mobile/data/study'
@@ -180,6 +183,8 @@ async function reloadFeedback() {
 </script>
 
 <style scoped>
+.result__completion-mark { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto 16px; border-radius: 18px; color: var(--m-success); background: var(--m-success-soft); }
+.result__hero h1 { font-size: 28px; margin: 0 0 20px; letter-spacing: -1px; }
 .result__hero {
   text-align: center;
   padding: var(--m-space-6) 0 var(--m-space-4);
@@ -193,8 +198,9 @@ async function reloadFeedback() {
 }
 
 .result__score-num {
-  font-size: var(--m-text-2xl);
-  font-weight: 800;
+  font-size: 38px;
+  letter-spacing: -1px;
+  font-weight: 600;
   color: var(--m-primary);
 }
 

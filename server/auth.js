@@ -260,7 +260,7 @@ export function generateCsrfToken() {
 export function buildCsrfCookie(token, options = {}) {
   const crossOrigin = Boolean(options.crossOrigin)
   const sameSite = crossOrigin ? 'None' : (process.env.SESSION_COOKIE_SAMESITE || 'Lax')
-  const secure = crossOrigin || process.env.SESSION_COOKIE_SECURE === 'true' ? '; Secure' : ''
+  const secure = crossOrigin || isProduction() || process.env.SESSION_COOKIE_SECURE === 'true' ? '; Secure' : ''
   return `${csrfCookieName()}=${encodeURIComponent(token)}; Path=/; Max-Age=${Math.floor(ttlMs() / 1000)}; SameSite=${sameSite}${secure}`
 }
 
@@ -276,7 +276,8 @@ export function isCrossOriginRequest(req) {
 }
 
 export function clearCsrfCookie() {
-  return `${csrfCookieName()}=; Path=/; Max-Age=0; SameSite=Lax`
+  const secure = isProduction() ? '; Secure' : ''
+  return `${csrfCookieName()}=; Path=/; Max-Age=0; SameSite=Lax${secure}`
 }
 
 /** 请求是否携带 CSRF 头且与 Cookie 中的值一致（timingSafeEqual） */
@@ -328,13 +329,14 @@ export function buildSessionCookie(token, maxAgeMs, options = {}) {
   // （浏览器要求），同源时按显式配置。
   const crossOrigin = Boolean(options.crossOrigin)
   const sameSite = crossOrigin ? 'None' : (process.env.SESSION_COOKIE_SAMESITE || 'Lax')
-  const secure = crossOrigin || process.env.SESSION_COOKIE_SECURE === 'true' ? '; Secure' : ''
+  const secure = crossOrigin || isProduction() || process.env.SESSION_COOKIE_SECURE === 'true' ? '; Secure' : ''
   const maxAge = Math.max(0, Math.floor((maxAgeMs || 0) / 1000))
   return `${sessionCookieName()}=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=${sameSite}${secure}`
 }
 
 export function clearSessionCookie() {
-  return `${sessionCookieName()}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`
+  const secure = isProduction() ? '; Secure' : ''
+  return `${sessionCookieName()}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}`
 }
 
 /** 供测试使用：清空进程内缓存与 JSON 持久会话。 */

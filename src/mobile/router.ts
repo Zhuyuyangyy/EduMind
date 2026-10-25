@@ -19,7 +19,8 @@ const router = createRouter({
     { path: '/tutor', name: 'tutor', component: MobileTutor, meta: { title: 'AI 导师' } },
     { path: '/growth', name: 'growth', component: MobileGrowth, meta: { title: '学习成长' } },
     { path: '/profile', name: 'profile', component: MobileProfile, meta: { title: '我的' } },
-    { path: '/diagnose', name: 'diagnose', component: MobileDiagnose, meta: { title: '学习自评' } },
+    { path: '/diagnose', name: 'diagnose', component: MobileDiagnose, meta: { title: '学习画像' } },
+    { path: '/planning', name: 'planning', component: MobileDiagnose, meta: { title: '制定学习计划' } },
     { path: '/study/session/:sessionId', name: 'practice', component: MobilePractice, meta: { title: '练习' } },
     { path: '/study/session/:sessionId/result', name: 'result', component: MobileResult, meta: { title: '练习结果' } },
     // P1 旧路由兼容：/status 并入「我的」

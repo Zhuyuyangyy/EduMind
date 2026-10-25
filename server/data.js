@@ -73,7 +73,11 @@ export function getRecommendedResources() {
 }
 
 export function getLearningPathPayload() {
-  return readJsonFile('learning-path.json')
+  return {
+    ...readJsonFile('learning-path.json'),
+    dataSource: 'demo-fixture',
+    simulated: true,
+  }
 }
 
 export function getEvaluationPayload() {
@@ -81,6 +85,8 @@ export function getEvaluationPayload() {
   return {
     ...payload,
     generatedAt: today(),
+    dataSource: 'demo-fixture',
+    simulated: true,
   }
 }
 
@@ -314,6 +320,8 @@ function clamp(value, min, max) {
 
 export function getAgentWorkflow() {
   return {
+    dataSource: 'demo-fixture',
+    simulated: true,
     workflowId: 'wf-demo-001',
     startTime: '2026-05-28T14:32:00',
     endTime: '2026-05-28T14:32:25',

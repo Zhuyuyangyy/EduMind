@@ -3,6 +3,13 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "overrides": {
+    "alipay-sdk": {
+      "urllib": "^4.9.1"
+    },
+    "gh-pages": "^5.0.0",
+    "qs": "^6.16.1"
+  },
   "scripts": {
     "tailwind": "tailwindcss -i src/assets/styles/_tailwind.src.css -o src/assets/styles/_tailwind.css --config tailwind.config.js",
     "tailwind:watch": "tailwindcss -i src/assets/styles/_tailwind.src.css -o src/assets/styles/_tailwind.css --config tailwind.config.js --watch",
@@ -13,6 +20,9 @@
     "test": "node --test --test-concurrency=4",
     "test:navigation": "node --test src/navigation-cleanup.test.mjs",
     "test:chat-api": "node --test server/chat-api.test.mjs",
+    "test:payment": "node --test server/payment.test.mjs server/payment-protocol.test.mjs server/payment-store.test.mjs server/payment-config.test.mjs server/payment-transport-security.test.mjs",
+    "test:payment-browser": "node scripts/payment-browser-smoke.mjs",
+    "payment:sandbox": "node scripts/payment-sandbox-experience.mjs",
     "experiment:anomaly": "node experiments/run-anomaly-tests.mjs",
     "experiment:baseline": "node experiments/capture-baseline.mjs",
     "experiment:learning-cycle": "node experiments/run-learning-cycle-cases.mjs",
@@ -26,6 +36,9 @@
     "test:mobile-e2e": "node scripts/mobile-e2e.mjs",
     "test:mobile-e2e-data": "node scripts/mobile-e2e-data.mjs",
     "test:mobile-e2e-study": "node scripts/mobile-e2e-study.mjs",
+    "test:mobile-onboarding": "node scripts/mobile-onboarding-e2e.mjs",
+    "test:welcome-cards": "node scripts/mobile-welcome-e2e.mjs",
+    "test:evaluation-browser": "node scripts/evaluation-browser-smoke.mjs",
     "verify:mysql": "node scripts/verify-mysql.mjs",
     "postinstall": "node scripts/patch-secure-storage.mjs"
   },
@@ -50,15 +63,16 @@
     "@pixi/ticker": "^6.5.10",
     "@pixi/utils": "^6.5.10",
     "@vueuse/motion": "^2.2.6",
+    "alipay-sdk": "4.14.0",
     "dotenv": "^17.4.2",
     "echarts": "^6.1.0",
     "gsap": "^3.15.0",
     "lucide-vue-next": "^1.0.0",
-    "mysql2": "^3.22.6",
+    "mysql2": "^3.24.6",
     "pinia": "^2.1.7",
     "pixi-live2d-display": "^0.4.0",
     "three": "^0.184.0",
-    "vue": "^3.4.21",
+    "vue": "^3.5.44",
     "vue-router": "^4.3.0"
   },
   "devDependencies": {
@@ -66,10 +80,10 @@
     "@types/three": "^0.184.1",
     "@vitejs/plugin-vue": "^5.2.4",
     "autoprefixer": "^10.5.0",
-    "postcss": "^8.5.15",
+    "postcss": "^8.5.31",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.4.2",
-    "vite": "^6.4.2",
+    "vite": "^6.4.5",
     "vue-tsc": "^2.2.12"
   }
 }

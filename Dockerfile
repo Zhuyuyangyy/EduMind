@@ -5,12 +5,14 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY vendor/dgreenheck-ez-tree-1.1.0.tgz ./vendor/dgreenheck-ez-tree-1.1.0.tgz
+COPY scripts/patch-secure-storage.mjs ./scripts/patch-secure-storage.mjs
 RUN npm ci
 
 COPY index.html postcss.config.js tailwind.config.js tsconfig.json vite.config.ts ./
 COPY public ./public
 COPY src ./src
 COPY server ./server
+COPY scripts ./scripts
 RUN npm run build
 
 FROM node:24.14.0-alpine AS api-deps
@@ -18,6 +20,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY vendor/dgreenheck-ez-tree-1.1.0.tgz ./vendor/dgreenheck-ez-tree-1.1.0.tgz
+COPY scripts/patch-secure-storage.mjs ./scripts/patch-secure-storage.mjs
 RUN npm ci --omit=dev && npm cache clean --force
 
 FROM node:24.14.0-alpine AS api
