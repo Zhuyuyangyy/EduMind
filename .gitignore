@@ -39,6 +39,9 @@ server/sessions.json
 server/identities.json
 server/sessions.json*
 server/identities.json*
+server/payment-data.json*
+/.alipay-sandbox.json
+outputs/
 
 # 本地数据备份（sessions 撤销备份等，不提交 Git）
 .workbuddy-backups/

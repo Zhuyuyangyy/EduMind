@@ -90,7 +90,8 @@ import {
 } from './identity.js'
 import { getProduct, listProducts } from './payment/catalog.js'
 import { applyPaymentEvent, createOrder, getOrder, getOrderForProvider, listEntitlements, setCheckoutUrl } from './payment/store.js'
-import { createCheckout, paymentProvider, providerConfigStatus, verifyNotification } from './payment/provider.js'
+import { amountCents, createCheckout, paymentConfig, paymentProvider, paymentUrls, paymentError, providerConfigStatus, verifyNotification } from './payment/provider.js'
+import { closeOrder, reconcileOrder, reconcileRefund, refundOrder } from './payment/service.js'
 import { validateResourceGenerateInput } from './schemas.js'
 
 /* ———————————— P4-1A 认证辅助 ———————————— */
@@ -285,6 +286,7 @@ function readForm(req) {
     })
     req.on('end', () => {
       const params = new URLSearchParams(Buffer.concat(chunks).toString('utf8'))
+      if ([...params.keys()].some(key => params.getAll(key).length !== 1)) { reject(paymentError('duplicate-payment-parameter')); return }
       resolve(Object.fromEntries(params.entries()))
     })
     req.on('error', reject)
@@ -392,32 +394,35 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 503, { error: 'Service Unavailable', code: 'payment-provider-not-configured' })
         return
       }
-      const params = await readForm(req)
-      if (!verifyNotification(params)) {
-        sendJson(res, 400, { error: 'Bad Request', code: 'invalid-payment-signature' })
-        return
+      try {
+        if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/x-www-form-urlencoded')) throw paymentError('invalid-payment-content-type')
+        const params = await readForm(req)
+        if (!verifyNotification(params)) throw paymentError('invalid-payment-signature')
+        const order = await getOrderForProvider(String(params.out_trade_no || ''))
+        const cfg = paymentConfig()
+        if (!order || params.app_id !== cfg.appId || params.seller_id !== cfg.sellerId || amountCents(params.total_amount) !== order.amountCents ||
+            order.provider !== 'vibe-pay' || order.dataSource !== providerConfigStatus().dataSource || order.appId !== cfg.appId || order.sellerId !== cfg.sellerId) throw paymentError('payment-order-mismatch')
+        if (!params.notify_id || params.notify_id.length > 191 || !params.trade_no || params.trade_no.length > 128) throw paymentError('invalid-payment-event')
+        // Refund/split events must never grant or restore an entitlement.
+        const auxiliary = Boolean(params.out_biz_no || params.gmt_refund || params.refund_fee)
+        await applyPaymentEvent({
+          provider: 'vibe-pay', eventId: params.notify_id, orderId: order.id,
+          providerTradeNo: params.trade_no, amountCents: order.amountCents,
+          status: auxiliary ? 'auxiliary' : params.trade_status,
+        })
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('success')
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('fail')
       }
-      const orderId = String(params.out_trade_no || '')
-      const order = await getOrderForProvider(orderId)
-      const product = order ? getProduct(order.productId) : null
-      if (!order || !product || params.app_id !== process.env.VIBE_PAY_APP_ID || Math.round(Number(params.total_amount) * 100) !== order.amountCents) {
-        sendJson(res, 400, { error: 'Bad Request', code: 'payment-order-mismatch' })
-        return
-      }
-      await applyPaymentEvent({
-        provider: 'vibe-pay', eventId: params.notify_id || `${params.trade_no || orderId}:${params.trade_status || ''}`,
-        orderId, providerTradeNo: params.trade_no || null, amountCents: order.amountCents,
-        status: params.trade_status, payload: params, durationDays: product.durationDays,
-      })
-      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
-      res.end('success')
       return
     }
 
     if (req.method === 'GET' && pathname === '/api/payments/return') {
-      const orderId = searchParams.get('out_trade_no') || ''
-      const order = await getOrderForProvider(orderId)
-      sendJson(res, 200, { order, message: '支付结果以服务端异步通知或交易查询为准。' })
+      // Public page intentionally ignores all return parameters and reveals no order.
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'", 'X-Content-Type-Options': 'nosniff' })
+      res.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>支付结果确认</title><main><h1>正在确认支付结果</h1><p>本页面不代表支付成功。请返回智学星枢，登录后查询订单；支付状态以服务端验签通知或交易查询为准。</p></main></html>')
       return
     }
 
@@ -586,34 +591,27 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && pathname === '/api/payments/orders') {
       const body = await readJson(req)
       const product = getProduct(String(body.productId || 'ai-7day-pack'))
-      const idempotencyKey = String(body.idempotencyKey || '').trim()
+      const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : ''
       if (!product) {
         sendJson(res, 400, { error: 'Bad Request', code: 'unknown-product' })
         return
       }
-      if (!product.priceCents) {
-        sendJson(res, 503, { error: 'Service Unavailable', code: 'payment-product-not-configured', message: '支付商品价格尚未配置。' })
+      if (!product.available || !product.priceCents) {
+        sendJson(res, 503, { error: 'Service Unavailable', code: 'payment-product-not-configured', message: '支付商品尚未开放购买。' })
         return
       }
-      if (idempotencyKey.length < 8 || idempotencyKey.length > 128) {
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(idempotencyKey)) {
         sendJson(res, 400, { error: 'Bad Request', code: 'invalid-idempotency-key' })
         return
       }
       const provider = paymentProvider()
+      if (!providerConfigStatus().configured) throw paymentError('payment-provider-not-configured', 503)
+      const urls = provider === 'mock' ? {} : paymentUrls()
       const created = await createOrder({ accountId: accountIdOf(req), product, provider, idempotencyKey })
       let checkout = null
-      if (!created.order.checkoutUrl && provider !== 'mock') {
-        const origin = process.env.PAYMENT_BASE_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
-        checkout = createCheckout({
-          order: created.order,
-          product,
-          notifyUrl: `${origin}/api/payments/notify/alipay`,
-          returnUrl: `${origin}/api/payments/return`,
-        })
-        if (checkout.checkoutUrl) await setCheckoutUrl(accountIdOf(req), created.order.id, checkout.checkoutUrl)
-      } else if (provider === 'mock') {
-        checkout = createCheckout({ order: created.order, product })
-        if (!created.order.checkoutUrl) await setCheckoutUrl(accountIdOf(req), created.order.id, checkout.checkoutUrl)
+      if (created.order.status === 'pending') {
+        checkout = createCheckout({ order: created.order, product, ...urls })
+        if (checkout.checkoutUrl && !created.order.checkoutUrl) await setCheckoutUrl(accountIdOf(req), created.order.id, checkout.checkoutUrl)
       }
       sendJson(res, created.duplicate ? 200 : 201, { order: await getOrder(accountIdOf(req), created.order.id), checkout, idempotent: created.duplicate })
       return
@@ -624,6 +622,27 @@ const server = http.createServer(async (req, res) => {
       const order = await getOrder(accountIdOf(req), paymentOrderMatch[1])
       if (!order) { sendJson(res, 404, { error: 'Not Found' }); return }
       sendJson(res, 200, { order })
+      return
+    }
+
+    const paymentActionMatch = pathname.match(/^\/api\/payments\/orders\/([A-Za-z0-9_-]+)\/(query|refund|refund-query|close)$/)
+    if (req.method === 'POST' && paymentActionMatch) {
+      const [, orderId, action] = paymentActionMatch
+      // Refunds are an operator action until a user refund policy is implemented.
+      // Even administrators may only operate on their authenticated account here.
+      if (action === 'refund' && req.session?.role !== 'admin') { sendJson(res, 403, { error: 'Forbidden' }); return }
+      const accountId = accountIdOf(req)
+      const result = action === 'query' ? await reconcileOrder(accountId, orderId)
+        : action === 'refund' ? await refundOrder(accountId, orderId)
+        : action === 'refund-query' ? await reconcileRefund(accountId, orderId)
+        : await closeOrder(accountId, orderId)
+      sendJson(res, result.status === 'pending' && action.startsWith('refund') ? 202 : 200, { result })
+      return
+    }
+
+    if (req.method === 'GET' && pathname === '/api/payments/mock/checkout' && paymentProvider() === 'mock' && !isProductionMode()) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+      res.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>支付演示</title><h1>模拟支付，仅供开发测试</h1><p>不会发起真实收款，不代表真实用户权益。</p></html>')
       return
     }
 
@@ -1411,6 +1430,13 @@ const server = http.createServer(async (req, res) => {
     }
     await routeApi()
   } catch (error) {
+    if (pathname.startsWith('/api/payments/')) {
+      const known = error?.code?.startsWith('payment-') || error?.code?.startsWith('invalid-payment-')
+      sendJson(res, known ? (error.statusCode || 400) : error?.code === 'ER_DUP_ENTRY' ? 409 : 503, {
+        error: 'Payment request failed', code: known ? error.code : error?.code === 'ER_DUP_ENTRY' ? 'payment-conflict' : 'payment-service-unavailable',
+      })
+      return
+    }
     const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 500
     sendJson(res, statusCode, {
       error: statusCode === 413 ? 'Payload Too Large' : statusCode === 400 ? 'Bad Request' : 'Internal Server Error',

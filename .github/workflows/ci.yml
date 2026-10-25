@@ -73,3 +73,7 @@ jobs:
         run: npm run build
       - name: Mobile build
         run: npm run build:mobile
+      - name: Install browser for payment smoke
+        run: npx playwright install --with-deps chromium
+      - name: Payment return page and signed POST form smoke
+        run: npm run test:payment-browser

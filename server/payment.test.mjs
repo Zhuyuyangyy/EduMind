@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { withTestServer } from './test-server.mjs'
 
 process.env.PAYMENT_PROVIDER = 'mock'
+process.env.EDUMIND_PAYMENT_ENABLED = 'true'
 process.env.EDUMIND_PAYMENT_PRICE_CENTS = '100'
 
 async function login(post, account = 'reviewer') {
@@ -65,4 +66,25 @@ test('payment endpoints reject missing idempotency and real callback without pro
     assert.equal((await post('/api/payments/orders', {}, { headers })).status, 400)
     assert.equal((await post('/api/payments/notify/alipay', { out_trade_no: 'ord_missing' })).status, 503)
   })
+})
+
+test('payment sale is disabled explicitly and malformed prices cannot enable purchase', async () => {
+  const saved = { enabled: process.env.EDUMIND_PAYMENT_ENABLED, price: process.env.EDUMIND_PAYMENT_PRICE_CENTS }
+  try {
+    process.env.EDUMIND_PAYMENT_ENABLED = 'false'
+    await withTestServer(async ({ post }) => {
+      const headers = { Authorization: `Bearer ${await login(post)}` }
+      const res = await post('/api/payments/orders', { idempotencyKey: 'sale-disabled' }, { headers })
+      assert.equal(res.status, 503)
+    })
+    process.env.EDUMIND_PAYMENT_ENABLED = 'true'
+    process.env.EDUMIND_PAYMENT_PRICE_CENTS = '100garbage'
+    await withTestServer(async ({ post }) => {
+      const headers = { Authorization: `Bearer ${await login(post)}` }
+      assert.equal((await post('/api/payments/orders', { idempotencyKey: 'price-invalid' }, { headers })).status, 503)
+    })
+  } finally {
+    process.env.EDUMIND_PAYMENT_ENABLED = saved.enabled
+    process.env.EDUMIND_PAYMENT_PRICE_CENTS = saved.price
+  }
 })
