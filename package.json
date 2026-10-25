@@ -6,7 +6,8 @@
   "overrides": {
     "gh-pages": "^5.0.0",
     "qs": "^6.16.1",
-    "urllib": "4.9.1"
+    "urllib": "4.9.1",
+    "postcss-selector-parser": "7.1.6"
   },
   "scripts": {
     "tailwind": "tailwindcss -i src/assets/styles/_tailwind.src.css -o src/assets/styles/_tailwind.css --config tailwind.config.js",
