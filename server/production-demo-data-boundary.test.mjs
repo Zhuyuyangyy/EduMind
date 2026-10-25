@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
+import { test, after } from 'node:test'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -8,6 +8,12 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+// 生产模式无 JSON 豁免：本用例必须连接真实 MySQL（未配置时明确 skip）。
+const mysqlConfigured = Boolean(
+  process.env.MYSQL_URL || (process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_DATABASE),
+)
+const SKIP_REASON = '未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），生产演示数据边界未实测'
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)) }
 
@@ -22,7 +28,7 @@ async function waitUp(baseUrl) {
   return false
 }
 
-test('production users cannot read fixed demo evaluation/path/workflow payloads', async () => {
+test('production users cannot read fixed demo evaluation/path/workflow payloads', { skip: mysqlConfigured ? false : SKIP_REASON }, async () => {
   const suffix = `${process.pid}-${Date.now()}`
   const dataFile = path.join(os.tmpdir(), `edumind-demo-boundary-${suffix}.json`)
   const identityFile = path.join(os.tmpdir(), `edumind-demo-boundary-${suffix}.identities.json`)
@@ -31,38 +37,26 @@ test('production users cannot read fixed demo evaluation/path/workflow payloads'
   const env = {
     ...process.env,
     ZHIXUE_ENV: 'production',
-    // 只验证演示数据边界；生产缺少 MySQL 的拒绝行为由生产安全测试覆盖。
-    ZHIXUE_ALLOW_JSON_PRODUCTION: '1',
+    // 生产模式无 JSON 豁免：继承 MYSQL_*，使用真实 MySQL fixture；
+    // 生产缺少 MySQL 的拒绝行为由生产安全测试覆盖。
     PORT: String(port),
     ZHIXUE_DATA_FILE: dataFile,
     ZHIXUE_CHAT_STORE_FILE: dataFile,
     ZHIXUE_TRACE_FILE: `${dataFile}.traces.json`,
     ZHIXUE_SESSION_FILE: `${dataFile}.sessions.json`,
     ZHIXUE_IDENTITY_FILE: identityFile,
-    MYSQL_URL: '', MYSQL_HOST: '', MYSQL_PORT: '', MYSQL_USER: '', MYSQL_PASSWORD: '', MYSQL_DATABASE: '',
   }
   const { createIdentity } = await import('./identity.js')
-  const previousIdentityFile = process.env.ZHIXUE_IDENTITY_FILE
-  process.env.ZHIXUE_IDENTITY_FILE = identityFile
-  const mysqlKeys = ['MYSQL_URL', 'MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DATABASE']
-  const previousMysql = Object.fromEntries(mysqlKeys.map(key => [key, process.env[key]]))
-  try {
-    // 父进程与子进程必须使用同一 JSON fixture，不能继承全量回归的 MySQL。
-    for (const key of mysqlKeys) delete process.env[key]
-    await createIdentity({ account: 'production-demo-boundary', password: 'strong-boundary-password-123', role: 'student', displayName: 'Boundary User' })
-  } finally {
-    for (const key of mysqlKeys) {
-      if (previousMysql[key] === undefined) delete process.env[key]
-      else process.env[key] = previousMysql[key]
-    }
-  }
+  const account = `production-demo-boundary-${suffix}`
+  // 测试进程与服务器共用同一 MySQL 身份表（账号按运行唯一，避免共库重跑冲突）
+  await createIdentity({ account, password: 'strong-boundary-password-123', role: 'student', displayName: 'Boundary User' })
   const child = spawn(process.execPath, ['server/index.js'], { cwd: projectRoot, env, stdio: 'ignore' })
   try {
     assert.ok(await waitUp(baseUrl))
     const login = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account: 'production-demo-boundary', password: 'strong-boundary-password-123', role: 'student' }),
+      body: JSON.stringify({ account, password: 'strong-boundary-password-123', role: 'student' }),
     })
     assert.equal(login.status, 200)
     const { token } = await login.json()
@@ -77,7 +71,14 @@ test('production users cannot read fixed demo evaluation/path/workflow payloads'
     for (const file of [dataFile, identityFile, `${dataFile}.traces.json`, `${dataFile}.sessions.json`]) {
       try { fs.rmSync(file, { force: true }) } catch {}
     }
-    if (previousIdentityFile === undefined) delete process.env.ZHIXUE_IDENTITY_FILE
-    else process.env.ZHIXUE_IDENTITY_FILE = previousIdentityFile
+  }
+})
+
+after(async () => {
+  try {
+    const { closeMySqlPool } = await import('./store/mysql.js')
+    await closeMySqlPool()
+  } catch {
+    /* ignore */
   }
 })

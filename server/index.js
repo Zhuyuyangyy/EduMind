@@ -177,10 +177,10 @@ const PUBLIC_API_PATHS = new Set([
   '/api/auth/logout',
 ])
 
-// JSON 文件存储只适合本地演示/测试。生产实例必须连接共享 MySQL；
-// 测试专用的显式豁免不会被部署配置默认打开。
+// JSON 文件存储只适合本地演示/测试。生产实例必须连接共享 MySQL（fail-closed），
+// 不存在任何环境变量豁免；生产模式行为测试一律使用真实 MySQL fixture。
 function productionStorageReady() {
-  return !isProductionMode() || isMySqlConfigured() || process.env.ZHIXUE_ALLOW_JSON_PRODUCTION === '1'
+  return !isProductionMode() || isMySqlConfigured()
 }
 
 const DEFAULT_ALLOWED_ORIGINS = [

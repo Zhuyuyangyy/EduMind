@@ -8,7 +8,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 /**
- * P4-1B 认证边界补测（复核发现 · 先于修复编写，预期当前版本失败）。
+ * P4-1B 认证边界补测。
  *
  * 门禁：
  * 1. 生产模式：正式身份被删除 → 名下旧会话立即失效（401）
@@ -20,6 +20,13 @@ import { fileURLToPath } from 'node:url'
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const sleep = ms => new Promise(r => setTimeout(r, ms))
+
+// 生产模式无 JSON 豁免：production 用例必须连接真实 MySQL（未配置时明确
+// skip），demo 回归用例保持 JSON 隔离。
+const mysqlConfigured = Boolean(
+  process.env.MYSQL_URL || (process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_DATABASE),
+)
+const SKIP_REASON = '未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），P4-1B 生产会话边界未实测'
 
 // 测试进程的身份文件隔离（默认路径会落到 server/identities.json）
 const IDENTITY_FILE = path.join(os.tmpdir(), `edumind-boundary-identities-${process.pid}.json`)
@@ -35,9 +42,8 @@ function startServer(port, extraEnv = {}) {
     env: {
       ...process.env,
       PORT: String(port),
-      MYSQL_URL: '', MYSQL_HOST: '', MYSQL_PORT: '', MYSQL_USER: '', MYSQL_PASSWORD: '', MYSQL_DATABASE: '',
-      // 本文件专门验证 JSON 身份契约；生产部署默认不设置此测试豁免。
-      ZHIXUE_ALLOW_JSON_PRODUCTION: '1',
+      // production 用例：继承 MYSQL_*（生产模式 fail-closed，无 JSON 豁免）；
+      // demo 用例通过 extraEnv 显式剥离 MySQL 保持 JSON 隔离。
       ZHIXUE_IDENTITY_FILE: IDENTITY_FILE,
       ZHIXUE_SESSION_FILE: process.env.ZHIXUE_SESSION_FILE,
       ...extraEnv,
@@ -87,16 +93,13 @@ async function probeSession(baseUrl, token) {
   return { status: res.status, body: res.status === 200 ? await res.json() : null }
 }
 
-test('生产模式：正式身份被删除后旧会话立即失效', async () => {
+test('生产模式：正式身份被删除后旧会话立即失效', { skip: mysqlConfigured ? false : SKIP_REASON }, async () => {
   const port = 27400 + (process.pid % 20000)
   const base = `http://127.0.0.1:${port}`
   const account = `p41b-del-${Date.now()}`
   const password = 'delete-identity-password-123'
 
-  // 测试进程同样剥离 MySQL（identity 操作走同一存储）
-  for (const key of ['MYSQL_URL', 'MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DATABASE']) {
-    delete process.env[key]
-  }
+  // 测试进程与服务器共用同一 MySQL 身份表
   const { createIdentity, deleteIdentity } = await import('../server/identity.js')
   await createIdentity({ account, password, role: 'student', displayName: '待删除账号' })
 
@@ -116,15 +119,12 @@ test('生产模式：正式身份被删除后旧会话立即失效', async () =>
   }
 })
 
-test('生产模式：角色降级不递增凭据版本也立即生效', async () => {
+test('生产模式：角色降级不递增凭据版本也立即生效', { skip: mysqlConfigured ? false : SKIP_REASON }, async () => {
   const port = 27500 + (process.pid % 20000)
   const base = `http://127.0.0.1:${port}`
   const account = `p41b-demote-${Date.now()}`
   const password = 'demote-role-password-123'
 
-  for (const key of ['MYSQL_URL', 'MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DATABASE']) {
-    delete process.env[key]
-  }
   const { createIdentity, setIdentityRole } = await import('../server/identity.js')
   await createIdentity({ account, password, role: 'admin', displayName: '待降级管理员' })
 
@@ -150,10 +150,11 @@ test('演示模式：无正式身份的演示账号不受生产规则影响', as
   const port = 27600 + (process.pid % 20000)
   const base = `http://127.0.0.1:${port}`
 
-  for (const key of ['MYSQL_URL', 'MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DATABASE']) {
-    delete process.env[key]
-  }
-  let api = startServer(port, { ZHIXUE_ENV: 'demo' })
+  // demo 回归保持 JSON 隔离：显式剥离 MySQL
+  let api = startServer(port, {
+    ZHIXUE_ENV: 'demo',
+    MYSQL_URL: '', MYSQL_HOST: '', MYSQL_PORT: '', MYSQL_USER: '', MYSQL_PASSWORD: '', MYSQL_DATABASE: '',
+  })
   try {
     assert.ok(await waitUp(base), '服务应启动')
     const { token } = await login(base, 'reviewer', 'Zhixue2026!')

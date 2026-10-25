@@ -32,7 +32,7 @@ test('注册接口创建正式学生账号，重复账号和管理员角色请�
   })
 })
 
-test('生产模式强制要求共享 MySQL，未配置时健康检查明确失败', async () => {
+test('生产模式强制要求共享 MySQL：旧 JSON 豁免变量不再生效，健康检查明确失败', async () => {
   const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
   const dataFile = path.join(os.tmpdir(), `edumind-security-prod-${process.pid}-${Date.now()}.json`)
   const port = 27000 + (process.pid % 1000)
@@ -42,7 +42,8 @@ test('生产模式强制要求共享 MySQL，未配置时健康检查明确失�
       ...process.env,
       NODE_ENV: 'production',
       ZHIXUE_ENV: 'production',
-      ZHIXUE_ALLOW_JSON_PRODUCTION: '0',
+      // 故意把旧豁免变量设为 '1'：它必须不再产生任何效果（回归证明）
+      ZHIXUE_ALLOW_JSON_PRODUCTION: '1',
       MYSQL_URL: '', MYSQL_HOST: '', MYSQL_PORT: '', MYSQL_USER: '', MYSQL_PASSWORD: '', MYSQL_DATABASE: '',
       PORT: String(port),
       ZHIXUE_DATA_FILE: dataFile,

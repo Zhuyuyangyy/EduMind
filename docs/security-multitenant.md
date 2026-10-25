@@ -6,7 +6,7 @@
 
 - `POST /api/auth/register` 创建正式学生账号，账号、姓名和密码在服务端校验；客户端提交管理员角色不会提升权限。
 - Web 与 Capacitor 登录界面只有在显式设置 `VITE_DEMO_MODE=true` 时才预填或展示公开演示账号。
-- 生产模式没有共享 MySQL 时，健康检查返回 503，业务请求 fail-closed；不会静默使用 JSON 文件。`ZHIXUE_ALLOW_JSON_PRODUCTION=1` 仅用于 JSON 契约测试，正式部署禁止设置。
+- 生产模式没有共享 MySQL 时，健康检查返回 503，业务请求 fail-closed；不会静默使用 JSON 文件，也不存在任何环境变量豁免（`ZHIXUE_ALLOW_JSON_PRODUCTION` 已删除且不再被读取）。生产模式行为测试一律使用真实 MySQL fixture，未配置 MySQL 时明确 skip。
 - 生产会话 Cookie 和 CSRF Cookie 强制带 `Secure`。
 - MySQL 作答幂等键改为 `(account_id, session_id, idempotency_key)`，并在迁移时替换旧的全局索引。
 - MySQL 作答和结束练习先锁定会话行；结束练习在同一事务内读取答案、更新状态和写入完成事件。
