@@ -2,17 +2,16 @@
   <Teleport to="body">
     <div class="welcome-overlay" @keydown="onKeydown">
       <div class="welcome-deck">
-        <div class="welcome-deck__rear welcome-deck__rear--far" aria-hidden="true" />
         <div class="welcome-deck__rear" aria-hidden="true" />
         <section ref="dialog" class="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title" aria-describedby="welcome-description" tabindex="-1">
           <header class="welcome-card__header"><span><MobileIcon name="sparkle" :size="15" /> 让智学星枢更懂你</span><button class="welcome-close" aria-label="关闭学习引导" :disabled="busy" @click="dismiss"><MobileIcon name="close" :size="18" /></button></header>
-          <div class="welcome-progress" aria-label="引导进度"><i v-for="n in 7" :key="n" :class="{ active: n <= step + 1 }" /></div>
-          <Transition name="welcome-slide" mode="out-in" @after-enter="title?.focus()">
+          <div class="welcome-progress" role="progressbar" aria-label="引导进度" :aria-valuenow="step + 1" :aria-valuemin="1" :aria-valuemax="7" :aria-valuetext="review ? '确认你的选择' : `第 ${step + 1} 张，共 6 张问题`"><i v-for="n in 7" :key="n" :class="{ active: n <= step + 1 }" /></div>
+          <Transition name="welcome-slide" mode="out-in" @after-enter="finishTransition">
             <div :key="step" class="welcome-card__body">
               <div class="welcome-card__symbol"><MobileIcon :name="current?.icon || 'check'" :size="26" /></div>
               <p class="welcome-card__eyebrow">{{ review ? '一份属于你的学习起点' : `认识你的第 ${step + 1} 步` }}</p>
               <h2 id="welcome-title" ref="title" tabindex="-1">{{ review ? '把这份了解，带进学习里。' : current!.title }}</h2>
-              <p id="welcome-description" class="welcome-card__description">{{ review ? '这些选择会带入学习档案，你还可以继续补充和调整。' : current!.description }}</p>
+              <p id="welcome-description" class="welcome-card__description">{{ review ? '保存后就可以开始向导师提问。完整档案，想补充时再完善。' : current!.description }}</p>
               <template v-if="current">
                 <fieldset class="welcome-options"><legend class="welcome-sr">{{ current.field.label }}</legend>
                   <label v-for="option in current.field.options" :key="option.value" class="welcome-option" :class="{ selected: answers[current.field.key] === option.value }">
@@ -27,7 +26,7 @@
             </div>
           </Transition>
           <p v-if="error" class="welcome-error" role="alert">{{ error }}</p>
-          <footer class="welcome-card__footer"><button v-if="step" class="welcome-back" :disabled="busy" @click="back"><MobileIcon name="back" :size="16" /> 上一张</button><button class="m-btn m-btn--primary welcome-next" :disabled="busy" @click="next">{{ busy ? '正在保存…' : review ? '保存并完善档案' : '下一张' }}<MobileIcon v-if="!busy" name="chevronRight" :size="15" /></button></footer>
+          <footer class="welcome-card__footer"><button v-if="step" class="welcome-back" :disabled="busy || transitioning" @click="back"><MobileIcon name="back" :size="16" /> 上一张</button><button class="m-btn m-btn--primary welcome-next" :disabled="busy || transitioning" @click="next">{{ busy ? '正在保存…' : review ? '保存，开始学习' : '下一张' }}<MobileIcon v-if="!busy" name="chevronRight" :size="15" /></button></footer>
           <div class="welcome-card__bottom"><span>你可以随时修改这些选择</span><button :disabled="busy" @click="dismiss">稍后再说</button></div>
         </section>
       </div>
@@ -36,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { apiPost } from '@/lib/api'
 import { currentEpoch } from '@/mobile/data/learning-data'
 import { needsFields, newAnswers } from '@/mobile/data/onboarding'
@@ -59,6 +58,7 @@ const step = ref(0)
 const current = computed(() => cards[step.value])
 const review = computed(() => step.value === cards.length)
 const busy = ref(false)
+const transitioning = ref(false)
 const error = ref('')
 const dialog = ref<HTMLElement | null>(null)
 const title = ref<HTMLElement | null>(null)
@@ -71,13 +71,15 @@ function payload(): Partial<SurveyAnswers> {
   return Object.fromEntries([...cards.map(card => card.field.key), 'customField', 'shortTermDetail'].filter(key => answers[key as keyof SurveyAnswers] !== '').map(key => [key, answers[key as keyof SurveyAnswers]]))
 }
 function dismiss() { if (!busy.value) emit('dismiss', payload()) }
-function back() { step.value--; error.value = ''; nextTick(() => title.value?.focus()) }
+function finishTransition() { transitioning.value = false; title.value?.focus() }
+function back() { if (transitioning.value || busy.value) return; transitioning.value = true; step.value--; error.value = '' }
 async function next() {
+  if (transitioning.value || busy.value) return
   error.value = ''
   if (!review.value) {
     const field = current.value!.field
     if (!field.options.some(option => option.value === answers[field.key]) || field.key === 'field' && answers.field === 'other' && !answers.customField.trim()) { error.value = '选一个适合你的答案，再继续。'; return }
-    step.value++; await nextTick(); title.value?.focus(); return
+    transitioning.value = true; step.value++; return
   }
   const epoch = currentEpoch()
   busy.value = true
@@ -99,37 +101,37 @@ function onKeydown(event: KeyboardEvent) {
 </script>
 
 <style scoped>
-.welcome-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)); background: rgba(226, 232, 247, .56); backdrop-filter: blur(14px) saturate(.9); -webkit-backdrop-filter: blur(14px) saturate(.9); }
+.welcome-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)); background: rgba(236, 239, 245, .72); backdrop-filter: blur(18px) saturate(.92); -webkit-backdrop-filter: blur(18px) saturate(.92); }
 .welcome-deck { position: relative; width: 100%; max-width: 374px; }
-.welcome-deck__rear { position: absolute; inset: 12px -6px 0; border-radius: 30px; border: 1px solid rgba(255,255,255,.8); background: rgba(255,255,255,.3); transform: rotate(3deg); box-shadow: 0 12px 30px rgba(60, 80, 135, .07); }
-.welcome-deck__rear--far { inset: 8px -7px 0; transform: rotate(-3deg); background: rgba(243,247,255,.3); }
-.welcome-card { position: relative; display: flex; flex-direction: column; width: 100%; max-height: calc(100dvh - 64px); padding: 22px; border: 1px solid rgba(255,255,255,.95); border-radius: 29px; background: linear-gradient(140deg, rgba(255,255,255,.87), rgba(247,250,255,.66)); backdrop-filter: blur(36px) saturate(1.35); -webkit-backdrop-filter: blur(36px) saturate(1.35); box-shadow: 0 24px 80px rgba(51,75,130,.15), inset 0 1px 0 white, inset 0 -1px 0 rgba(255,255,255,.5); overflow-y: auto; outline: none; font-family: var(--m-font); color: var(--m-text); }
+.welcome-deck__rear { position: absolute; inset: 9px -3px -3px; border-radius: 30px; border: 1px solid rgba(255,255,255,.45); background: rgba(255,255,255,.18); transform: rotate(1.2deg); }
+.welcome-card { position: relative; display: flex; flex-direction: column; width: 100%; max-height: calc(100dvh - max(32px, env(safe-area-inset-top)) - max(32px, env(safe-area-inset-bottom))); padding: 22px; border: 1px solid rgba(255,255,255,.9); border-radius: 29px; background: rgba(255,255,255,.86); backdrop-filter: blur(36px) saturate(1.08); -webkit-backdrop-filter: blur(36px) saturate(1.08); box-shadow: 0 18px 52px rgba(31,39,60,.13), inset 0 1px 0 white; overflow-y: auto; outline: none; font-family: var(--m-font); color: #20242e; }
+.welcome-card > * { flex-shrink: 0; }
 .welcome-card__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; }
-.welcome-card__header > span { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--m-text-dim); }
+.welcome-card__header > span { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #565d6b; }
 .welcome-close { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%; color: var(--m-text-faint); background: rgba(255,255,255,.5); cursor: pointer; }
 .welcome-progress { display: flex; gap: 5px; margin: 14px 0 26px; }
-.welcome-progress i { flex: 1; height: 3px; border-radius: 4px; background: rgba(130,148,185,.15); }
+.welcome-progress i { flex: 1; height: 3px; border-radius: 4px; background: #e5e7eb; }
 .welcome-progress i.active { background: var(--m-primary); }
 .welcome-card__symbol { display: grid; place-items: center; width: 55px; height: 55px; border-radius: 18px; background: rgba(230,237,255,.7); color: var(--m-primary); border: 1px solid rgba(255,255,255,.7); box-shadow: inset 0 1px 0 rgba(255,255,255,.8); margin-bottom: 20px; }
-.welcome-card__eyebrow { font-size: 11px; letter-spacing: .4px; color: var(--m-primary); margin: 0 0 9px; }
-.welcome-card h2 { font-size: 25px; line-height: 1.4; letter-spacing: -.7px; font-weight: 600; margin: 0 0 10px; outline: none; }
-.welcome-card__description { font-size: 12px; line-height: 1.8; color: var(--m-text-dim); margin: 0 0 22px; }
+.welcome-card__eyebrow { font-size: 12px; letter-spacing: .4px; color: var(--m-primary); margin: 0 0 9px; }
+.welcome-card h2 { font-size: 25px; line-height: 1.4; letter-spacing: -.7px; font-weight: 600; margin: 0 0 10px; outline: none; color: #1d1d1f; }
+.welcome-card__description { font-size: 14px; line-height: 1.75; color: #565d6b; margin: 0 0 22px; }
 .welcome-options { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.welcome-option { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 5px; min-height: 64px; padding: 12px; border: 1px solid rgba(211,220,238,.8); border-radius: 16px; background: rgba(255,255,255,.5); color: var(--m-text-dim); font-size: 12px; line-height: 1.6; cursor: pointer; transition: background var(--m-duration), border-color var(--m-duration); }
-.welcome-option.selected { background: rgba(232,240,255,.85); border-color: rgba(70,112,222,.6); color: var(--m-primary); box-shadow: inset 0 0 0 1px rgba(255,255,255,.7); }
+.welcome-option { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 5px; min-height: 64px; padding: 12px; border: 1px solid #d2d2d7; border-radius: 16px; background: rgba(255,255,255,.72); color: #1d1d1f; font-size: 14px; line-height: 1.6; cursor: pointer; transition: background var(--m-duration), border-color var(--m-duration), box-shadow var(--m-duration); }
+.welcome-option.selected { background: #edf3ff; border-color: #3769d5; color: #2458bd; box-shadow: inset 0 0 0 1px rgba(55,105,213,.12); }
 .welcome-option input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .welcome-option:focus-within { outline: 3px solid var(--m-primary); outline-offset: 2px; }
 .welcome-option .m-icon { flex: none; }
-.welcome-detail { display: grid; gap: 8px; margin-top: 16px; font-size: 11px; color: var(--m-text-dim); }
+.welcome-detail { display: grid; gap: 8px; margin-top: 16px; font-size: 13px; color: var(--m-text-dim); }
 .welcome-detail .m-input, .welcome-detail .m-textarea { background: rgba(255,255,255,.55); font-size: 16px; }
 .welcome-card__footer { display: flex; align-items: center; gap: 12px; margin-top: 28px; }
-.welcome-next { flex: 1; justify-content: space-between; min-height: 48px; font-size: 13px; }
-.welcome-back { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: var(--m-text-dim); min-height: 44px; padding: 0; font: inherit; font-size: 11px; cursor: pointer; }
+.welcome-next { flex: 1; justify-content: space-between; min-height: 48px; font-size: 14px; }
+.welcome-back { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: var(--m-text-dim); min-height: 44px; padding: 0; font: inherit; font-size: 12px; cursor: pointer; }
 .welcome-card__bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
-.welcome-card__bottom > span { font-size: 10px; color: var(--m-text-faint); }
-.welcome-card__bottom button { border: 0; background: transparent; color: var(--m-text-dim); min-height: 44px; font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
+.welcome-card__bottom > span { font-size: 12px; color: var(--m-text-faint); }
+.welcome-card__bottom button { border: 0; background: transparent; color: var(--m-text-dim); min-height: 44px; font: inherit; font-size: 12px; cursor: pointer; padding: 0; white-space: nowrap; }
 .welcome-summary { margin: 0; display: grid; gap: 13px; }
-.welcome-summary > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 12px; }
+.welcome-summary > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 14px; }
 .welcome-summary dt { color: var(--m-text-faint); }
 .welcome-summary dd { margin: 0; text-align: right; color: var(--m-text); }
 .welcome-error { font-size: 12px; line-height: 1.7; color: var(--m-danger); margin: 14px 0 0; }

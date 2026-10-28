@@ -60,7 +60,7 @@ function inline(text: string) {
 .tutor-answer code { border-radius: 4px; background: var(--m-surface-2); padding: 2px 4px; font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
 .tutor-answer pre { max-width: 100%; overflow-x: auto; border: 1px solid var(--m-border); padding: 12px; background: var(--m-surface-2); border-radius: 12px; line-height: 1.65; }
 .tutor-answer pre code { padding: 0; white-space: pre; }
-.tutor-answer__context { font-size: 10px; color: var(--m-text-faint); border-top: 1px solid var(--m-border); margin-top: 14px; padding-top: 8px; }
+.tutor-answer__context { font-size: 12px; color: var(--m-text-faint); border-top: 1px solid var(--m-border); margin-top: 14px; padding-top: 8px; }
 .tutor-answer__context summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; }
 .tutor-answer__context p { margin-bottom: 4px; }
 </style>

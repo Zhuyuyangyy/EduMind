@@ -47,6 +47,7 @@
           </button>
         </div>
 
+        <QuestionTools :key="current.id" :exercise-id="current.id" :session-id="sessionId" :title="current.prompt" />
         <!-- 单题反馈（提交后即时显示对错；标准答案在结果页公开） -->
         <div v-if="isAnswered(current.id)" class="practice__verdict" :class="answeredMap[current.id].correct ? 'practice__verdict--ok' : 'practice__verdict--bad'">
           <b>{{ answeredMap[current.id].correct ? '回答正确' : '回答错误' }}</b>
@@ -91,6 +92,7 @@ import {
   fetchSessionQuestions,
   submitAnswer,
 } from '@/mobile/data/study'
+import QuestionTools from '@/mobile/components/QuestionTools.vue'
 import type { StudyExercise } from '@/mobile/data/study'
 
 const route = useRoute()

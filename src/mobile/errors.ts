@@ -10,6 +10,17 @@ export interface FriendlyError {
 const NETWORK_DETAIL = '请检查：① API 地址是否正确（状态页可修改）② 手机能否访问该地址 ③ 服务是否已启动'
 
 export function toFriendlyError(error: unknown): FriendlyError {
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : null
+  switch (code) {
+    case 'account-exists':
+      return { title: '这个账号已注册', detail: '如果是你刚才创建的账号，可直接用当前密码登录；也可以换一个账号注册。', reauth: false }
+    case 'invalid-account':
+      return { title: '账号格式不符合要求', detail: '账号需为 3–64 个中文、字母、数字、点、下划线或短横线，不能包含空格或 @。昵称可另行填写。', reauth: false }
+    case 'invalid-password':
+      return { title: '密码长度不符合要求', detail: '请设置 8–128 个字符的密码，然后重新提交。', reauth: false }
+    case 'invalid-display-name':
+      return { title: '请检查昵称', detail: '昵称需要填写，长度为 1–64 个字符。', reauth: false }
+  }
   if (error instanceof DOMException && error.name === 'AbortError') {
     return { title: '请求超时', detail: '服务器超过 60 秒未响应，请稍后重试或切换网络。', reauth: false }
   }

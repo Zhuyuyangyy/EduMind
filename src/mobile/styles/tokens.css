@@ -1,41 +1,37 @@
 /* ============================================================
-   智学星枢 Mobile：清晰、轻量的浅色设计系统
+   智学星枢 Mobile：方案 V1.0 浅色 Apple 风格设计系统
    所有移动端页面只允许使用本文件定义的变量，不允许散落硬编码色值。
    ============================================================ */
 
 :root {
   color-scheme: light;
-  --m-on-primary: #ffffff;
-  /* —— 色彩：浅色分组界面 —— */
-  --m-bg: #f6f7fb;
-  --m-bg-elevated: #ffffff;
-  --m-surface: #ffffff;
-  --m-surface-2: #f1f3f8;
-  --m-border: #e8ebf2;
-  --m-border-strong: #d4d9e5;
-
-  --m-primary: #2856d7;
-  --m-primary-deep: #2047b4;
-  --m-primary-soft: #edf2ff;
-  --m-primary-border: #dce5ff;
-  --m-gradient-primary: #2856d7;
-
-  --m-text: #202535;
-  --m-text-dim: #596176;
-  --m-text-faint: #70798b;
-
-  --m-success: #237b4b;
-  --m-success-soft: #eaf7ef;
-  --m-warn: #8c5700;
-  --m-warn-soft: #fff5df;
-  --m-danger: #bf3036;
-  --m-danger-soft: #fff0f0;
+  --m-on-primary: #fff;
+  --m-bg: #f6f6f8;
+  --m-bg-elevated: #fff;
+  --m-surface: #fff;
+  --m-surface-2: #f0f1f4;
+  --m-border: rgba(30,37,50,.075);
+  --m-border-strong: #cfd3db;
+  --m-primary: #3769d5;
+  --m-primary-deep: #2d59bd;
+  --m-primary-soft: #edf2fc;
+  --m-primary-border: rgba(55,105,213,.18);
+  --m-gradient-primary: #3769d5;
+  --m-text: #20242e;
+  --m-text-dim: #565d6b;
+  --m-text-faint: #707785;
+  --m-success: #2b7b61;
+  --m-success-soft: #edf6f0;
+  --m-warn: #956921;
+  --m-warn-soft: #fbf5e9;
+  --m-danger: #b94050;
+  --m-danger-soft: #fbf0f1;
 
   /* —— 字体 —— */
   --m-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', sans-serif;
   --m-text-xs: 12px;
   --m-text-sm: 13px;
-  --m-text-md: 14px;
+  --m-text-md: 15px;
   --m-text-base: 16px;
   --m-text-lg: 18px;
   --m-text-xl: 25px;
@@ -53,18 +49,18 @@
   /* —— 圆角 —— */
   --m-radius-sm: 8px;
   --m-radius-md: 14px;
-  --m-radius-lg: 22px;
+  --m-radius-lg: 20px;
   --m-radius-xl: 28px;
   --m-radius-full: 999px;
 
   /* —— 品牌扩展色（P4-2C 设计规范：星紫=AI/知识节点，暖金=成就/掌握） —— */
-  --m-violet: #6451ad;
-  --m-violet-deep: #51408c;
-  --m-violet-soft: #f0edf9;
-  --m-gradient-violet: #6451ad;
-  --m-gold: #8c5700;
-  --m-gold-deep: #754900;
-  --m-gold-soft: #fff5df;
+  --m-violet: #b2a5ff;
+  --m-violet-deep: #cfc5ff;
+  --m-violet-soft: rgba(141,123,255,.14);
+  --m-gradient-violet: #b2a5ff;
+  --m-gold: #ffc27b;
+  --m-gold-deep: #e7a763;
+  --m-gold-soft: rgba(255,194,123,.12);
 
   /* —— 字阶（P4-2C 五级重定：核心数字 30/34px 星青加粗） —— */
   --m-text-3xl: 30px;
@@ -81,6 +77,7 @@
   /* —— 安全区 —— */
   --m-safe-top: env(safe-area-inset-top, 0px);
   --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --mobile-bottom-inset: calc(64px + var(--m-safe-bottom));
 
   /* —— 动效 —— */
   --m-ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -394,10 +391,10 @@
 h1 { font-weight: 650; line-height: 1.23; }
 h2, h3 { font-weight: 600; }
 .m-section-title { letter-spacing: -.35px; margin-top: 30px; font-size: 18px; }
-.m-section-title__sub { font-size: 11px; }
+.m-section-title__sub { font-size: 12px; }
 .m-btn--primary:hover { background: var(--m-primary-deep); }
 .m-btn--ghost:hover { background: var(--m-primary-border); }
 .m-btn--primary:disabled { opacity: .48; }
 .m-card { box-shadow: var(--m-shadow-card); }
 .m-progress { height: 5px; }
-.m-badge { font-weight: 500; font-size: 10px; padding: 3px 8px; }
+.m-badge { font-weight: 500; font-size: 12px; padding: 3px 8px; }

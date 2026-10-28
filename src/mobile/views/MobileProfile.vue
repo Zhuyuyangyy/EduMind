@@ -1,25 +1,37 @@
 <template>
   <section class="profile">
-    <div class="profile__heading"><p>属于你的学习空间</p><h1>我的</h1></div>
+    <div class="profile__heading"><h1>我的</h1><span>按自己的节奏，慢慢积累。</span></div>
 
     <!-- 账号（真实会话） -->
-    <div class="m-card profile__account">
+    <div class="profile__account">
       <div class="profile__avatar">{{ (session?.name || session?.account || '?').slice(0, 1).toUpperCase() }}</div>
       <div class="profile__account-body">
         <p class="profile__name">{{ session?.name || session?.account || '未登录' }}</p>
         <p class="profile__meta">
-          {{ session?.account || '—' }} · {{ session?.role === 'admin' ? '管理员' : '学习者' }}
+          {{ session?.role === 'admin' ? '管理员' : '学习者' }} · {{ session?.account || '—' }}
         </p>
+        <RouterLink to="/workspace" class="profile__current-goal" :class="{ 'profile__current-goal--set': learning.workspace?.goals.some(g=>g.status==='active') }"><MobileIcon name="target" :size="13" /><span><b>{{ learning.workspace?.goals.find(g=>g.status==='active')?.title || '设置一个学习目标' }}</b><small>{{ learning.workspace?.goals.some(g=>g.status==='active') ? '当前学习目标 · 影响首页与今日任务' : '设置后，首页会为你安排今天的第一步' }}</small></span></RouterLink>
+        <RouterLink to="/login?register=1" class="profile__account-switch">创建新账号 / 切换账号</RouterLink>
       </div>
     </div>
 
+    <ProfileLearningSummary />
+    <h2 class="profile__group-label">学习</h2>
     <div class="m-card profile__links">
-      <button class="profile__welcome-entry" @click="requestWelcomeCards"><span><MobileIcon name="sparkle" /> 重新认识我</span><MobileIcon name="chevronRight" :size="17" /></button>
-      <RouterLink to="/diagnose"><span><MobileIcon name="diagnose" /> 学习档案与偏好</span><MobileIcon name="chevronRight" :size="17" /></RouterLink>
+      <RouterLink to="/workspace"><span><MobileIcon name="target" /> 目标与学习时间</span><MobileIcon name="chevronRight" :size="17" /></RouterLink>
       <RouterLink to="/growth"><span><MobileIcon name="chart" /> 学习记录与画像报告</span><MobileIcon name="chevronRight" :size="17" /></RouterLink>
       <RouterLink to="/planning"><span><MobileIcon name="path" /> 调整学习计划</span><MobileIcon name="chevronRight" :size="17" /></RouterLink>
     </div>
-    <details class="profile__edit m-card">
+    <h2 class="profile__group-label profile__group-label--spaced">偏好与账号</h2>
+    <div class="m-card profile__links">
+      <RouterLink :to="{ path: '/workspace', query: { tab: 'memory' } }"><span><MobileIcon name="sparkle" /> 记忆与个性化</span><MobileIcon name="chevronRight" :size="17" /></RouterLink>
+      <RouterLink :to="{ path: '/workspace', query: { tab: 'reminders' } }"><span><MobileIcon name="clock" /> 复习提醒</span><MobileIcon name="chevronRight" :size="17" /></RouterLink>
+      <RouterLink :to="{ path: '/workspace', query: { tab: 'privacy' } }"><span><MobileIcon name="settings" /> 数据、导出与反馈</span><MobileIcon name="chevronRight" :size="17" /></RouterLink>
+      <button class="profile__welcome-entry" @click="requestWelcomeCards"><span><MobileIcon name="sparkle" /> 重新认识我</span><MobileIcon name="chevronRight" :size="17" /></button>
+      <RouterLink to="/diagnose"><span><MobileIcon name="diagnose" /> 学习档案与偏好</span><MobileIcon name="chevronRight" :size="17" /></RouterLink>
+    </div>
+    <h2 class="profile__group-label profile__group-label--spaced">系统</h2>
+    <details id="profile-name-edit" class="profile__edit m-card">
       <summary><span><MobileIcon name="profile" :size="18" /> 编辑昵称</span><MobileIcon name="chevronRight" :size="16" /></summary>
     <form class="profile__name-form" @submit.prevent="saveName">
       <label class="m-field"><span>昵称</span><input v-model="displayName" class="m-input" maxlength="60" required placeholder="你希望怎样被称呼" /></label>
@@ -56,13 +68,14 @@
 
     </details>
     <!-- 帮助与关于 -->
-    <h2 class="m-section-title">帮助与关于</h2>
+    <details class="profile__about"><summary>关于智学星枢<span>1.0</span></summary>
     <div class="m-card">
       <div class="m-row"><span>版本</span><span class="m-row__value">1.0 · 学习空间</span></div>
       <div class="m-row"><span>学习档案</span><span class="m-row__value">随账号保存</span></div>
       <div class="m-row"><span>数据隔离</span><span class="m-row__value">按账号隔离</span></div>
     </div>
 
+    </details>
     <button v-if="session" class="m-btn m-btn--danger m-btn--block profile__logout" @click="onLogout">退出登录</button>
   </section>
 </template>
@@ -75,10 +88,12 @@ import { fetchCurrentSession, logout, apiGet, saveAccountSettings } from '@/lib/
 import { getApiBase, getDefaultApiBase, setApiBase, validateApiBase } from '@/lib/api-config'
 import { bumpDataEpoch } from '@/mobile/data/learning-data'
 import { resetStudyLocalState } from '@/mobile/data/study'
+import { useLearningWorkspace } from '@/mobile/stores/learning-workspace'
+import ProfileLearningSummary from '@/mobile/components/ProfileLearningSummary.vue'
 import MobileIcon from '../components/MobileIcon.vue'
 import { requestWelcomeCards } from '@/mobile/data/welcome'
 
-const router = useRouter()
+const router = useRouter(), learning = useLearningWorkspace()
 const session = ref(getAuthSession())
 const displayName = ref(session.value?.name || '')
 const savingName = ref(false)
@@ -228,7 +243,7 @@ async function onLogout() {
 .profile__heading { margin: 8px 0 24px; }
 .profile__heading p { margin: 0 0 6px; font-size: 13px; color: var(--m-text-faint); }
 .profile__heading h1 { margin: 0; font-size: var(--m-text-2xl); letter-spacing: -1px; }
-.profile__account { margin-bottom: 22px; padding: 26px 22px; background: linear-gradient(120deg, #fff, #f1f5ff); border: 1px solid var(--m-primary-border); }
+.profile__account { margin-bottom: 22px; padding: 26px 22px; background: var(--m-surface); border: 1px solid var(--m-primary-border); }
 .profile__links { padding: 4px 20px; }
 .profile__links a { display: flex; align-items: center; justify-content: space-between; min-height: 62px; color: var(--m-text); text-decoration: none; font-size: 14px; border-bottom: 1px solid var(--m-border); gap: 12px; }
 .profile__links a:last-child { border: 0; }
@@ -246,6 +261,14 @@ async function onLogout() {
   align-items: center;
   gap: var(--m-space-4);
 }
+.profile__current-goal { display:flex; align-items:flex-start; gap:7px; margin-top:9px; padding:9px 10px; border:1px solid var(--m-primary-border); border-radius:12px; background:var(--m-primary-soft); color:var(--m-primary); text-decoration:none; line-height:1.45; }
+.profile__current-goal > .m-icon { margin-top:2px; flex:none; }
+.profile__current-goal > span { min-width:0; }
+.profile__current-goal b { display:block; font-size:12px; font-weight:600; overflow-wrap:anywhere; }
+.profile__current-goal small { display:block; margin-top:2px; color:var(--m-text-faint); font-size:11px; }
+.profile__current-goal:not(.profile__current-goal--set) { background:var(--m-surface); border-style:dashed; color:var(--m-text-dim); }
+.profile__group-label--spaced { margin-top:24px; }
+.profile__links + .profile__group-label { margin-top:24px; }
 
 .profile__avatar {
   flex: none;
@@ -275,6 +298,14 @@ async function onLogout() {
   font-size: var(--m-text-sm);
   color: var(--m-text-faint);
   margin: 0;
+}
+
+.profile__account-switch {
+  display: inline-flex;
+  margin-top: 10px;
+  color: var(--m-primary);
+  font-size: 12px;
+  text-decoration: none;
 }
 
 .profile__hint {

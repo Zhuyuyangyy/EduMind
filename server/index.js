@@ -35,6 +35,7 @@ import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, ge
 import { summarizeLearningHistory } from './learner-memory.js'
 import { getLearnerOnboarding, saveLearnerOnboarding } from './store/mysql.js'
 import { normalizeOnboarding } from './learner-onboarding.js'
+import { workspaceRoute } from './workspace/routes.js'
 import {
   buildSessionCookie,
   clearSessionCookie,
@@ -227,7 +228,7 @@ function notFound(res) {
   sendJson(res, 404, { error: 'Not Found' })
 }
 
-function readJson(req) {
+function readJson(req, maximumSize = MAX_BODY_SIZE) {
   return new Promise((resolve, reject) => {
     const chunks = []
     let size = 0
@@ -235,7 +236,7 @@ function readJson(req) {
 
     req.on('data', chunk => {
       size += chunk.length
-      if (size > MAX_BODY_SIZE) {
+      if (size > maximumSize) {
         tooLarge = true
         chunks.length = 0
         return
@@ -528,6 +529,8 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, { result: await saveAccountSettings(accountIdOf(req), { displayName }) })
       return
     }
+
+    if (await workspaceRoute({ req, res, pathname, searchParams, account: accountIdOf(req), readJson, sendJson, listLearningEvents, getStudySession, findExercise, getStudyStats })) return
 
     if (req.method === 'POST' && pathname === '/api/agents/run') {
       const body = await readJson(req)

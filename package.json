@@ -32,6 +32,7 @@
     "test:mobile-e2e-study": "node scripts/mobile-e2e-study.mjs",
     "test:mobile-onboarding": "node scripts/mobile-onboarding-e2e.mjs",
     "test:welcome-cards": "node scripts/mobile-welcome-e2e.mjs",
+    "test:mobile-product-v1": "node scripts/mobile-product-v1-e2e.mjs",
     "test:evaluation-browser": "node scripts/evaluation-browser-smoke.mjs",
     "verify:mysql": "node scripts/verify-mysql.mjs",
     "postinstall": "node scripts/patch-secure-storage.mjs"
@@ -62,6 +63,7 @@
     "gsap": "^3.15.0",
     "lucide-vue-next": "^1.0.0",
     "mysql2": "^3.24.6",
+    "pdf-parse": "^2.4.5",
     "pinia": "^2.1.7",
     "pixi-live2d-display": "^0.4.0",
     "three": "^0.184.0",

@@ -37,6 +37,8 @@
             你的选择：<b>{{ row.studentChoice }}</b>
           </p>
           <p v-if="!row.correct" class="result__q-answer">正确答案：<b>{{ row.correctChoice }}</b></p>
+          <QuestionTools :exercise-id="row.exercise.id" :session-id="sessionId" :title="row.exercise.prompt" />
+          <p class="workspace-caption">来源：当前服务器题库。解析需结合原文核实；资料引用尚未绑定此题。</p>
           <p v-if="row.exercise.explanation" class="result__q-explain">解析：{{ row.exercise.explanation }}</p>
         </article>
       </div>
@@ -89,6 +91,8 @@
 
       <!-- 操作 -->
       <div class="result__actions">
+        <RouterLink to="/review" class="m-btn m-btn--ghost m-btn--block">整理错题与安排复习</RouterLink>
+        <RouterLink to="/library" class="m-btn m-btn--ghost m-btn--block">把理解写进笔记</RouterLink>
         <RouterLink to="/today" class="m-btn m-btn--primary m-btn--block">返回今日学习</RouterLink>
         <RouterLink to="/growth" class="m-btn m-btn--ghost m-btn--block">查看学习成长</RouterLink>
       </div>
@@ -98,6 +102,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import QuestionTools from '@/mobile/components/QuestionTools.vue'
 import MobileIcon from '../components/MobileIcon.vue'
 import { useRoute } from 'vue-router'
 import { fetchFeedback, fetchSessionQuestions } from '@/mobile/data/study'
