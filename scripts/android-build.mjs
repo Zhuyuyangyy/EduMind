@@ -2,7 +2,7 @@
 /**
  * Android Debug 构建（P1 · feat/mobile-v1）
  * 跨平台调用 android/gradlew(.bat) assembleDebug。
- * 前置：ANDROID_HOME 指向 Android SDK；JDK 17。
+ * 前置：ANDROID_HOME 指向 Android SDK；JDK 21 或更高版本。
  * 用法：node scripts/android-build.mjs
  */
 import { spawn } from 'node:child_process'
@@ -28,10 +28,13 @@ if (!process.env.ANDROID_HOME && !process.env.ANDROID_SDK_ROOT) {
 const isWindows = os.platform() === 'win32'
 const gradlew = path.join(androidDir, isWindows ? 'gradlew.bat' : 'gradlew')
 
-const child = spawn(gradlew, ['assembleDebug', '--no-daemon'], {
+// Windows 必须通过 cmd 执行 .bat；使用工作目录内的固定命令，避免
+// shell:true 把包含空格的完整路径（如 D:\ZYY Project）截成 D:\ZYY。
+const child = spawn(isWindows ? (process.env.ComSpec || 'cmd.exe') : gradlew,
+  isWindows ? ['/d', '/s', '/c', 'gradlew.bat assembleDebug --no-daemon'] : ['assembleDebug', '--no-daemon'], {
   cwd: androidDir,
   stdio: 'inherit',
-  shell: isWindows,
+  shell: false,
   env: process.env,
 })
 

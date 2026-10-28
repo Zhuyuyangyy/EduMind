@@ -1,42 +1,41 @@
 /* ============================================================
-   智学星枢 Mobile 设计 Token（P2-1 · feat/mobile-v1）
+   智学星枢 Mobile：方案 V1.0 浅色 Apple 风格设计系统
    所有移动端页面只允许使用本文件定义的变量，不允许散落硬编码色值。
    ============================================================ */
 
 :root {
-  /* —— 色彩：深空科技感 —— */
-  --m-bg: #07111f;
-  --m-bg-elevated: #0b1a2e;
-  --m-surface: #0e2033;
-  --m-surface-2: #14304d;
-  --m-border: #1d3552;
-  --m-border-strong: #285275;
-
-  --m-primary: #54d6ff;
-  --m-primary-deep: #1f6feb;
-  --m-primary-soft: rgba(84, 214, 255, 0.14);
-  --m-gradient-primary: linear-gradient(135deg, #1f6feb, #54d6ff);
-
-  --m-text: #e9f4ff;
-  --m-text-dim: #9eb6ca;
-  --m-text-faint: #5f7d95;
-
-  --m-success: #72f0bd;
-  --m-success-soft: rgba(114, 240, 189, 0.12);
-  --m-warn: #ffc857;
-  --m-warn-soft: rgba(255, 200, 87, 0.12);
-  --m-danger: #ff9ca8;
-  --m-danger-soft: rgba(255, 156, 168, 0.12);
+  color-scheme: light;
+  --m-on-primary: #fff;
+  --m-bg: #f6f6f8;
+  --m-bg-elevated: #fff;
+  --m-surface: #fff;
+  --m-surface-2: #f0f1f4;
+  --m-border: rgba(30,37,50,.075);
+  --m-border-strong: #cfd3db;
+  --m-primary: #3769d5;
+  --m-primary-deep: #2d59bd;
+  --m-primary-soft: #edf2fc;
+  --m-primary-border: rgba(55,105,213,.18);
+  --m-gradient-primary: #3769d5;
+  --m-text: #20242e;
+  --m-text-dim: #565d6b;
+  --m-text-faint: #707785;
+  --m-success: #2b7b61;
+  --m-success-soft: #edf6f0;
+  --m-warn: #956921;
+  --m-warn-soft: #fbf5e9;
+  --m-danger: #b94050;
+  --m-danger-soft: #fbf0f1;
 
   /* —— 字体 —— */
-  --m-font: -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
-  --m-text-xs: 11px;
-  --m-text-sm: 12px;
-  --m-text-md: 13px;
-  --m-text-base: 15px;
-  --m-text-lg: 17px;
-  --m-text-xl: 21px;
-  --m-text-2xl: 26px;
+  --m-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', sans-serif;
+  --m-text-xs: 12px;
+  --m-text-sm: 13px;
+  --m-text-md: 15px;
+  --m-text-base: 16px;
+  --m-text-lg: 18px;
+  --m-text-xl: 25px;
+  --m-text-2xl: 32px;
 
   /* —— 间距 —— */
   --m-space-1: 4px;
@@ -49,19 +48,19 @@
 
   /* —— 圆角 —— */
   --m-radius-sm: 8px;
-  --m-radius-md: 12px;
-  --m-radius-lg: 16px;
-  --m-radius-xl: 20px;
+  --m-radius-md: 14px;
+  --m-radius-lg: 20px;
+  --m-radius-xl: 28px;
   --m-radius-full: 999px;
 
   /* —— 品牌扩展色（P4-2C 设计规范：星紫=AI/知识节点，暖金=成就/掌握） —— */
-  --m-violet: #8b7cff;
-  --m-violet-deep: #5b4bd6;
-  --m-violet-soft: rgba(139, 124, 255, 0.16);
-  --m-gradient-violet: linear-gradient(135deg, #5b4bd6, #8b7cff);
-  --m-gold: #ffcf6b;
-  --m-gold-deep: #e8a83c;
-  --m-gold-soft: rgba(255, 207, 107, 0.14);
+  --m-violet: #b2a5ff;
+  --m-violet-deep: #cfc5ff;
+  --m-violet-soft: rgba(141,123,255,.14);
+  --m-gradient-violet: #b2a5ff;
+  --m-gold: #ffc27b;
+  --m-gold-deep: #e7a763;
+  --m-gold-soft: rgba(255,194,123,.12);
 
   /* —— 字阶（P4-2C 五级重定：核心数字 30/34px 星青加粗） —— */
   --m-text-3xl: 30px;
@@ -69,19 +68,20 @@
   --m-weight-num: 700;
 
   /* —— 阴影与发光（卡片层次/主视觉光晕） —— */
-  --m-shadow-card: 0 2px 12px rgba(2, 8, 18, 0.45);
-  --m-shadow-float: 0 8px 28px rgba(2, 8, 18, 0.55);
-  --m-glow-primary: 0 0 16px rgba(84, 214, 255, 0.28);
-  --m-glow-violet: 0 0 16px rgba(139, 124, 255, 0.30);
-  --m-glow-gold: 0 0 14px rgba(255, 207, 107, 0.30);
+  --m-shadow-card: 0 5px 24px rgba(37, 56, 100, 0.035);
+  --m-shadow-float: 0 12px 40px rgba(37, 56, 100, 0.06);
+  --m-glow-primary: none;
+  --m-glow-violet: none;
+  --m-glow-gold: none;
 
   /* —— 安全区 —— */
   --m-safe-top: env(safe-area-inset-top, 0px);
   --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --mobile-bottom-inset: calc(64px + var(--m-safe-bottom));
 
   /* —— 动效 —— */
   --m-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --m-duration: 220ms;
+  --m-duration: 180ms;
 }
 
 /* ============================================================
@@ -96,7 +96,9 @@
   gap: var(--m-space-2);
   border: none;
   border-radius: var(--m-radius-md);
-  padding: 13px var(--m-space-5);
+  padding: 15px var(--m-space-5);
+  min-height: 48px;
+  text-decoration: none;
   font-family: var(--m-font);
   font-size: var(--m-text-base);
   font-weight: 600;
@@ -114,22 +116,22 @@
 }
 .m-btn--primary {
   background: var(--m-gradient-primary);
-  color: #04121f;
+  color: var(--m-on-primary);
 }
 .m-btn--ghost {
-  background: transparent;
-  border: 1px solid var(--m-border-strong);
-  color: var(--m-text-dim);
+  background: var(--m-primary-soft);
+  color: var(--m-primary);
 }
 .m-btn--danger {
   background: var(--m-danger-soft);
-  border: 1px solid rgba(255, 156, 168, 0.35);
+  border: 1px solid transparent;
   color: var(--m-danger);
 }
 .m-btn--block {
   width: 100%;
 }
 .m-btn--sm {
+  min-height: 44px;
   padding: 9px var(--m-space-4);
   font-size: var(--m-text-md);
 }
@@ -137,13 +139,12 @@
 /* 卡片 */
 .m-card {
   background: var(--m-surface);
-  border: 1px solid var(--m-border);
+  box-shadow: var(--m-shadow-card);
   border-radius: var(--m-radius-lg);
-  padding: var(--m-space-4);
+  padding: var(--m-space-5);
 }
 .m-card--accent {
-  background: linear-gradient(160deg, rgba(31, 111, 235, 0.16), var(--m-surface) 55%);
-  border-color: rgba(84, 214, 255, 0.25);
+  background: var(--m-primary-soft);
 }
 .m-card__title {
   display: flex;
@@ -172,12 +173,12 @@
 .m-input,
 .m-textarea {
   width: 100%;
-  background: var(--m-bg);
+  background: var(--m-surface);
   border: 1px solid var(--m-border-strong);
   border-radius: var(--m-radius-md);
   padding: var(--m-space-3) 14px;
   font-family: var(--m-font);
-  font-size: var(--m-text-base); /* ≥16px 避免 iOS 聚焦放大；15px 为安卓/桌面平衡 */
+  font-size: var(--m-text-base);
   color: var(--m-text);
   outline: none;
   transition: border-color var(--m-duration) var(--m-ease);
@@ -203,7 +204,7 @@
 }
 .m-bubble--ai {
   align-self: flex-start;
-  background: var(--m-surface-2);
+  background: var(--m-surface);
   border: 1px solid var(--m-border);
   border-bottom-left-radius: var(--m-space-1);
   color: var(--m-text);
@@ -212,7 +213,7 @@
   align-self: flex-end;
   background: var(--m-gradient-primary);
   border-bottom-right-radius: var(--m-space-1);
-  color: #04121f;
+  color: var(--m-on-primary);
 }
 .m-bubble__meta {
   display: flex;
@@ -294,7 +295,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  border: 1px dashed rgba(255, 200, 87, 0.45);
+  border: 1px dashed var(--m-warn);
   border-radius: var(--m-radius-full);
   padding: 1px 9px;
   font-size: var(--m-text-xs);
@@ -307,7 +308,7 @@
   flex-direction: column;
   gap: var(--m-space-1);
   background: var(--m-danger-soft);
-  border: 1px solid rgba(255, 156, 168, 0.3);
+  border: 1px solid var(--m-danger);
   border-radius: var(--m-radius-md);
   padding: var(--m-space-3) var(--m-space-4);
   font-size: var(--m-text-md);
@@ -358,6 +359,7 @@
 .m-section-title {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: var(--m-space-2);
   font-size: var(--m-text-lg);
   font-weight: 700;
@@ -372,3 +374,27 @@
   font-weight: 400;
   color: var(--m-text-faint);
 }
+
+:where(button, a, input, textarea, select, summary):focus-visible {
+  outline: 3px solid var(--m-primary);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 移动端统一的标题节奏与轻量交互。 */
+h1 { font-weight: 650; line-height: 1.23; }
+h2, h3 { font-weight: 600; }
+.m-section-title { letter-spacing: -.35px; margin-top: 30px; font-size: 18px; }
+.m-section-title__sub { font-size: 12px; }
+.m-btn--primary:hover { background: var(--m-primary-deep); }
+.m-btn--ghost:hover { background: var(--m-primary-border); }
+.m-btn--primary:disabled { opacity: .48; }
+.m-card { box-shadow: var(--m-shadow-card); }
+.m-progress { height: 5px; }
+.m-badge { font-weight: 500; font-size: 12px; padding: 3px 8px; }

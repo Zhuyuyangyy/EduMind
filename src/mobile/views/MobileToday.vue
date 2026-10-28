@@ -1,174 +1,87 @@
 <template>
   <section class="today">
-    <!-- 加载中：骨架屏（A6） -->
-    <MobileSkeleton v-if="loading" variant="hero" :count="1" />
-    <template v-if="loading">
-      <MobileSkeleton variant="card" :count="2" />
-    </template>
-
-    <!-- 加载失败：错误 + 重试，不回退未标记演示数据 -->
-    <div v-else-if="loadError" class="m-error" role="alert">
-      <b>学习数据加载失败</b>
-      <span class="m-error__detail">{{ loadError }}</span>
-      <button class="m-btn m-btn--ghost m-btn--sm" style="align-self: flex-start; margin-top: 8px" @click="load">重试</button>
+    <div class="today__greeting">
+      <p class="today__date">{{ todayLabel }}</p>
+      <h1 class="today__hello">今天，向前一步。</h1>
+      <p class="today__greeting-label">{{ greeting }}，{{ displayName }}。按自己的节奏，学一点新的。</p>
     </div>
-
+    <template v-if="loading"><MobileSkeleton variant="hero" :count="1" /><MobileSkeleton variant="card" :count="2" /></template>
+    <div v-else-if="loadError" class="m-error" role="alert"><b>学习数据加载失败</b><span class="m-error__detail">{{ loadError }}</span><button class="m-btn m-btn--ghost m-btn--sm" @click="load">重试</button></div>
     <template v-else>
-      <!-- 问候 -->
-      <div class="today__greeting">
-        <h1 class="today__hello">{{ greeting }}，{{ displayName }}</h1>
-        <p class="today__date">{{ todayLabel }}</p>
-      </div>
-
-      <!-- 新用户：无画像 → 空状态（星球插画 + 单一行动） -->
-      <MobileEmpty
-        v-if="!profile"
-        title="先做一次 6 维学习自评"
-        desc="用 1 分钟给六个维度打分，系统会生成你的第一份知识路径。自评结果会标注为「自评画像」。"
-        action-text="开始学习诊断"
-        :action-icon="'diagnose'"
-        @action="$router.push('/diagnose')"
-      />
-
-      <!-- 有画像没路径：生成入口 -->
-      <MobileEmpty
-        v-else-if="!path"
-        title="基于你的画像生成知识路径"
-        desc="路径由智能体按画像生成，知识点掌握度为模型估计，会持续标注来源。"
-        :action-text="generating ? '生成中…' : '生成知识路径'"
-        :action-icon="'path'"
-        @action="onGeneratePath"
-      >
-        <p v-if="generateError" class="today__generate-error">{{ generateError }}</p>
-      </MobileEmpty>
-
-      <!-- 有路径：今日唯一任务（真实、可追溯）——核心视觉区 -->
-      <article v-else-if="todayTopic" class="today__hero">
-        <div class="today__hero-tag">
-          <span class="m-badge m-badge--info">
-            <MobileIcon name="target" :size="12" /> 今天先学这一件事
-          </span>
-          <span class="m-badge m-badge--warn" title="来自知识路径的模型估计，不是完成率">掌握度估计</span>
-        </div>
-
-        <div class="today__hero-body">
-          <!-- 掌握度进度环（核心数字 34px） -->
-          <div class="today__ring" :style="{ '--pct': Math.round(todayTopic.masteryEstimate * 100) }">
-            <svg viewBox="0 0 72 72" aria-hidden="true">
-              <circle class="today__ring-track" cx="36" cy="36" r="30" />
-              <circle class="today__ring-fill" cx="36" cy="36" r="30" />
-            </svg>
-            <div class="today__ring-num">
-              <b>{{ Math.round(todayTopic.masteryEstimate * 100) }}</b><i>%</i>
-            </div>
-          </div>
-          <div class="today__hero-main">
-            <h2 class="today__hero-title">{{ todayTopic.topicName }}</h2>
-            <p class="today__hero-desc">来自「{{ todayTopic.phaseName }}」· 选取规则：{{ todayTopic.reason }}</p>
-          </div>
-        </div>
-
-        <div class="today__hero-meta">
-          <span class="today__meta-item">
-            <MobileIcon name="star" :size="13" /> 重要度 {{ Math.round(todayTopic.importance * 100) }}%
-          </span>
-          <span class="today__meta-item">
-            <MobileIcon name="chart" :size="13" /> 掌握估计 {{ Math.round(todayTopic.masteryEstimate * 100) }}%
-          </span>
-          <span class="today__meta-item">
-            <MobileIcon name="book" :size="13" /> 知识点 #{{ todayTopic.topicId }}
-          </span>
-        </div>
-
-        <div class="today__hero-actions">
-          <button class="m-btn m-btn--primary m-btn--block" :disabled="startingPractice" @click="onStartPractice">
-            <MobileIcon name="practice" :size="16" />
-            {{ startingPractice ? '创建中…' : '开始练习' }}
-          </button>
-          <RouterLink :to="`/tutor?topic=${encodeURIComponent(todayTopic.topicId)}&name=${encodeURIComponent(todayTopic.topicName)}`" class="m-btn m-btn--ghost m-btn--block">
-            <MobileIcon name="sparkle" :size="15" />
-            问 AI 导师
-          </RouterLink>
-        </div>
-        <p v-if="practiceError" class="today__generate-error">{{ practiceError }}</p>
+      <div v-if="workspace" class="today__goal-switch"><RouterLink to="/workspace"><MobileIcon name="target" :size="16" /><span>{{ activeGoal(workspace)?.title || '创建你的学习目标' }}</span><MobileIcon name="chevronRight" :size="14" /></RouterLink><RouterLink :to="{ path: '/workspace', query: { tab: 'reminders' } }" aria-label="设置复习提醒"><MobileIcon name="clock" :size="20" /></RouterLink></div>
+      <article v-if="resumable" class="m-card today__resume"><span>继续上次 · 已作答 {{ resumable.answered }} / {{ resumable.exerciseIds.length }} 题</span><RouterLink :to="`/study/session/${resumable.id}`">恢复练习 <MobileIcon name="chevronRight" :size="14" /></RouterLink></article>
+      <article v-if="!profile && homeGoal" class="today__start m-card"><span class="today__eyebrow">今天先学这一件事</span><h2>{{ firstTask?.title || homeGoal.title }}</h2><p class="today__start-goal">建议 {{ firstTask?.minutes || homeGoal.dailyMinutes }} 分钟 · {{ firstTask ? '来自你已确认的任务清单' : '按你设置的时间预算' }}</p><p>{{ firstTask ? '完成后可以记录理解与练习结果，再决定下一步。' : '先留一段时间给这个目标，完整自评可以稍后补充。' }}</p><RouterLink to="/focus" class="m-btn m-btn--primary m-btn--block">开始一段专注学习 <MobileIcon name="chevronRight" :size="16" /></RouterLink><RouterLink to="/agent" class="today__tutor-link">让星枢调整学习安排 <MobileIcon name="chevronRight" :size="14" /></RouterLink></article>
+      <article v-else-if="!profile && welcome?.status === 'completed'" class="today__start m-card">
+        <span class="today__eyebrow">你的学习起点，已记下</span>
+        <h2>{{ welcomeFieldLabel(welcome.answers) }}</h2>
+        <p class="today__start-goal">{{ welcomeGoalLabel(welcome.answers) }}</p>
+        <p>先从一个问题开始。完整学习档案，想补充时再完善。</p>
+        <RouterLink :to="{ path: '/tutor', query: { welcome: '1' } }" class="m-btn m-btn--primary m-btn--block">带着目标问导师 <MobileIcon name="chevronRight" :size="16" /></RouterLink>
+        <RouterLink :to="{ path: '/diagnose', query: { welcome: '1' } }" class="today__tutor-link">完善学习计划（选填）<MobileIcon name="chevronRight" :size="14" /></RouterLink>
       </article>
-
-      <!-- 迷你知识星图（移动端母题：阶段轨道 + 当前节点高亮） -->
-      <template v-if="path">
-        <h2 class="m-section-title">知识星图 <span class="m-section-title__sub">当前所处阶段已点亮</span></h2>
-        <div class="today__starmap">
-          <div class="today__starmap-track" aria-hidden="true" />
-          <RouterLink
-            v-for="(phase, index) in path.phases"
-            :key="phase.id"
-            class="today__starmap-node"
-            :class="{ 'today__starmap-node--active': isCurrentPhase(phase) }"
-            :style="{ '--node-color': phase.color || '#54d6ff', '--node-index': index }"
-            to="/growth"
-          >
-            <span class="today__starmap-dot" />
-            <span class="today__starmap-name">{{ phase.name }}</span>
-            <span class="today__starmap-count">{{ phase.topics?.length || 0 }} 个知识点</span>
-          </RouterLink>
+      <MobileEmpty v-else-if="!profile" title="从了解你开始" desc="说说你的目标、基础与时间，让第一份学习计划更适合你。" action-text="开始学习诊断" action-icon="diagnose" @action="$router.push('/diagnose')" />
+      <MobileEmpty v-else-if="!path" title="把目标，连成一条路。" desc="基于你的学习画像，找到当前可以开始的知识点。" :action-text="generating ? '生成中…' : '生成知识路径'" action-icon="path" @action="onGeneratePath"><p v-if="generateError" class="today__generate-error">{{ generateError }}</p></MobileEmpty>
+      <article v-else-if="todayTopic" class="today__hero">
+        <div class="today__hero-intro">
+          <span class="today__eyebrow">今日专注</span>
+          <h2 class="today__hero-title">{{ todayTopic.topicName }}</h2>
+          <p class="today__hero-desc">{{ todayTopic.phaseName }} · 从这一点开始</p>
+          <MobileOrbit class="today__orbit" />
         </div>
+        <div class="today__hero-signal">
+          <div class="today__task-marker"><MobileIcon name="practice" :size="23" /></div>
+          <div><span class="today__signal-title">用一组练习，检验理解</span><p>来自已保存路径 · 服务端题库判分</p></div>
+          <span class="today__signal-icon"><MobileIcon name="target" :size="19" /></span>
+        </div>
+        <div class="today__hero-actions">
+          <button class="m-btn m-btn--primary m-btn--block" :disabled="startingPractice" @click="onStartPractice">{{ startingPractice ? '创建中…' : '开始练习' }}<MobileIcon name="chevronRight" :size="17" /></button>
+          <RouterLink :to="{ path: '/tutor', query: { topic: todayTopic.topicId, name: todayTopic.topicName } }" class="today__tutor-link"><MobileIcon name="tutor" :size="16" /> 先问问 AI 导师</RouterLink>
+        </div>
+        <p v-if="practiceError" class="today__generate-error" role="alert">{{ practiceError }}</p>
+        <details class="today__recommendation"><summary>为什么推荐这个主题？<MobileIcon name="chevronRight" :size="13" /></summary><p>{{ todayTopic.reason }}。重要度 {{ Math.round(todayTopic.importance * 100) }}%。掌握度为路径估计，不代表练习完成率。</p></details>
+      </article>
+      <p v-if="welcomeError" class="m-error" role="alert">暂时无法读取你的学习偏好。<button class="m-btn m-btn--ghost m-btn--sm" @click="load">重新读取</button></p>
+      <div class="today__entries today__entries--four">
+        <RouterLink to="/library" class="today__entry"><span class="today__entry-icon"><MobileIcon name="book" :size="21" /></span><strong>导入资料</strong><small>带着讲义开始</small></RouterLink>
+        <RouterLink to="/agent" class="today__entry"><span class="today__entry-icon today__entry-icon--tutor"><MobileIcon name="sparkle" :size="21" /></span><strong>问星枢</strong><small>把目标拆成行动</small></RouterLink>
+        <RouterLink to="/focus" class="today__entry"><span class="today__entry-icon"><MobileIcon name="clock" :size="21" /></span><strong>专注一会</strong><small>留一段安静时间</small></RouterLink>
+        <RouterLink to="/review" class="today__entry"><span class="today__entry-icon"><MobileIcon name="refresh" :size="21" /></span><strong>查看错题</strong><small>把卡点学回来</small></RouterLink>
+      </div>
+      <article v-if="dueReviewCount(workspace)" class="m-card today__review-reminder"><MobileIcon name="refresh" :size="20" /><div><b>{{ dueReviewCount(workspace) }} 个知识点到复习时间了</b><p>由你安排的复习，可在设置中关闭提醒。</p></div><RouterLink to="/review" class="workspace-text-action">现在复习</RouterLink></article>
+      <template v-if="checklist.length"><div class="today__section-head"><h2 class="m-section-title">我的学习清单</h2><span>来自已确认的星枢任务</span></div><div class="m-card today__checklist"><label v-for="item in checklist.slice(0, 5)" :key="item.id" class="workspace-checkbox"><input type="checkbox" :checked="item.done" :disabled="checklistBusy === item.id" @change="toggleChecklist(item)" /><span>{{ item.title }}<small>建议 {{ item.minutes }} 分钟 · {{ item.done ? '用户已标记完成' : '待开始' }}</small></span></label></div></template>
+      <RouterLink to="/agent" class="workspace-context-link"><MobileIcon name="sparkle" :size="18" />让星枢帮我安排下一步 <MobileIcon name="chevronRight" :size="14" /></RouterLink>
+      <template v-if="path">
+        <div class="today__section-head"><h2 class="m-section-title">你的学习路径</h2><RouterLink to="/growth">查看成长 <MobileIcon name="chevronRight" :size="13" /></RouterLink></div>
+        <MobileLearningPath :path="path" :initial-phase="todayTopic?.phaseId" />
       </template>
-
-      <!-- 画像总览（真实画像，区分自评/分析来源） -->
       <template v-if="profile">
-        <h2 class="m-section-title">我的画像 <span class="m-section-title__sub">{{ profileSourceLabel }}</span></h2>
-        <div class="m-card">
-          <div v-if="dimensions.length" class="today__dims">
-            <div v-for="dim in dimensions" :key="dim.label" class="today__dim">
-              <div class="today__dim-head">
-                <span>{{ dim.label }}</span>
-                <span class="today__dim-num">{{ dim.value }}</span>
-              </div>
-              <div class="m-progress"><div class="m-progress__fill" :style="{ width: dim.value + '%' }" /></div>
-            </div>
-          </div>
+        <div class="today__section-head"><h2 class="m-section-title">我的画像</h2><span>{{ profileSourceLabel }}</span></div>
+        <div class="m-card today__portrait">
+          <div v-if="dimensions.length" class="today__dims"><div v-for="dim in dimensions" :key="dim.label" class="today__dim"><div class="today__dim-head"><span>{{ dim.label }}</span><b>{{ dim.value }}</b></div><div class="m-progress"><div class="m-progress__fill" :style="{ width: `${Math.min(100, Math.max(0, dim.value))}%` }" /></div></div></div>
           <p v-else class="today__empty-inline">画像暂无维度数据</p>
-          <p v-if="totalScore !== null" class="today__total">综合分 <b class="today__total-num">{{ totalScore }}</b></p>
+          <p v-if="totalScore !== null" class="today__total">画像参考分 <b>{{ totalScore }}</b><span>用于规划，不代表测验成绩</span></p>
         </div>
       </template>
-
-      <!-- 路径明细（真实路径，标签级） -->
-      <template v-if="path">
-        <h2 class="m-section-title">路径明细 <span class="m-section-title__sub">掌握度为模型估计</span></h2>
-        <div class="m-card">
-          <div v-for="phase in path.phases" :key="phase.id" class="today__phase">
-            <div class="today__phase-head">
-              <span class="today__phase-dot" :style="{ background: phase.color || '#54d6ff' }" />
-              <span class="today__phase-name">{{ phase.name }}</span>
-              <span class="today__phase-count">{{ phase.topics?.length || 0 }} 个知识点</span>
-            </div>
-            <div class="today__topics">
-              <span v-for="topic in phase.topics || []" :key="topic.id" class="today__topic" :class="{ 'today__topic--rec': topic.recommended }">
-                {{ topic.name }}
-                <i v-if="topic.recommended" class="today__topic-rec">推荐</i>
-              </span>
-            </div>
-          </div>
-        </div>
-      </template>
-
-      <p class="today__footnote">
-        页面内容全部来自当前账号的服务端记录（画像 / 知识路径 / 学习闭环），按账号隔离；
-        没有数据时显示空状态，不使用演示数据伪装进度。
-      </p>
+      <p class="today__footnote">专注眼前这一小步，慢慢走出自己的学习路径。</p>
     </template>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getAuthSession } from '@/lib/auth'
-import { apiPost } from '@/lib/api'
+import { apiGet, apiPost } from '@/lib/api'
+import { welcomeUpdated, welcomeFieldLabel, welcomeGoalLabel, type WelcomeRecord } from '@/mobile/data/welcome'
+import { activeGoal, changeWorkspace, dueReviewCount, loadWorkspace, type Workspace } from '@/mobile/data/workspace'
 import MobileIcon from '../components/MobileIcon.vue'
+import MobileOrbit from '../components/MobileOrbit.vue'
+import MobileLearningPath from '../components/MobileLearningPath.vue'
 import MobileEmpty from '../components/MobileEmpty.vue'
 import MobileSkeleton from '../components/MobileSkeleton.vue'
 import {
   currentAccount,
+  currentEpoch,
   fetchAccountData,
   profileDimensions,
   profileTotalScore,
@@ -183,6 +96,19 @@ const loading = ref(true)
 const loadError = ref('')
 const profile = ref<LearnerProfile | null>(null)
 const path = ref<KnowledgePath | null>(null)
+const welcome = ref<WelcomeRecord | null>(null)
+const welcomeError = ref(false)
+const workspace = ref<Workspace | null>(null)
+const resumable = computed(() => workspace.value?.sessions.find(s => s.status === 'active'))
+const checklist = computed(() => workspace.value?.tasks.filter(task => task.status === 'completed' && (!task.goalId || task.goalId === activeGoal(workspace.value)?.id)).flatMap(task => (task.checklist || []).map(item => ({ ...item, taskId: task.id }))) || [])
+const homeGoal = computed(() => activeGoal(workspace.value))
+const firstTask = computed(() => checklist.value.find(item => !item.done))
+const checklistBusy = ref('')
+async function toggleChecklist(item: { id: string; taskId: string; done: boolean }) { checklistBusy.value = item.id; try { await changeWorkspace('checklist', { taskId: item.taskId, id: item.id, done: !item.done }); workspace.value = await loadWorkspace() } catch (err) { loadError.value = err instanceof Error ? err.message : '保存失败' } finally { checklistBusy.value = '' } }
+let loadGeneration = 0
+let active = true
+onBeforeUnmount(() => { active = false })
+watch(welcomeUpdated, load)
 const generating = ref(false)
 const generateError = ref('')
 const startingPractice = ref(false)
@@ -200,6 +126,7 @@ const todayTopic = computed(() => selectTodayTopic(path.value))
 const profileSourceLabel = computed(() => {
   const source = profile.value?.source
   if (source === 'dialogue' || source === 'mobile-self-assessment') return '自评画像'
+  if (source === 'questionnaire') return profile.value?.analysisSource === 'rule' ? '问卷画像 · 规则降级分析' : '问卷画像 · 模型分析'
   if (source === 'profile-save') return '建档画像'
   return source ? `来源：${source}` : '账号记录'
 })
@@ -219,11 +146,14 @@ onMounted(async () => {
 })
 
 async function load() {
+  const generation = ++loadGeneration
+  const epoch = currentEpoch()
   loading.value = true
   loadError.value = ''
+  welcomeError.value = false
   try {
-    const result = await fetchAccountData()
-    if (result.stale) return // 过期响应（切号/退出），不渲染旧账号数据
+    const [result, workspaceData] = await Promise.all([fetchAccountData(), loadWorkspace()])
+    if (result.stale || !active || generation !== loadGeneration) return
     if (result.error || !result.data) {
       // P3-0：接口失败 ≠ 账号无数据，明确报错 + 重试，不回退演示数据
       loadError.value = result.error || '加载失败'
@@ -234,11 +164,20 @@ async function load() {
       return
     }
     profile.value = result.data.profile
+    workspace.value = workspaceData
     path.value = result.data.knowledgePath
+    welcome.value = null
+    if (!profile.value) {
+      try {
+        const record = await apiGet<{ result: WelcomeRecord | null }>('/api/account/onboarding')
+        if (epoch !== currentEpoch() || !active || generation !== loadGeneration) return
+        welcome.value = record.result
+      } catch { if (epoch === currentEpoch() && active && generation === loadGeneration) welcomeError.value = true }
+    }
   } catch (err) {
-    loadError.value = err instanceof Error ? err.message : '未知错误'
+    if (epoch === currentEpoch() && active && generation === loadGeneration) loadError.value = err instanceof Error ? err.message : '未知错误'
   } finally {
-    loading.value = false
+    if (epoch === currentEpoch() && active && generation === loadGeneration) loading.value = false
   }
 }
 
@@ -275,304 +214,58 @@ async function onStartPractice() {
 </script>
 
 <style scoped>
-.today__greeting {
-  margin: var(--m-space-2) 0 var(--m-space-4);
-}
-
-.today__hello {
-  font-size: var(--m-text-xl);
-  margin: 0 0 var(--m-space-1);
-}
-
-.today__date {
-  font-size: var(--m-text-sm);
-  color: var(--m-text-faint);
-  margin: 0;
-}
-
-/* ============ 核心学习卡（A1 主视觉） ============ */
-.today__hero {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--m-space-4);
-  background:
-    radial-gradient(120% 90% at 85% 0%, rgba(139, 124, 255, 0.16), transparent 55%),
-    linear-gradient(160deg, rgba(31, 111, 235, 0.18), var(--m-surface) 60%);
-  border: 1px solid rgba(84, 214, 255, 0.28);
-  border-radius: var(--m-radius-xl);
-  padding: var(--m-space-5) var(--m-space-4);
-  box-shadow: var(--m-shadow-float), var(--m-glow-primary);
-  overflow: hidden;
-}
-
-.today__hero-tag {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--m-space-2);
-}
-
-.today__hero-body {
-  display: flex;
-  align-items: center;
-  gap: var(--m-space-4);
-}
-
-/* 掌握度进度环 */
-.today__ring {
-  position: relative;
-  width: 76px;
-  height: 76px;
-  flex: none;
-}
-.today__ring svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-.today__ring-track {
-  fill: none;
-  stroke: var(--m-surface-2);
-  stroke-width: 6;
-}
-.today__ring-fill {
-  fill: none;
-  stroke: var(--m-primary);
-  stroke-width: 6;
-  stroke-linecap: round;
-  stroke-dasharray: 188.5; /* 2πr, r=30 */
-  stroke-dashoffset: calc(188.5 - 188.5 * var(--pct) / 100);
-  filter: drop-shadow(0 0 4px rgba(84, 214, 255, 0.6));
-  transition: stroke-dashoffset 600ms var(--m-ease);
-}
-@media (prefers-reduced-motion: reduce) {
-  .today__ring-fill {
-    transition: none;
-  }
-}
-.today__ring-num {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--m-primary);
-  font-size: var(--m-text-xl);
-  font-weight: var(--m-weight-num);
-}
-.today__ring-num i {
-  font-style: normal;
-  font-size: var(--m-text-sm);
-  margin-left: 1px;
-}
-
-.today__hero-main {
-  min-width: 0;
-}
-
-.today__hero-title {
-  font-size: var(--m-text-lg);
-  line-height: 1.45;
-  margin: 0 0 var(--m-space-1);
-}
-
-.today__hero-desc {
-  font-size: var(--m-text-sm);
-  color: var(--m-text-dim);
-  line-height: 1.7;
-  margin: 0;
-}
-
-.today__hero-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--m-space-2) var(--m-space-4);
-  font-size: var(--m-text-sm);
-  color: var(--m-text-faint);
-}
-
-.today__meta-item {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--m-space-1);
-}
-
-.today__generate-error {
-  font-size: var(--m-text-sm);
-  color: var(--m-danger);
-  margin: 0;
-}
-
-.today__hero-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--m-space-2);
-}
-
-/* ============ 迷你知识星图（A1） ============ */
-.today__starmap {
-  position: relative;
-  display: flex;
-  gap: var(--m-space-3);
-  overflow-x: auto;
-  padding: var(--m-space-4) var(--m-space-1) var(--m-space-2);
-  scrollbar-width: none;
-}
-.today__starmap::-webkit-scrollbar {
-  display: none;
-}
-.today__starmap-track {
-  position: absolute;
-  left: var(--m-space-4);
-  right: var(--m-space-4);
-  top: calc(var(--m-space-4) + 11px);
-  height: 2px;
-  background: linear-gradient(90deg, rgba(84, 214, 255, 0.45), rgba(139, 124, 255, 0.45));
-  border-radius: var(--m-radius-full);
-}
-.today__starmap-node {
-  position: relative;
-  flex: none;
-  width: 92px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--m-space-1);
-  text-decoration: none;
-  color: var(--m-text-dim);
-}
-.today__starmap-dot {
-  width: 22px;
-  height: 22px;
-  border-radius: var(--m-radius-full);
-  background: var(--m-surface-2);
-  border: 2px solid var(--node-color);
-  transition: box-shadow var(--m-duration) var(--m-ease), transform var(--m-duration) var(--m-ease);
-}
-.today__starmap-node--active .today__starmap-dot {
-  background: var(--node-color);
-  box-shadow: 0 0 12px var(--node-color);
-  transform: scale(1.15);
-}
-.today__starmap-name {
-  font-size: var(--m-text-sm);
-  font-weight: 600;
-  color: var(--m-text);
-}
-.today__starmap-node--active .today__starmap-name {
-  color: var(--node-color);
-}
-.today__starmap-count {
-  font-size: var(--m-text-xs);
-  color: var(--m-text-faint);
-}
-
-/* ============ 画像 / 路径明细 ============ */
-.today__dims {
-  display: flex;
-  flex-direction: column;
-  gap: var(--m-space-3);
-}
-
-.today__dim-head {
-  display: flex;
-  justify-content: space-between;
-  font-size: var(--m-text-md);
-  color: var(--m-text-dim);
-  margin-bottom: var(--m-space-2);
-}
-
-.today__dim-num {
-  color: var(--m-text);
-  font-weight: 600;
-}
-
-.today__total {
-  font-size: var(--m-text-sm);
-  color: var(--m-text-faint);
-  margin: var(--m-space-3) 0 0;
-}
-
-.today__total-num {
-  font-size: var(--m-text-3xl);
-  font-weight: var(--m-weight-num);
-  color: var(--m-primary);
-  margin: 0 var(--m-space-1);
-}
-
-.today__empty-inline {
-  font-size: var(--m-text-md);
-  color: var(--m-text-faint);
-  margin: 0;
-}
-
-.today__phase {
-  padding: var(--m-space-3) 0;
-  border-bottom: 1px solid var(--m-border);
-}
-.today__phase:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-.today__phase:first-child {
-  padding-top: 0;
-}
-
-.today__phase-head {
-  display: flex;
-  align-items: center;
-  gap: var(--m-space-2);
-  margin-bottom: var(--m-space-2);
-}
-
-.today__phase-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--m-radius-full);
-}
-
-.today__phase-name {
-  font-size: var(--m-text-base);
-  font-weight: 600;
-}
-
-.today__phase-count {
-  margin-left: auto;
-  font-size: var(--m-text-xs);
-  color: var(--m-text-faint);
-}
-
-.today__topics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--m-space-2);
-}
-
-.today__topic {
-  position: relative;
-  background: var(--m-surface-2);
-  border-radius: var(--m-radius-full);
-  padding: 4px 12px;
-  font-size: var(--m-text-sm);
-  color: var(--m-text-dim);
-}
-
-.today__topic--rec {
-  border: 1px solid rgba(84, 214, 255, 0.4);
-  color: var(--m-primary);
-}
-
-.today__topic-rec {
-  font-style: normal;
-  font-size: var(--m-text-xs);
-  margin-left: 4px;
-  color: var(--m-primary);
-}
-
-.today__footnote {
-  margin-top: var(--m-space-6);
-  font-size: var(--m-text-xs);
-  color: var(--m-text-faint);
-  line-height: 1.8;
-}
+.today__goal-switch { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; }.today__goal-switch a { display: flex; gap: 8px; align-items: center; color: var(--m-primary); text-decoration: none; font-size: 14px; min-height: 44px; }.today__goal-switch a:first-child { flex: 1; min-width: 0; }.today__goal-switch a span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }.today__goal-switch .m-icon { flex: none; }.today__task-marker { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 14px; color: var(--m-primary); background: var(--m-primary-soft); }.today__resume { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; margin-bottom: 16px; font-size: 13px; }.today__resume span { color: var(--m-text-dim); }.today__resume a { display: inline-flex; gap: 4px; align-items: center; color: var(--m-primary); text-decoration: none; white-space: nowrap; }.today__review-reminder { display: flex; align-items: center; gap: 12px; margin-top: 18px; }.today__review-reminder > .m-icon { color: var(--m-primary); flex: none; }.today__review-reminder b { font-size: 14px; }.today__review-reminder p { margin: 5px 0 0; color: var(--m-text-faint); font-size: 12px; line-height: 1.8; }.today__entries--four { gap: 10px; }.today__entries--four .today__entry { padding: 16px; }.today__checklist { padding-block: 8px; }
+.today__start { padding: 24px; border: 1px solid var(--m-primary-border); }
+.today__start h2 { margin: 12px 0; font-size: 25px; letter-spacing: -.5px; }
+.today__start p { font-size: 14px; color: var(--m-text-dim); line-height: 1.8; margin: 0 0 20px; }
+.today__start .today__start-goal { font-size: 16px; color: var(--m-text); margin-bottom: 12px; }
+.today__start .m-btn { justify-content: space-between; font-size: 15px; }
+.today__greeting { padding: 10px 0 24px; }
+.today__date { font-size: 13px; font-weight: 500; letter-spacing: .5px; color: var(--m-text-faint); margin: 0 0 10px; }
+.today__hello { font-size: 30px; letter-spacing: -1.25px; margin: 0 0 10px; }
+.today__greeting-label { font-size: 14px; color: var(--m-text-dim); margin: 0; line-height: 1.7; }
+.today__hero { position: relative; border: 1px solid var(--m-border); background: var(--m-focus-surface, var(--m-surface)); padding: 22px; border-radius: 27px; box-shadow: var(--m-shadow-float); }
+.today__hero-intro { position: relative; min-height: 116px; padding-right: 104px; }
+.today__eyebrow { color: var(--m-primary); font-size: 13px; letter-spacing: 1px; font-weight: 600; }
+.today__hero-title { font-size: 23px; letter-spacing: -.7px; line-height: 1.4; margin: 12px 0 6px; position: relative; z-index: 1; }
+.today__hero-desc { font-size: 13px; color: var(--m-text-faint); margin: 0; line-height: 1.7; }
+.today__orbit { position: absolute; right: -20px; top: -26px; width: 140px; height: 140px; }
+.today__hero-signal { display: flex; gap: 12px; align-items: center; padding: 15px 0 18px; }
+.today__ring { position: relative; width: 44px; height: 44px; flex: none; }
+.today__ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.today__ring-track, .today__ring-fill { fill: none; stroke-width: 5; }
+.today__ring-track { stroke: var(--m-primary-border); }
+.today__ring-fill { stroke: var(--m-primary); stroke-linecap: round; stroke-dasharray: 188.5; stroke-dashoffset: calc(188.5 - 188.5 * var(--pct) / 100); transition: stroke-dashoffset 500ms var(--m-ease); }
+.today__ring-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--m-primary); }
+.today__ring-num i { font-size: 13px; font-style: normal; }
+.today__signal-title { font-size: 13px; font-weight: 550; }
+.today__hero-signal p { font-size: 13px; color: var(--m-text-faint); margin: 3px 0 0; }
+.today__signal-icon { margin-left: auto; color: var(--m-primary); display: grid; place-items: center; width: 34px; height: 34px; border-radius: 12px; background: var(--m-primary-soft); }
+.today__hero-actions { display: grid; gap: 4px; }
+.today__hero-actions .m-btn { justify-content: space-between; padding-inline: 18px; min-height: 50px; font-size: 14px; }
+.today__tutor-link { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; color: var(--m-text-dim); text-decoration: none; font-size: 12px; }
+.today__recommendation { border-top: 1px solid var(--m-border); }
+.today__recommendation summary { display: flex; align-items: center; justify-content: space-between; min-height: 40px; font-size: 13px; color: var(--m-text-faint); cursor: pointer; list-style: none; }
+.today__recommendation[open] summary .m-icon { transform: rotate(90deg); }
+.today__recommendation p { font-size: 13px; color: var(--m-text-dim); line-height: 1.7; margin: 0 0 4px; }
+.today__entries { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+.today__entry { position: relative; display: grid; justify-items: start; gap: 5px; padding: 17px; background: var(--m-surface); border: 1px solid var(--m-border); border-radius: 21px; text-decoration: none; color: var(--m-text); transition: transform var(--m-duration), box-shadow var(--m-duration); }
+.today__entry:active { transform: scale(.98); }
+.today__entry-icon { color: var(--m-primary); width: 36px; height: 36px; display: grid; place-items: center; background: var(--m-primary-soft); border-radius: 12px; margin-bottom: 5px; }
+.today__entry-icon--tutor { color: var(--m-violet); background: var(--m-violet-soft); }
+.today__entry strong { font-size: 14px; font-weight: 600; }
+.today__entry small { font-size: 13px; color: var(--m-text-faint); }
+.today__entry-arrow { position: absolute; right: 14px; top: 23px; color: var(--m-text-faint); }
+.today__section-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin: 28px 0 13px; }
+.today__section-head h2 { margin: 0; }
+.today__section-head > a, .today__section-head > span { display: inline-flex; gap: 2px; align-items: center; color: var(--m-text-faint); font-size: 13px; text-decoration: none; }
+.today__dims { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 20px; }
+.today__dim-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--m-text-dim); margin-bottom: 9px; }
+.today__dim-head b { color: var(--m-text); font-weight: 600; }
+.today__total { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; border-top: 1px solid var(--m-border); margin: 22px 0 0; padding-top: 14px; color: var(--m-text-dim); font-size: 13px; }
+.today__total b { font-size: 20px; color: var(--m-primary); }
+.today__total span { margin-left: auto; font-size: 13px; color: var(--m-text-faint); }
+.today__generate-error { font-size: 12px; color: var(--m-danger); }
+.today__footnote { margin: 28px 0 4px; text-align: center; font-size: 13px; color: var(--m-text-faint); }
+@media (max-width: 359px) { .today__hero { padding: 18px; } .today__hero-intro { padding-right: 88px; } .today__orbit { width: 120px; right: -20px; } .today__hero-title { font-size: 21px; } }
 </style>

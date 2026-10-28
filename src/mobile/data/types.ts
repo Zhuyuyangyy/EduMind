@@ -42,6 +42,9 @@ export interface ProfileDimension {
 }
 
 export interface LearnerProfile {
+  learnerNeeds?: Partial<import('@/composables/useProfileSurvey').SurveyAnswers>
+  analysisSource?: 'model' | 'rule'
+  suggestions?: string[]
   dimensions?: ProfileDimension[]
   radarPoints?: Array<{ dimension: string; score: number }>
   totalScore?: number

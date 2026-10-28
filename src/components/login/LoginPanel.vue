@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { completeLogin } from '@/lib/auth'
-import { loginDemoAccount } from '@/lib/api'
+import { loginDemoAccount, registerAccount } from '@/lib/api'
 
 type LoginRole = 'student' | 'admin'
 
@@ -19,6 +19,7 @@ const regAccount = ref('')
 const regName = ref('')
 const regPassword = ref('')
 const regConfirm = ref('')
+const demoMode = import.meta.env.VITE_DEMO_MODE === 'true'
 
 const roleConfigs = {
   student: {
@@ -27,8 +28,8 @@ const roleConfigs = {
     placeholderAccount: '请输入学号/账号',
     placeholderPassword: '请输入密码',
     buttonText: '进入学习平台',
-    defaultAccount: 'reviewer',
-    defaultPassword: 'Zhixue2026!',
+    defaultAccount: demoMode ? 'reviewer' : '',
+    defaultPassword: demoMode ? 'Zhixue2026!' : '',
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
       <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
       <path d="M6 12v5c3 3 9 3 12 0v-5"/>
@@ -82,7 +83,7 @@ async function handleSubmit() {
   }
 }
 
-function handleRegister() {
+async function handleRegister() {
   if (!regAccount.value || !regName.value || !regPassword.value) {
     alert('请填写完整注册信息')
     return
@@ -91,12 +92,22 @@ function handleRegister() {
     alert('两次输入的密码不一致')
     return
   }
-  alert(`注册成功！账号：${regAccount.value}，请返回登录`)
-  showRegister.value = false
-  regAccount.value = ''
-  regName.value = ''
-  regPassword.value = ''
-  regConfirm.value = ''
+  loading.value = true
+  try {
+    const result = await registerAccount(regAccount.value.trim(), regPassword.value, regName.value.trim())
+    account.value = result.account
+    password.value = ''
+    showRegister.value = false
+    regAccount.value = ''
+    regName.value = ''
+    regPassword.value = ''
+    regConfirm.value = ''
+    alert(`注册成功！账号：${result.account}，请登录`)
+  } catch (error) {
+    alert(error instanceof Error ? error.message : '注册失败，请稍后重试')
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 

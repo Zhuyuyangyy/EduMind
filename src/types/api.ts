@@ -89,6 +89,8 @@ export interface TutoringHistoryItem {
 }
 
 export interface LearningPathResponse {
+  dataSource?: 'real' | 'demo-fixture'
+  simulated?: boolean
   phases: Array<{
     title: string
     period: string
@@ -141,6 +143,8 @@ export interface EvaluationDashboardPayload {
 
 export interface EvaluationResponse {
   generatedAt: string
+  dataSource?: 'real' | 'demo-fixture'
+  simulated?: boolean
   stats: Array<{
     label: string
     value: string
