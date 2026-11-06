@@ -1,0 +1,20 @@
+=== AstriPath E2E 测试（Playwright 1.60，chromium）运行于 2026-11-07 01:22:27 ===
+前置: npm run build && vite preview (port 4173)
+命令: npx playwright test
+
+
+Running 11 tests using 1 worker
+
+  ok  1 [desktop] › tests\e2e\flow.spec.ts:23:3 › 智学星枢竞赛版核心闭环 › T01/T02 首页无需登录，内容完整 (259ms)
+  ok  2 [desktop] › tests\e2e\flow.spec.ts:38:3 › 智学星枢竞赛版核心闭环 › T03/T04 学习诊断：8 题作答、提交、自动判分 (920ms)
+  ok  3 [desktop] › tests\e2e\flow.spec.ts:54:3 › 智学星枢竞赛版核心闭环 › T05 知识画像：分数与知识点对应，分组展示 (993ms)
+  ok  4 [desktop] › tests\e2e\flow.spec.ts:77:3 › 智学星枢竞赛版核心闭环 › T06 学习计划：7 天生成、推荐理由、完成打卡 (961ms)
+  ok  5 [desktop] › tests\e2e\flow.spec.ts:96:3 › 智学星枢竞赛版核心闭环 › T07 AI 导师：问答可用，附引用依据，演示模式明示 (289ms)
+  ok  6 [desktop] › tests\e2e\flow.spec.ts:121:3 › 智学星枢竞赛版核心闭环 › T08/T09 练习：即时判分、解析、掌握度与计划更新 (1.2s)
+  ok  7 [desktop] › tests\e2e\flow.spec.ts:157:3 › 智学星枢竞赛版核心闭环 › T10 重置演示：恢复初始状态 (924ms)
+  ok  8 [desktop] › tests\e2e\flow.spec.ts:174:3 › 智学星枢竞赛版核心闭环 › 本地持久化：刷新后学习记录保留 (895ms)
+  ok  9 [desktop] › tests\e2e\flow.spec.ts:185:3 › 智学星枢竞赛版核心闭环 › 课程页：知识图谱与知识点清单 (161ms)
+  ok 10 [mobile] › tests\e2e\mobile.spec.ts:8:3 › 移动端适配 › T11 手机 375px：导航可操作、无横向溢出、内容完整 (656ms)
+  ok 11 [mobile] › tests\e2e\mobile.spec.ts:38:3 › 移动端适配 › 移动端：导师页对话与输入可用 (244ms)
+
+  11 passed (8.9s)

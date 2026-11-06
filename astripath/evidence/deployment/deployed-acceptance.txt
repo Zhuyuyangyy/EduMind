@@ -1,0 +1,13 @@
+PASS T01/T12 公网无登录访问首页
+PASS T04 诊断提交判分
+PASS T05 知识画像渲染 — 8 张知识点卡片
+PASS T06 学习计划 7 天 — 7 天
+PASS T07 AI 导师问答与引用依据
+PASS T08 练习即时判分
+PASS T09 学习报告
+PASS 深链接直达 /profile
+PASS T11 移动端 375px 无横向溢出 — overflow=0px
+PASS T11 移动端导航可用
+PASS 无页面脚本错误
+
+11/11 项通过

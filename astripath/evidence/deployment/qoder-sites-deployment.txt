@@ -1,0 +1,24 @@
+=== AstriPath Qoder Sites 部署记录 ===
+日期: 2026-11-07
+
+[prepare_site]
+{"actionId":"825d797f-dcb8-4f10-9e8a-7dcf88970311",
+ "projectRoot":"D:\ZYY_Inovation\QoderEdumind\astripath",
+ "webDirectory":"dist","spa":true,
+ "displayName":"智学星枢 AstriPath","slug":"astripath"}
+
+[get_publish_status 最终状态]
+{"published":true,"readiness":"publication_completed","canPublish":false,
+ "access_mode":"public","url":"https://astripath-k78u5s6qgf1.qoder.zone"}
+
+[发布操作]
+publish_site -> publishOperationId 01a1b1e5-59cb-74be-bc05-422b5990d15f (succeeded, committed)
+
+[访问策略]
+private -> public（任务书 §1.2/§8.1 T12 要求公网无登录访问，属用户任务书明确授权）
+
+[线上验收]
+scripts/verify-deployed.mjs：11/11 通过（详见 deployed-acceptance.txt）
+- T01/T12 公网无登录访问；T04 诊断判分；T05 画像 8 卡片；T06 计划 7 天；
+  T07 导师问答+引用依据；T08 练习即时判分；T09 学习报告；深链接直达；
+  T11 移动端 375px 无横向溢出+导航可用；无页面脚本错误。
