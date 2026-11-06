@@ -74,7 +74,7 @@
 ## 8. 测试情况（如实说明）
 
 - 原工程测试资产：`server/` 下 50+ 个 `*.test.mjs` + `src/` 下若干测试 + Playwright 移动端 E2E 脚本。
-- **本次审计未在原工程运行全量测试**（竞赛工作区未安装其重依赖；且竞赛分支不修改原工程代码，其测试结果与竞赛版本 correctness 无关）。竞赛版本拥有独立测试套件（判分/画像/计划/导师检索/持久化/重置 + 核心流程 E2E），以竞赛分支内的测试记录为准。
+- **本次审计已在竞赛工作区实跑原工程测试套件**（`npm test`，Node 24，2026-11-06）：**18/18 通过，0 失败**，其中包含竞赛版直接移植的规则测试——`profile write-back changes only the evidenced dimension and stays bounded`（证据驱动的画像写回）、`hybrid retrieval exposes weighted component scores`（混合检索）、`LLM timeout and invalid JSON both return the declared fallback shape`（模型失败降级）、`profile persistence falls back to JSON when MySQL is not configured`。证据文件：`evidence/test_results/edumind-baseline-test-run.txt`。
 - 演示课程《Python 数据分析基础》诊断题库在原工程中不存在（现有 exercise-bank 仅 10 道算法题），按任务书 §3 模块 B 范围新建，全部标记为示例数据。
 
 ## 9. 部署方式

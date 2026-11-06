@@ -1,0 +1,30 @@
+
+> personalized-learning-platform@1.0.0 test
+> node --test
+
+✔ /api/chat accepts dialogue messages payload and returns dialogue shape (439.738ms)
+✔ trace summary aggregates per-agent results and fallback counts (17.4848ms)
+✔ hybrid retrieval exposes weighted component scores and routes BFS evidence (2.7934ms)
+✔ retrieval modes support ablation and mark unrelated questions out of knowledge base (2.0251ms)
+✔ learner memory summarizes recent evidence for downstream agents (1.5315ms)
+✔ profile write-back changes only the evidenced dimension and stays bounded (2.7594ms)
+✔ profile write-back supports evidence-backed improvement (0.3076ms)
+✔ LLM timeout and invalid JSON both return the declared fallback shape (791.9765ms)
+✔ EvaluationAgent does not consume candidates already marked out of knowledge base (2.557ms)
+✔ prompt injection detector distinguishes learning questions from override attempts (4.3421ms)
+✔ TutorAgent refuses prompt injection without exposing internal configuration (1.7191ms)
+✔ profile persistence falls back to JSON when MySQL is not configured (178.6296ms)
+✔ TutorAgent defaults to first-level scaffolding instead of a complete answer (3.2603ms)
+✔ TutorAgent exposes a worked explanation only at level five (1.6064ms)
+✔ relative JSON imports used by the admin screen exist in a clean checkout (6.1137ms)
+✔ standalone mindmap route and top navigation entry are removed (6.4678ms)
+✔ client source contains no known exposed avatar credentials or personal profile data (6.3838ms)
+✔ document title uses the 智学星枢 brand and does not claim unsupported availability (2.7557ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4468.3143
