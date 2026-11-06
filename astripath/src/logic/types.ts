@@ -101,10 +101,18 @@ export interface TutorMessage {
   role: 'user' | 'tutor'
   text: string
   at: string
-  /** 导师回复的引用依据（演示知识库出处） */
+  /** 导师回复的引用依据（课程资料出处） */
   source?: string
   matchedTerms?: string[]
   kpId?: string
+  /** 导师回复的结构化内容（持久化，保证刷新后仍可查看） */
+  example?: string
+  pitfalls?: string[]
+  relatedExercises?: Array<{ id: string; prompt: string }>
+  followUps?: string[]
+  /** 是否命中演示知识库 */
+  matched?: boolean
+  title?: string
 }
 
 export type LearningEventKind =

@@ -6,7 +6,7 @@
  */
 import type { Exercise, KpEvidence, KpMasteryState, LearningEvent, LearningState, TutorMessage } from './types.ts'
 import { diagnosisQuestions } from '../data/diagnosis.ts'
-import { exercisesByKp, getExercise } from '../data/exercises.ts'
+import { exercisesByKp } from '../data/exercises.ts'
 import { demoCourse } from '../data/course.ts'
 import { scoreAnswer, summarizeAttempts } from './scoring.ts'
 import { applyPracticeSession, buildDiagnosisBaseline, createUntestedState } from './mastery.ts'
@@ -43,7 +43,7 @@ export function resetLearningState(): LearningState {
 
 export interface DiagnosisResult {
   perQuestion: Array<{ questionId: string; kpId: string; chosen: number | null; correct: boolean; reason: string }>
-  perKp: KpEvidence[]
+  perKp: Array<KpEvidence & { kpId: string }>
   summary: { total: number; correct: number; correctRate: number | null }
 }
 
@@ -210,7 +210,10 @@ export function deserializeState(raw: string | null): LearningState | null {
   const kpStates: Record<string, KpMasteryState> = {}
   for (const kp of demoCourse.knowledgePoints) {
     const stored = parsed.kpStates[kp.id]
-    kpStates[kp.id] = isRecord(stored) && typeof stored.mastery === 'number' ? (stored as KpMasteryState) : fresh.kpStates[kp.id]
+    kpStates[kp.id] =
+      isRecord(stored) && typeof stored.mastery === 'number' && Array.isArray(stored.history)
+        ? ({ ...fresh.kpStates[kp.id], ...stored } as KpMasteryState)
+        : fresh.kpStates[kp.id]
   }
   return {
     version: STATE_VERSION,
