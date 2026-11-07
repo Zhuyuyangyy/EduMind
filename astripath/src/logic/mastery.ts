@@ -6,7 +6,9 @@
  * 2. 证据量门槛：单次练习该知识点作答题数 < 2 不调整掌握度（避免偶然性）；
  * 3. 稳定区间：练习正确率处于 [40%, 80%) 时掌握度维持不变（过滤噪声波动）；
  * 4. 变化上限：单次练习单知识点掌握度变化不超过 ±MAX_DELTA；
- * 5. 取值范围钳制在 [0, 100]。
+ * 5. 取值范围钳制在 [0, 100]；
+ * 6. 证据必留痕：无论掌握度是否调整，练习计数、最近测试结果与流水记录都会更新
+ *    （稳定区间 / 触底 / 证据不足的会话同样计入「累计练习」与「最近测试」）。
  *
  * 注意：本模型输出为「演示评估值」，不是经过真实用户实验验证的学习能力测量。
  */
@@ -76,28 +78,40 @@ export function applyPracticeSession(
 ): PracticeUpdateResult {
   const before = state.mastery
 
-  if (total < MASTERY_RULES.MIN_SESSION_QUESTIONS) {
-    return {
-      state,
-      before,
-      after: before,
-      delta: 0,
-      changed: false,
-      reason: `本次练习仅作答 ${total} 题（少于 ${MASTERY_RULES.MIN_SESSION_QUESTIONS} 题），证据量不足，掌握度暂不调整`
+  /** 无论掌握度是否调整，练习证据（计数/最近测试/流水）都必须记录 */
+  const withEvidence = (after: number, reason: string): PracticeUpdateResult => {
+    const next: KpMasteryState = {
+      ...state,
+      mastery: after,
+      lastResult: { correct, total, at, kind: 'practice' },
+      practiceCount: state.practiceCount + total,
+      practiceCorrect: state.practiceCorrect + correct,
+      history: [...state.history, { at, before, after, reason, kind: 'practice' as const }]
     }
+    return {
+      state: next,
+      before,
+      after,
+      delta: after - before,
+      changed: after !== before,
+      reason
+    }
+  }
+
+  if (total < MASTERY_RULES.MIN_SESSION_QUESTIONS) {
+    return withEvidence(
+      before,
+      `本次练习仅作答 ${total} 题（少于 ${MASTERY_RULES.MIN_SESSION_QUESTIONS} 题），证据量不足，掌握度暂不调整`
+    )
   }
 
   const rate = correct / total
 
   if (rate >= MASTERY_RULES.STABLE_LOW && rate < MASTERY_RULES.STABLE_HIGH) {
-    return {
-      state,
+    return withEvidence(
       before,
-      after: before,
-      delta: 0,
-      changed: false,
-      reason: `本次练习正确率 ${(rate * 100).toFixed(0)}% 处于稳定区间 [40%, 80%)，掌握度维持 ${before} 不变`
-    }
+      `本次练习正确率 ${(rate * 100).toFixed(0)}% 处于稳定区间 [40%, 80%)，掌握度维持 ${before} 不变`
+    )
   }
 
   const delta =
@@ -115,48 +129,20 @@ export function applyPracticeSession(
   const actualDelta = after - before
 
   if (actualDelta === 0) {
-    return {
-      state,
+    return withEvidence(
       before,
-      after: before,
-      delta: 0,
-      changed: false,
-      reason:
-        before === 100
-          ? '掌握度已达上限 100，本次练习正确率良好，维持不变'
-          : '掌握度已在下限 0，本次练习表现不佳，维持不变'
-    }
+      before === 100
+        ? '掌握度已达上限 100，本次练习正确率良好，维持不变'
+        : '掌握度已在下限 0，本次练习表现不佳，维持不变'
+    )
   }
 
   const direction = actualDelta > 0 ? '提升' : '下降'
-  const next: KpMasteryState = {
-    ...state,
-    mastery: after,
-    lastResult: { correct, total, at, kind: 'practice' },
-    practiceCount: state.practiceCount + total,
-    practiceCorrect: state.practiceCorrect + correct,
-    history: [
-      ...state.history,
-      {
-        at,
-        before,
-        after,
-        reason: `练习正确率 ${(rate * 100).toFixed(0)}%（${correct}/${total}）超出稳定区间，掌握度${direction} ${Math.abs(actualDelta)} 分`,
-        kind: 'practice' as const
-      }
-    ]
-  }
-
-  return {
-    state: next,
-    before,
+  return withEvidence(
     after,
-    delta: actualDelta,
-    changed: true,
-    reason:
-      `练习正确率 ${(rate * 100).toFixed(0)}%（${correct}/${total}）超出稳定区间 [40%, 80%)，` +
+    `练习正确率 ${(rate * 100).toFixed(0)}%（${correct}/${total}）超出稳定区间 [40%, 80%)，` +
       `掌握度${direction} ${Math.abs(actualDelta)} 分（${before} → ${after}）`
-  }
+  )
 }
 
 /** 由诊断结果建立某知识点的基线状态 */

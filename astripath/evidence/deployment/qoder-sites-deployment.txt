@@ -22,3 +22,8 @@ scripts/verify-deployed.mjs：11/11 通过（详见 deployed-acceptance.txt）
 - T01/T12 公网无登录访问；T04 诊断判分；T05 画像 8 卡片；T06 计划 7 天；
   T07 导师问答+引用依据；T08 练习即时判分；T09 学习报告；深链接直达；
   T11 移动端 375px 无横向溢出+导航可用；无页面脚本错误。
+
+[第二次发布（修复练习证据留痕缺陷）]
+actionId: c2de8462-5ce3-44df-a722-f2ab0e604942
+prepare_site(projectId 复用) -> publish_site -> published: true
+部署后线上复核：练习证据留痕生效（稳定区间会话也计入累计练习），验收 11/11 通过。

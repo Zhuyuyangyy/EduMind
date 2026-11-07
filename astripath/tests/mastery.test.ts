@@ -82,6 +82,31 @@ test('掌握度钳制在 100：达到上限后良好表现不再提升', () => {
   assert.equal(result.delta, 1)
 })
 
+test('证据必留痕：未调整掌握度的会话也计入练习计数、最近测试与流水', () => {
+  const base = buildDiagnosisBaseline('numpy-basics', 1, 2, 't0') // 38
+  // 稳定区间：2/4 = 50%，掌握度不变但证据必须记录
+  const stable = applyPracticeSession(base, 2, 4, 't1')
+  assert.equal(stable.changed, false)
+  assert.equal(stable.state.practiceCount, 4)
+  assert.equal(stable.state.practiceCorrect, 2)
+  assert.equal(stable.state.lastResult?.kind, 'practice')
+  assert.equal(stable.state.history.length, 2) // 诊断基线 + 本次练习流水
+  assert.equal(stable.state.history[1].before, stable.state.history[1].after)
+
+  // 触底：0% 但掌握度已在 0，同样记录证据
+  const zero = buildDiagnosisBaseline('numpy-basics', 0, 1, 't0') // 0
+  const bottom = applyPracticeSession(zero, 0, 3, 't1')
+  assert.equal(bottom.changed, false)
+  assert.equal(bottom.state.practiceCount, 3)
+  assert.match(bottom.state.history[1].reason, /下限/)
+
+  // 证据量不足：单题会话也计入计数
+  const thin = applyPracticeSession(base, 1, 1, 't1')
+  assert.equal(thin.changed, false)
+  assert.equal(thin.state.practiceCount, 1)
+  assert.match(thin.state.history[1].reason, /证据量不足/)
+})
+
 test('总体掌握度：仅统计有证据的知识点，无证据返回 null', () => {
   assert.equal(overallMastery([]), null)
   const untested = createUntestedState('py-basics')

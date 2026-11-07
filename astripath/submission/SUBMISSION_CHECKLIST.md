@@ -5,7 +5,7 @@
 ## 一、任务书 §8.3 最终验收
 
 - [x] 构建通过（`npm run build`：vue-tsc 0 错误 + Vite 产物 690KB）
-- [x] 核心功能测试通过（43 单元测试，`evidence/test_results/astripath-unit-tests.txt`）
+- [x] 核心功能测试通过（44 单元测试，`evidence/test_results/astripath-unit-tests.txt`）
 - [x] 端到端测试通过（11 E2E，`evidence/test_results/astripath-e2e-tests.txt`）
 - [x] 桌面端检查完成（1440px 全流程截图 + 线上验收）
 - [x] 手机端检查完成（375px E2E + 截图，无横向溢出）

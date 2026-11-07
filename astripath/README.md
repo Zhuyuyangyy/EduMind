@@ -29,7 +29,7 @@ astripath/
 │   ├── components/      # 通用组件（导航/掌握度环/雷达图/知识点卡片/流程条）
 │   ├── views/           # 8 个页面视图
 │   └── style.css        # 全局样式（消费 Nudge 设计变量）
-├── tests/               # 43 个单元测试 + 11 个 Playwright E2E
+├── tests/               # 44 个单元测试 + 12 个 Playwright E2E
 ├── scripts/             # 截图与线上验收脚本
 ├── docs/                # 审计报告/项目概览/架构/用户指南/测试报告/Qoder 使用记录
 ├── screenshots/         # 全流程截图（含移动端）
@@ -44,8 +44,8 @@ cd astripath
 npm install
 npm run dev          # 本地开发（默认 http://localhost:5173）
 npm run build        # 类型检查 + 生产构建 -> dist/
-npm test             # 43 个单元测试（node:test）
-npm run test:e2e     # 11 个 E2E（需先 build 并启动 vite preview）
+npm test             # 44 个单元测试（node:test）
+npm run test:e2e     # 12 个 E2E（需先 build 并启动 vite preview）
 ```
 
 ## 关键设计决策

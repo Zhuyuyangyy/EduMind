@@ -1,6 +1,6 @@
 import { chromium } from '@playwright/test';
-import { diagnosisQuestions } from './src/data/diagnosis.ts';
-import { exercises } from './src/data/exercises.ts';
+import { diagnosisQuestions } from '../src/data/diagnosis.ts';
+import { exercises } from '../src/data/exercises.ts';
 
 const BASE = 'http://localhost:4173';
 const browser = await chromium.launch();

@@ -182,6 +182,34 @@ test.describe('智学星枢竞赛版核心闭环', () => {
     expect(stored).toBeTruthy()
   })
 
+  test('练习证据留痕：掌握度未变化时累计练习与最近测试仍更新', async ({ page }) => {
+    const { exercises } = await import('../../src/data/exercises.ts')
+    await page.goto('/')
+    await completeDiagnosis(page)
+    await page.goto('/practice/pandas-io')
+
+    const bank = exercises.filter((e) => e.kpId === 'pandas-io')
+    // 全部答错：该知识点诊断基线为 0（或非 0），无论掌握度是否变化，证据都必须记录
+    for (let i = 0; i < bank.length; i++) {
+      await expect(page.getByText(`第 ${i + 1} / ${bank.length} 题`)).toBeVisible()
+      await page.locator('.choice-item').nth((bank[i].answer + 1) % 4).click()
+      await expect(page.locator('.explain-box')).toBeVisible()
+      if (i < bank.length - 1) await page.getByRole('button', { name: '下一题' }).click()
+    }
+    await page.getByRole('button', { name: '提交并更新掌握度' }).click()
+    await expect(page.getByRole('heading', { name: '练习完成' })).toBeVisible()
+
+    // 累计练习必须反映本次 3 题（修复：此前未调整掌握度时计数不更新）
+    await expect(page.getByText(`累计练习`)).toBeVisible()
+    const cards = page.locator('.stat-card', { hasText: '累计练习' })
+    await expect(cards).toContainText(`${bank.length} 题`)
+
+    // 画像页该知识点的练习计数一致
+    await page.goto('/profile')
+    const card = page.locator('.kp-card', { hasText: 'Pandas 数据读取' })
+    await expect(card).toContainText(`练习：${bank.length} 题`)
+  })
+
   test('课程页：知识图谱与知识点清单', async ({ page }) => {
     await page.goto('/course')
     await expect(page.getByRole('heading', { name: '知识图谱（先修关系）' })).toBeVisible()
