@@ -1271,8 +1271,6 @@ onBeforeUnmount(() => {
   }
 }
 
-</style>
-
 /* —— 竞赛演示入口横幅 —— */
 .comp-entry {
   display: grid;
@@ -1379,3 +1377,4 @@ onBeforeUnmount(() => {
     font-size: 21px;
   }
 }
+</style>
