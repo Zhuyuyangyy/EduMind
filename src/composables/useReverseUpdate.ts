@@ -136,7 +136,7 @@ export const reverseAgents: Record<ReverseAgentId, ReverseAgent> = {
       { label: '证据绑定', before: '零散学习日志', after: '测评 2/3 错题 + 对话追问 3 次', impact: '给后续回写提供可追溯依据' },
     ],
     history: ['写入评估快照 #EVAL-0512-R2', '生成 4 条证据标签', '输出置信度 0.88'],
-    img: '/reverse-evaluation/agent-evaluation.png',
+    img: '/reverse-evaluation/agent-evaluation.jpg',
     route: {
       path: '/evaluation',
       query: { learner: '学习者 A', course: '计算机科学基础' },
@@ -160,7 +160,7 @@ export const reverseAgents: Record<ReverseAgentId, ReverseAgent> = {
       { label: '范围收敛', before: '泛化补弱', after: '锁定指针传参与 BFS 标记', impact: '避免把路径改得过散' },
     ],
     history: ['追加反思记录 #REFLECT-0512-R2', '确认 6 个画像字段可更新', '输出置信度 0.83'],
-    img: '/reverse-evaluation/agent-reflection.png',
+    img: '/reverse-evaluation/agent-reflection.jpg',
   },
   profile: {
     id: 'profile',
@@ -179,7 +179,7 @@ export const reverseAgents: Record<ReverseAgentId, ReverseAgent> = {
       { label: '偏好字段', before: '文字讲解', after: '思维导图 + 例题拆解', impact: '驱动资源与辅导风格一起调整' },
     ],
     history: ['写入画像历史 #PROFILE-0512-R2', '更新 6 个维度', '同步下游智能体 3 个'],
-    img: '/reverse-evaluation/agent-profile.png',
+    img: '/reverse-evaluation/agent-profile.jpg',
     route: {
       path: '/dialogue',
       query: { tab: 'portrait-report' },
@@ -203,7 +203,7 @@ export const reverseAgents: Record<ReverseAgentId, ReverseAgent> = {
       { label: '复测节点', before: '无复测', after: '无提示复测', impact: '验证画像更新是否有效' },
     ],
     history: ['生成路径版本 #PATH-0512-R2', '插入 1 个补救节点', '延后 2 个低优先级节点'],
-    img: '/reverse-evaluation/agent-path.png',
+    img: '/reverse-evaluation/agent-path.jpg',
     route: {
       path: '/learning-path',
       label: '查看学习路径',
@@ -226,7 +226,7 @@ export const reverseAgents: Record<ReverseAgentId, ReverseAgent> = {
       { label: '推荐解释', before: '按课程推荐', after: '按画像证据推荐', impact: '让推荐原因可追溯' },
     ],
     history: ['生成资源包 #RESOURCE-0512-R2', '替换 3 个资源', '新增 2 条推荐理由'],
-    img: '/reverse-evaluation/agent-resource.png',
+    img: '/reverse-evaluation/agent-resource.jpg',
     route: {
       path: '/resources',
       query: { tab: 'resources' },
@@ -250,7 +250,7 @@ export const reverseAgents: Record<ReverseAgentId, ReverseAgent> = {
       { label: '提示策略', before: '直接给思路', after: '分步提示 + 无提示复测', impact: '减少对提示的依赖' },
     ],
     history: ['更新辅导策略 #TUTOR-0512-R2', '调整 2 处讲解策略', '新增 1 个复测入口'],
-    img: '/reverse-evaluation/agent-tutor.png',
+    img: '/reverse-evaluation/agent-tutor.jpg',
     route: {
       path: '/tutoring',
       query: { topic: 'BFS visited 标记时机', module: '图结构', unit: '广度优先搜索', mastery: '42' },

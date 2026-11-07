@@ -98,18 +98,18 @@ interface Chain {
 
 function defaultAgents(): Agent[] {
   return [
-    { id: 'profileCapture', name: '画像采集', role: 'PROFILE-1', color: T.profileCapture, artSrc: '/homepage/agent-load-profile.png', icon: User },
-    { id: 'profileDiagnosis', name: '薄弱诊断', role: 'PROFILE-2', color: T.profileDiagnosis, artSrc: '/homepage/agent-load-profile.png', icon: Search },
-    { id: 'pathPlan', name: '路径规划', role: 'PATH-1', color: T.pathPlan, artSrc: '/homepage/agent-load-path.png', icon: Map },
-    { id: 'pathReplan', name: '动态重规划', role: 'PATH-2', color: T.pathReplan, artSrc: '/homepage/agent-load-path.png', icon: RefreshCw },
-    { id: 'resourceSearch', name: '资源检索', role: 'RESOURCE-1', color: T.resourceSearch, artSrc: '/homepage/agent-load-resource.png', icon: BookOpen },
-    { id: 'resourceGenerate', name: '资源生成', role: 'RESOURCE-2', color: T.resourceGenerate, artSrc: '/homepage/agent-load-resource.png', icon: Sparkles },
-    { id: 'tutorExplain', name: '讲解辅导', role: 'TUTOR-1', color: T.tutorExplain, artSrc: '/homepage/agent-load-tutor.png', icon: Presentation },
-    { id: 'tutorDialogue', name: '互动答疑', role: 'TUTOR-2', color: T.tutorDialogue, artSrc: '/homepage/agent-load-tutor.png', icon: MessageCircle },
-    { id: 'evalQuiz', name: '评估出题', role: 'EVAL-1', color: T.evalQuiz, artSrc: '/homepage/agent-load-eval.png', icon: FileCheck },
-    { id: 'evalCause', name: '错因分析', role: 'EVAL-2', color: T.evalCause, artSrc: '/homepage/agent-load-eval.png', icon: AlertTriangle },
-    { id: 'feedbackWrite', name: '反馈回写', role: 'FEEDBACK-1', color: T.feedbackWrite, artSrc: '/homepage/agent-load-feedback.png', icon: RotateCcw },
-    { id: 'reflection', name: '成长复盘', role: 'FEEDBACK-2', color: T.reflection, artSrc: '/homepage/agent-load-feedback.png', icon: TrendingUp },
+    { id: 'profileCapture', name: '画像采集', role: 'PROFILE-1', color: T.profileCapture, artSrc: '/homepage/agent-load-profile.jpg', icon: User },
+    { id: 'profileDiagnosis', name: '薄弱诊断', role: 'PROFILE-2', color: T.profileDiagnosis, artSrc: '/homepage/agent-load-profile.jpg', icon: Search },
+    { id: 'pathPlan', name: '路径规划', role: 'PATH-1', color: T.pathPlan, artSrc: '/homepage/agent-load-path.jpg', icon: Map },
+    { id: 'pathReplan', name: '动态重规划', role: 'PATH-2', color: T.pathReplan, artSrc: '/homepage/agent-load-path.jpg', icon: RefreshCw },
+    { id: 'resourceSearch', name: '资源检索', role: 'RESOURCE-1', color: T.resourceSearch, artSrc: '/homepage/agent-load-resource.jpg', icon: BookOpen },
+    { id: 'resourceGenerate', name: '资源生成', role: 'RESOURCE-2', color: T.resourceGenerate, artSrc: '/homepage/agent-load-resource.jpg', icon: Sparkles },
+    { id: 'tutorExplain', name: '讲解辅导', role: 'TUTOR-1', color: T.tutorExplain, artSrc: '/homepage/agent-load-tutor.jpg', icon: Presentation },
+    { id: 'tutorDialogue', name: '互动答疑', role: 'TUTOR-2', color: T.tutorDialogue, artSrc: '/homepage/agent-load-tutor.jpg', icon: MessageCircle },
+    { id: 'evalQuiz', name: '评估出题', role: 'EVAL-1', color: T.evalQuiz, artSrc: '/homepage/agent-load-eval.jpg', icon: FileCheck },
+    { id: 'evalCause', name: '错因分析', role: 'EVAL-2', color: T.evalCause, artSrc: '/homepage/agent-load-eval.jpg', icon: AlertTriangle },
+    { id: 'feedbackWrite', name: '反馈回写', role: 'FEEDBACK-1', color: T.feedbackWrite, artSrc: '/homepage/agent-load-feedback.jpg', icon: RotateCcw },
+    { id: 'reflection', name: '成长复盘', role: 'FEEDBACK-2', color: T.reflection, artSrc: '/homepage/agent-load-feedback.jpg', icon: TrendingUp },
   ]
 }
 
@@ -193,12 +193,12 @@ function defaultModuleCards(events: EventNode[]): ModuleCard[] {
   const counts: Record<string, number> = {}
   events.forEach((e) => { counts[e.chain] = (counts[e.chain] ?? 0) + 1 })
   return [
-    { id: 'profile-module', chainId: 'profile-module', name: '画像诊断', agentNames: ['画像采集', '薄弱诊断'], color: T.profileCapture, artSrc: '/homepage/agent-load-profile.png', eventCount: counts['profile-module'] ?? 0 },
-    { id: 'path-module', chainId: 'path-module', name: '路径编排', agentNames: ['路径规划', '动态重规划'], color: T.pathPlan, artSrc: '/homepage/agent-load-path.png', eventCount: counts['path-module'] ?? 0 },
-    { id: 'resource-module', chainId: 'resource-module', name: '资源生产', agentNames: ['资源检索', '资源生成'], color: T.resourceSearch, artSrc: '/homepage/agent-load-resource.png', eventCount: counts['resource-module'] ?? 0 },
-    { id: 'tutor-module', chainId: 'tutor-module', name: '辅导互动', agentNames: ['讲解辅导', '互动答疑'], color: T.tutorExplain, artSrc: '/homepage/agent-load-tutor.png', eventCount: counts['tutor-module'] ?? 0 },
-    { id: 'eval-module', chainId: 'eval-module', name: '测评分析', agentNames: ['评估出题', '错因分析'], color: T.evalQuiz, artSrc: '/homepage/agent-load-eval.png', eventCount: counts['eval-module'] ?? 0 },
-    { id: 'feedback-module', chainId: 'feedback-module', name: '反馈复盘', agentNames: ['反馈回写', '成长复盘'], color: T.feedbackWrite, artSrc: '/homepage/agent-load-feedback.png', eventCount: counts['feedback-module'] ?? 0 },
+    { id: 'profile-module', chainId: 'profile-module', name: '画像诊断', agentNames: ['画像采集', '薄弱诊断'], color: T.profileCapture, artSrc: '/homepage/agent-load-profile.jpg', eventCount: counts['profile-module'] ?? 0 },
+    { id: 'path-module', chainId: 'path-module', name: '路径编排', agentNames: ['路径规划', '动态重规划'], color: T.pathPlan, artSrc: '/homepage/agent-load-path.jpg', eventCount: counts['path-module'] ?? 0 },
+    { id: 'resource-module', chainId: 'resource-module', name: '资源生产', agentNames: ['资源检索', '资源生成'], color: T.resourceSearch, artSrc: '/homepage/agent-load-resource.jpg', eventCount: counts['resource-module'] ?? 0 },
+    { id: 'tutor-module', chainId: 'tutor-module', name: '辅导互动', agentNames: ['讲解辅导', '互动答疑'], color: T.tutorExplain, artSrc: '/homepage/agent-load-tutor.jpg', eventCount: counts['tutor-module'] ?? 0 },
+    { id: 'eval-module', chainId: 'eval-module', name: '测评分析', agentNames: ['评估出题', '错因分析'], color: T.evalQuiz, artSrc: '/homepage/agent-load-eval.jpg', eventCount: counts['eval-module'] ?? 0 },
+    { id: 'feedback-module', chainId: 'feedback-module', name: '反馈复盘', agentNames: ['反馈回写', '成长复盘'], color: T.feedbackWrite, artSrc: '/homepage/agent-load-feedback.jpg', eventCount: counts['feedback-module'] ?? 0 },
   ]
 }
 

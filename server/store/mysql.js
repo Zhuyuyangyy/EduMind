@@ -10,7 +10,7 @@ let schemaReady
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-function isMySqlConfigured() {
+export function isMySqlConfigured() {
   return Boolean(process.env.MYSQL_URL || (process.env.MYSQL_HOST && process.env.MYSQL_USER && process.env.MYSQL_DATABASE))
 }
 
@@ -77,6 +77,16 @@ export function getMySqlPool() {
   return pool
 }
 
+/** 关闭连接池（测试/优雅退出用；生产由进程退出处理） */
+export async function closeMySqlPool() {
+  if (pool) {
+    const current = pool
+    pool = undefined
+    schemaReady = false
+    await current.end()
+  }
+}
+
 export async function ensureMySqlSchema() {
   if (!isMySqlConfigured()) return false
   if (!schemaReady) {
@@ -97,6 +107,13 @@ export async function ensureMySqlSchema() {
           display_name VARCHAR(64) NOT NULL,
           updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
             ON UPDATE CURRENT_TIMESTAMP(3)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS learner_onboarding (
+          account_id VARCHAR(191) NOT NULL PRIMARY KEY,
+          payload_json JSON NOT NULL,
+          updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `)
       await db.query(`
@@ -128,10 +145,27 @@ export async function ensureMySqlSchema() {
           reflection_json JSON NOT NULL,
           trace_json JSON NOT NULL,
           created_at DATETIME(3) NOT NULL,
+          profile_before_json JSON NULL,
+          profile_changes_json JSON NULL,
+          evidence VARCHAR(64) NULL,
           UNIQUE KEY learning_cycles_workflow_id (workflow_id),
           KEY learning_cycles_account_created_at (account_id, created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `)
+      // P3-0 迁移：为既有表补齐证据保真列（幂等，忽略已存在的列）
+      const cycleAlterColumns = [
+        ['profile_before_json', 'JSON NULL'],
+        ['profile_changes_json', 'JSON NULL'],
+        ['evidence', 'VARCHAR(64) NULL'],
+      ]
+      for (const [column, definition] of cycleAlterColumns) {
+        try {
+          await db.query(`ALTER TABLE learning_cycles ADD COLUMN ${column} ${definition}`)
+        } catch (error) {
+          // 1060 = Duplicate column name，属预期；其他错误直接抛出
+          if (error?.code !== 'ER_DUP_FIELDNAME' && !/Duplicate column/i.test(error?.message || '')) throw error
+        }
+      }
     })().catch(error => {
       schemaReady = undefined
       throw error
@@ -169,7 +203,8 @@ export async function saveProfileResult(accountId = 'default', profile) {
     `INSERT INTO profile_results (account_id, profile_json, saved_at)
      VALUES (?, CAST(? AS JSON), ?)
      ON DUPLICATE KEY UPDATE profile_json = VALUES(profile_json), saved_at = VALUES(saved_at)`,
-    [accountId, JSON.stringify(normalized), savedAt.slice(0, 23).replace('T', ' ')],
+    // P4-0：传 Date 对象（时区由驱动处理）；剥 T/Z 的字符串会被本地时区重新解释
+    [accountId, JSON.stringify(normalized), new Date(savedAt)],
   )
   return normalized
 }
@@ -189,6 +224,25 @@ export async function getAccountSettings(accountId = 'default') {
     displayName: row.display_name,
     updatedAt: row.updated_at,
   } : null
+}
+
+export async function getLearnerOnboarding(accountId) {
+  if (!isMySqlConfigured()) return readFallbackStore().learnerOnboarding?.[accountId] || null
+  await ensureMySqlSchema()
+  const [rows] = await getMySqlPool().query('SELECT payload_json FROM learner_onboarding WHERE account_id = ?', [accountId])
+  return rows[0] ? parseJsonColumn(rows[0].payload_json) : null
+}
+
+export async function saveLearnerOnboarding(accountId, payload) {
+  if (!isMySqlConfigured()) {
+    const store = readFallbackStore()
+    store.learnerOnboarding = { ...store.learnerOnboarding, [accountId]: payload }
+    writeFallbackStore(store)
+  } else {
+    await ensureMySqlSchema()
+    await getMySqlPool().query('INSERT INTO learner_onboarding (account_id, payload_json) VALUES (?, ?) ON DUPLICATE KEY UPDATE payload_json = VALUES(payload_json)', [accountId, JSON.stringify(payload)])
+  }
+  return payload
 }
 
 export async function saveAccountSettings(accountId = 'default', { displayName }) {
@@ -312,8 +366,9 @@ export async function saveLearningCycle(accountId = 'default', cycle) {
   await getMySqlPool().query(
     `INSERT INTO learning_cycles (
        account_id, workflow_id, profile_json, resource_json, tutoring_json,
-       evaluation_json, path_json, reflection_json, trace_json, created_at
-     ) VALUES (?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?)`,
+       evaluation_json, path_json, reflection_json, trace_json, created_at,
+       profile_before_json, profile_changes_json, evidence
+     ) VALUES (?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, CAST(? AS JSON), CAST(? AS JSON), ?)`,
     [
       accountId,
       cycle.workflowId,
@@ -325,15 +380,51 @@ export async function saveLearningCycle(accountId = 'default', cycle) {
       JSON.stringify(cycle.reflection || {}),
       JSON.stringify(cycle.trace || {}),
       createdAt,
+      // P3-0 证据保真：画像前后快照与变化原因真实持久化（不再读取时补 null）
+      JSON.stringify(cycle.profileBefore || null),
+      JSON.stringify(Array.isArray(cycle.profileChanges) ? cycle.profileChanges : []),
+      typeof cycle.evidence === 'string' ? cycle.evidence : null,
     ],
   )
   return { workflowId: cycle.workflowId, accountId, createdAt: createdAt.toISOString() }
 }
 
+/**
+ * 学习闭环统一响应契约（P2-2A）。
+ * JSON 存储返回原始保存对象（含 profileBefore/profileChanges/agentResults），
+ * MySQL 存储按列重组（含 resourcePackage/tutoring）——两者字段集不同，
+ * 客户端无法用一套类型安全消费。这里归一为同一组键：
+ * 缺失的可选字段补 null / 空数组，绝不伪造数据。
+ */
+export function normalizeLearningCycle(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  return {
+    workflowId: raw.workflowId ?? null,
+    accountId: raw.accountId ?? null,
+    createdAt: raw.createdAt ?? null,
+    // 证据标记：'unverified-client-input' = 旧演示闭环（未核验）；
+    // P3-1 起真实闭环带评分事件 ID 列表
+    evidence: typeof raw.evidence === 'string' ? raw.evidence : null,
+    // 画像（更新后）与更新痕迹
+    profile: raw.profile ?? null,
+    profileBefore: raw.profileBefore ?? null,
+    profileChanges: Array.isArray(raw.profileChanges) ? raw.profileChanges : [],
+    // 各智能体产物
+    resourcePackage: raw.resourcePackage ?? null,
+    tutoring: raw.tutoring ?? null,
+    evaluation: raw.evaluation ?? null,
+    path: raw.path ?? null,
+    reflection: raw.reflection ?? null,
+    // 溯源
+    trace: raw.trace ?? null,
+    agentResults: Array.isArray(raw.agentResults) ? raw.agentResults : [],
+  }
+}
+
 export async function getLatestLearningCycle(accountId = 'default') {
   if (!isMySqlConfigured()) {
     const cycles = readFallbackStore().learningCycles.filter(item => item.accountId === accountId)
-    return cycles.at(-1) || null
+    return normalizeLearningCycle(cycles.at(-1) || null)
   }
   await ensureMySqlSchema()
   const [rows] = await getMySqlPool().query(
@@ -345,7 +436,7 @@ export async function getLatestLearningCycle(accountId = 'default') {
   )
   const row = rows[0]
   if (!row) return null
-  return {
+  return normalizeLearningCycle({
     workflowId: row.workflow_id,
     accountId: row.account_id,
     profile: parseJsonColumn(row.profile_json),
@@ -355,8 +446,12 @@ export async function getLatestLearningCycle(accountId = 'default') {
     path: parseJsonColumn(row.path_json),
     reflection: parseJsonColumn(row.reflection_json),
     trace: parseJsonColumn(row.trace_json),
+    // P3-0：证据列真实读取（旧行为是读取时补 null/[]，无法重放历史）
+    profileBefore: parseJsonColumn(row.profile_before_json),
+    profileChanges: parseJsonColumn(row.profile_changes_json) || [],
+    evidence: row.evidence,
     createdAt: row.created_at,
-  }
+  })
 }
 
 export async function getLearningCycleHistory(accountId = 'default', limit = 5) {

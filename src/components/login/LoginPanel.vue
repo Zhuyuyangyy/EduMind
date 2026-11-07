@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { setAuthSession } from '@/lib/auth'
-import { loginDemoAccount } from '@/lib/api'
+import { completeLogin } from '@/lib/auth'
+import { loginDemoAccount, registerAccount } from '@/lib/api'
+import BrandMark from '@/components/brand/BrandMark.vue'
 
 type LoginRole = 'student' | 'admin'
 
@@ -19,6 +20,7 @@ const regAccount = ref('')
 const regName = ref('')
 const regPassword = ref('')
 const regConfirm = ref('')
+const demoMode = import.meta.env.VITE_DEMO_MODE === 'true'
 
 const roleConfigs = {
   student: {
@@ -27,8 +29,8 @@ const roleConfigs = {
     placeholderAccount: '请输入学号/账号',
     placeholderPassword: '请输入密码',
     buttonText: '进入学习平台',
-    defaultAccount: 'reviewer',
-    defaultPassword: 'Zhixue2026!',
+    defaultAccount: demoMode ? 'reviewer' : '',
+    defaultPassword: demoMode ? 'Zhixue2026!' : '',
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
       <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
       <path d="M6 12v5c3 3 9 3 12 0v-5"/>
@@ -68,12 +70,12 @@ async function handleSubmit() {
   loading.value = true
   try {
     const result = await loginDemoAccount(account.value, password.value, activeRole.value)
-    setAuthSession({
+    await completeLogin({
       role: result.role,
       name: result.displayName,
       account: result.account,
       loginAt: new Date().toISOString(),
-    })
+    }, result.token)
     await router.push(result.role === 'admin' ? '/admin' : '/home')
   } catch (error) {
     alert(error instanceof Error ? error.message : '账号或密码错误')
@@ -82,7 +84,7 @@ async function handleSubmit() {
   }
 }
 
-function handleRegister() {
+async function handleRegister() {
   if (!regAccount.value || !regName.value || !regPassword.value) {
     alert('请填写完整注册信息')
     return
@@ -91,12 +93,22 @@ function handleRegister() {
     alert('两次输入的密码不一致')
     return
   }
-  alert(`注册成功！账号：${regAccount.value}，请返回登录`)
-  showRegister.value = false
-  regAccount.value = ''
-  regName.value = ''
-  regPassword.value = ''
-  regConfirm.value = ''
+  loading.value = true
+  try {
+    const result = await registerAccount(regAccount.value.trim(), regPassword.value, regName.value.trim())
+    account.value = result.account
+    password.value = ''
+    showRegister.value = false
+    regAccount.value = ''
+    regName.value = ''
+    regPassword.value = ''
+    regConfirm.value = ''
+    alert(`注册成功！账号：${result.account}，请登录`)
+  } catch (error) {
+    alert(error instanceof Error ? error.message : '注册失败，请稍后重试')
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -107,23 +119,7 @@ function handleRegister() {
 
     <header class="panel-top-bar">
       <div class="top-brand">
-        <div class="brand-logo">
-          <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
-            <path d="M16 2L28 8V24L16 30L4 24V8L16 2Z" stroke="url(#logo-grad)" stroke-width="1.5" fill="url(#logo-fill)"/>
-            <path d="M16 8L22 11V21L16 24L10 21V11L16 8Z" stroke="#00d4ff" stroke-width="1" fill="none"/>
-            <circle cx="16" cy="16" r="3" fill="#00d4ff"/>
-            <defs>
-              <linearGradient id="logo-grad" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#00e5ff"/>
-                <stop offset="1" stop-color="#0077ff"/>
-              </linearGradient>
-              <linearGradient id="logo-fill" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
-                <stop stop-color="rgba(0, 180, 255, 0.1)"/>
-                <stop offset="1" stop-color="rgba(0, 100, 200, 0.05)"/>
-              </linearGradient>
-            </defs>
-          </svg>
-        </div>
+        <div class="brand-logo"><BrandMark :size="32" variant="dark" title="智学星枢" /></div>
         <div class="brand-texts">
           <span class="brand-cn">智学星枢</span>
           <span class="brand-en">ZHIXUE XINGSHU</span>

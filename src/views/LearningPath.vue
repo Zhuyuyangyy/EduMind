@@ -238,7 +238,7 @@ const STAGE_CARDS = [
 const CHALLENGE_MAPS = [
   {
     name: '星河光轨',
-    image: '/learning-path/chaungguan1.png',
+    image: '/learning-path/chaungguan1.jpg',
     video: '/learning-path/视频去水印_爱给网_aigei_com.mp4',
     type: 'video',
     positions: [
@@ -251,7 +251,7 @@ const CHALLENGE_MAPS = [
   },
   {
     name: '数据平台',
-    image: '/learning-path/challenge-map-2.png',
+    image: '/learning-path/challenge-map-2.jpg',
     type: 'image',
     positions: [
       { left: '10%', top: '58%' },
@@ -263,7 +263,7 @@ const CHALLENGE_MAPS = [
   },
   {
     name: '浮岛闯关',
-    image: '/learning-path/challenge-map-3.png',
+    image: '/learning-path/challenge-map-3.jpg',
     type: 'image',
     positions: [
       { left: '9%', top: '60%' },
@@ -275,7 +275,7 @@ const CHALLENGE_MAPS = [
   },
   {
     name: '峡谷浮台',
-    image: '/learning-path/challenge-map-4.png',
+    image: '/learning-path/challenge-map-4.jpg',
     type: 'image',
     positions: [
       { left: '10%', top: '62%' },
@@ -287,7 +287,7 @@ const CHALLENGE_MAPS = [
   },
   {
     name: '螺旋星轨',
-    image: '/learning-path/challenge-map-5.png',
+    image: '/learning-path/challenge-map-5.jpg',
     type: 'image',
     positions: [
       { left: '9%', top: '62%' },
@@ -738,7 +738,7 @@ onMounted(async () => {
   padding: 26px;
   background:
     linear-gradient(145deg, rgba(4, 10, 24, 0.9), rgba(11, 14, 32, 0.82)),
-    url('/learning-path/knowledge-panel-bg.png') center / cover no-repeat;
+    url('/learning-path/knowledge-panel-bg.jpg') center / cover no-repeat;
   box-shadow: 0 18px 54px rgba(0, 0, 0, 0.44), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 

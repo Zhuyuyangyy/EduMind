@@ -9746,497 +9746,902 @@
   ],
   "profileResult": null,
   "knowledgePathResult": null,
-  "chatHistory": [
-    {
-      "id": 1788777534571,
-      "role": "user",
-      "content": "你好",
-      "time": "18:38",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788777534572,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "18:38",
-      "resources": [
+  "chatHistory": {
+    "default": [
+      {
+        "id": 1788777534571,
+        "role": "user",
+        "content": "你好",
+        "time": "18:38",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788777534572,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "18:38",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788777908737,
+        "role": "user",
+        "content": "你好",
+        "time": "18:45",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788777908738,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "18:45",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788779536591,
+        "role": "user",
+        "content": "你好",
+        "time": "19:12",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788779536592,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "19:12",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788780407766,
+        "role": "user",
+        "content": "你好",
+        "time": "19:26",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788780407767,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "19:26",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788780469527,
+        "role": "user",
+        "content": "你好",
+        "time": "19:27",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788780469528,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "19:27",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788780583778,
+        "role": "user",
+        "content": "你好",
+        "time": "19:29",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788780583779,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "19:29",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788780684834,
+        "role": "user",
+        "content": "你好",
+        "time": "19:31",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788780684835,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "19:31",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788781935971,
+        "role": "user",
+        "content": "你好",
+        "time": "19:52",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788781935972,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "19:52",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788798121254,
+        "role": "user",
+        "content": "你好",
+        "time": "00:22",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788798121255,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "00:22",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788850757909,
+        "role": "user",
+        "content": "你好",
+        "time": "14:59",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788850757910,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "14:59",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788851384317,
+        "role": "user",
+        "content": "你好",
+        "time": "15:09",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788851384318,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "15:09",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788867162535,
+        "role": "user",
+        "content": "你好",
+        "time": "19:32",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788867162536,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "19:32",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788869948645,
+        "role": "user",
+        "content": "你好",
+        "time": "20:19",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788869948646,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "20:19",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      },
+      {
+        "id": 1788922961587,
+        "role": "user",
+        "content": "你好",
+        "time": "11:02",
+        "multimodalContents": []
+      },
+      {
+        "id": 1788922961588,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "11:02",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      }
+    ],
+    "reviewer": [
+      {
+        "id": 1791803328566,
+        "role": "user",
+        "content": "你好",
+        "time": "19:08",
+        "multimodalContents": []
+      },
+      {
+        "id": 1791803328567,
+        "role": "assistant",
+        "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
+        "time": "19:08",
+        "resources": [
+          {
+            "type": "doc",
+            "title": "相关概念速查",
+            "color": "#00d4ff"
+          },
+          {
+            "type": "mindmap",
+            "title": "知识脉络图",
+            "color": "#7c3aed"
+          },
+          {
+            "type": "exercise",
+            "title": "配套练习",
+            "color": "#06d6a0"
+          }
+        ],
+        "suggestions": [
+          "用更简单的话解释",
+          "给我一个代码示例",
+          "顺便出 3 道练习题"
+        ]
+      }
+    ]
+  },
+  "tutoringHistory": {
+    "default": [],
+    "reviewer": [
+      {
+        "q": "什么是BFS",
+        "a": "当前模式：自由问答\n脚手架级别：Level 1\n\n**概念提示**\n先想一想：BFS 为什么需要记录“已经发现”的节点？如果等到出队才标记，同一节点可能发生什么？",
+        "time": "19:08",
+        "mode": "qa",
+        "scenario": "preview",
+        "multimodalContents": [],
+        "fallbackAgents": [
+          "ProfileAgent",
+          "TutorAgent"
+        ]
+      },
+      {
+        "q": "BFS 的 visited 标记在入队时还是出队时打？",
+        "a": "当前模式：自由问答\n脚手架级别：Level 1\n\n**概念提示**\n先想一想：BFS 为什么需要记录“已经发现”的节点？如果等到出队才标记，同一节点可能发生什么？",
+        "time": "00:23",
+        "mode": "qa",
+        "scenario": "preview",
+        "multimodalContents": [],
+        "fallbackAgents": [
+          "ProfileAgent",
+          "TutorAgent"
+        ]
+      }
+    ]
+  },
+  "knowledgePathByAccount": {
+    "reviewer": {
+      "phases": [
         {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
+          "id": "fundamentals",
+          "name": "基础巩固",
+          "short": "FUND",
+          "color": "#00d4ff",
+          "topics": [
+            {
+              "id": "f1",
+              "name": "编程基础与语法",
+              "mastery": 0.7,
+              "importance": 1,
+              "recommended": true
+            },
+            {
+              "id": "f2",
+              "name": "数据结构入门",
+              "mastery": 0.5599999999999999,
+              "importance": 0.8,
+              "recommended": false
+            },
+            {
+              "id": "f3",
+              "name": "算法思维培养",
+              "mastery": 0.35,
+              "importance": 0.7,
+              "recommended": false
+            }
+          ]
         },
         {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
+          "id": "core-skills",
+          "name": "核心技能",
+          "short": "CORE",
+          "color": "#7c3aed",
+          "topics": [
+            {
+              "id": "c1",
+              "name": "机器学习基础概念",
+              "mastery": 0.2,
+              "importance": 0.95,
+              "recommended": true
+            },
+            {
+              "id": "c2",
+              "name": "数据处理与分析",
+              "mastery": 0.3,
+              "importance": 0.85,
+              "recommended": false
+            },
+            {
+              "id": "c3",
+              "name": "模型训练与评估",
+              "mastery": 0.15,
+              "importance": 0.8,
+              "recommended": false
+            },
+            {
+              "id": "c4",
+              "name": "特征工程实践",
+              "mastery": 0.1,
+              "importance": 0.7,
+              "recommended": false
+            }
+          ]
         },
         {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
+          "id": "deep-learning",
+          "name": "深度学习",
+          "short": "DL",
+          "color": "#06d6a0",
+          "topics": [
+            {
+              "id": "d1",
+              "name": "神经网络原理",
+              "mastery": 0.1,
+              "importance": 0.9,
+              "recommended": true
+            },
+            {
+              "id": "d2",
+              "name": "CNN 图像处理",
+              "mastery": 0.05,
+              "importance": 0.7,
+              "recommended": false
+            },
+            {
+              "id": "d3",
+              "name": "Transformer 架构",
+              "mastery": 0.02,
+              "importance": 0.95,
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "id": "practice",
+          "name": "实战应用",
+          "short": "PRACT",
+          "color": "#f59e0b",
+          "topics": [
+            {
+              "id": "p1",
+              "name": "项目实战练习",
+              "mastery": 0.1,
+              "importance": 0.85,
+              "recommended": true
+            },
+            {
+              "id": "p2",
+              "name": "代码规范与工程化",
+              "mastery": 0.4,
+              "importance": 0.6,
+              "recommended": false
+            },
+            {
+              "id": "p3",
+              "name": "部署与上线",
+              "mastery": 0.05,
+              "importance": 0.5,
+              "recommended": false
+            }
+          ]
         }
       ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
+      "version": 5,
+      "basedOn": 4,
+      "updatedAt": "2026-10-12T08:28:50.421Z"
     },
-    {
-      "id": 1788777908737,
-      "role": "user",
-      "content": "你好",
-      "time": "18:45",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788777908738,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "18:45",
-      "resources": [
+    "mismatch-1791819269864": {
+      "version": 7,
+      "basedOn": 6,
+      "phases": [
         {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
+          "id": "phase-1",
+          "title": "阶段一",
+          "topics": [
+            {
+              "id": "topic-alpha",
+              "title": "知识点甲",
+              "mastery": 0.43
+            },
+            {
+              "id": "topic-beta",
+              "title": "知识点乙",
+              "mastery": 0.7
+            }
+          ]
         }
       ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
+      "updatedAt": "2026-10-12T15:34:29.934Z",
+      "appliedSessions": [
+        "session-B",
+        "session-A"
+      ],
+      "updateReason": "依据练习观测正确率 50% 修正掌握度估计（有界步长，知识点 ID 不变）"
     },
-    {
-      "id": 1788779536591,
-      "role": "user",
-      "content": "你好",
-      "time": "19:12",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788779536592,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "19:12",
-      "resources": [
+    "strict-1791819270208": {
+      "version": 6,
+      "basedOn": 5,
+      "phases": [
         {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
+          "id": "phase-1",
+          "title": "阶段一",
+          "topics": [
+            {
+              "id": "topic-alpha",
+              "title": "知识点甲",
+              "mastery": 0.4
+            },
+            {
+              "id": "topic-beta",
+              "title": "知识点乙",
+              "mastery": 0.6
+            }
+          ]
         }
       ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
+      "updatedAt": "2026-10-12T15:34:30.237Z"
     },
-    {
-      "id": 1788780407766,
-      "role": "user",
-      "content": "你好",
-      "time": "19:26",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788780407767,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "19:26",
-      "resources": [
+    "regen-1791819270250": {
+      "phases": [
         {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
+          "id": "phase-1",
+          "title": "阶段一",
+          "topics": [
+            {
+              "id": "topic-alpha",
+              "title": "知识点甲",
+              "mastery": 0.4
+            },
+            {
+              "id": "topic-beta",
+              "title": "知识点乙",
+              "mastery": 0.6
+            }
+          ]
         }
       ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
+      "generatedAt": "2026-10-12T15:34:30.269Z",
+      "version": 7,
+      "basedOn": 6,
+      "updatedAt": "2026-10-12T15:34:30.283Z"
     },
-    {
-      "id": 1788780469527,
-      "role": "user",
-      "content": "你好",
-      "time": "19:27",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788780469528,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "19:27",
-      "resources": [
+    "regen-fresh-1791819270305": {
+      "phases": [
         {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
+          "id": "phase-1",
+          "title": "阶段一",
+          "topics": [
+            {
+              "id": "topic-alpha",
+              "title": "知识点甲",
+              "mastery": 0.4
+            },
+            {
+              "id": "topic-beta",
+              "title": "知识点乙",
+              "mastery": 0.6
+            }
+          ]
         }
       ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
+      "generatedAt": "2026-10-12T15:34:30.269Z",
+      "version": 1,
+      "basedOn": 0,
+      "updatedAt": "2026-10-12T15:34:30.310Z"
     },
-    {
-      "id": 1788780583778,
-      "role": "user",
-      "content": "你好",
-      "time": "19:29",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788780583779,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "19:29",
-      "resources": [
+    "mismatch-1791819394784": {
+      "version": 7,
+      "basedOn": 6,
+      "phases": [
         {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
+          "id": "phase-1",
+          "title": "阶段一",
+          "topics": [
+            {
+              "id": "topic-alpha",
+              "title": "知识点甲",
+              "mastery": 0.43
+            },
+            {
+              "id": "topic-beta",
+              "title": "知识点乙",
+              "mastery": 0.7
+            }
+          ]
         }
       ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
+      "updatedAt": "2026-10-12T15:36:34.855Z",
+      "appliedSessions": [
+        "session-B",
+        "session-A"
+      ],
+      "updateReason": "依据练习观测正确率 50% 修正掌握度估计（有界步长，知识点 ID 不变）"
     },
-    {
-      "id": 1788780684834,
-      "role": "user",
-      "content": "你好",
-      "time": "19:31",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788780684835,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "19:31",
-      "resources": [
+    "strict-1791819395249": {
+      "version": 6,
+      "basedOn": 5,
+      "phases": [
         {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
+          "id": "phase-1",
+          "title": "阶段一",
+          "topics": [
+            {
+              "id": "topic-alpha",
+              "title": "知识点甲",
+              "mastery": 0.4
+            },
+            {
+              "id": "topic-beta",
+              "title": "知识点乙",
+              "mastery": 0.6
+            }
+          ]
         }
       ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
+      "updatedAt": "2026-10-12T15:36:35.286Z"
     },
-    {
-      "id": 1788781935971,
-      "role": "user",
-      "content": "你好",
-      "time": "19:52",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788781935972,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "19:52",
-      "resources": [
+    "regen-1791819395305": {
+      "phases": [
         {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
+          "id": "phase-1",
+          "title": "阶段一",
+          "topics": [
+            {
+              "id": "topic-alpha",
+              "title": "知识点甲",
+              "mastery": 0.4
+            },
+            {
+              "id": "topic-beta",
+              "title": "知识点乙",
+              "mastery": 0.6
+            }
+          ]
         }
       ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
+      "generatedAt": "2026-10-12T15:36:35.329Z",
+      "version": 7,
+      "basedOn": 6,
+      "updatedAt": "2026-10-12T15:36:35.345Z"
     },
-    {
-      "id": 1788798121254,
-      "role": "user",
-      "content": "你好",
-      "time": "00:22",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788798121255,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "00:22",
-      "resources": [
+    "regen-fresh-1791819395369": {
+      "phases": [
         {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
+          "id": "phase-1",
+          "title": "阶段一",
+          "topics": [
+            {
+              "id": "topic-alpha",
+              "title": "知识点甲",
+              "mastery": 0.4
+            },
+            {
+              "id": "topic-beta",
+              "title": "知识点乙",
+              "mastery": 0.6
+            }
+          ]
         }
       ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
-    },
-    {
-      "id": 1788850757909,
-      "role": "user",
-      "content": "你好",
-      "time": "14:59",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788850757910,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "14:59",
-      "resources": [
-        {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
-        }
-      ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
-    },
-    {
-      "id": 1788851384317,
-      "role": "user",
-      "content": "你好",
-      "time": "15:09",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788851384318,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "15:09",
-      "resources": [
-        {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
-        }
-      ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
-    },
-    {
-      "id": 1788867162535,
-      "role": "user",
-      "content": "你好",
-      "time": "19:32",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788867162536,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "19:32",
-      "resources": [
-        {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
-        }
-      ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
-    },
-    {
-      "id": 1788869948645,
-      "role": "user",
-      "content": "你好",
-      "time": "20:19",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788869948646,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "20:19",
-      "resources": [
-        {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
-        }
-      ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
-    },
-    {
-      "id": 1788922961587,
-      "role": "user",
-      "content": "你好",
-      "time": "11:02",
-      "multimodalContents": []
-    },
-    {
-      "id": 1788922961588,
-      "role": "assistant",
-      "content": "我先帮你把问题拆开来看：你好\n\n1. 先确认你现在卡住的是概念、实现还是练习。\n2. 如果是概念问题，就抓住定义、例子和适用场景。\n3. 如果是实现问题，就优先理清输入、输出和边界条件。\n\n如果你愿意，我下一步可以继续把它拆成步骤、代码示例，或者配套练习题。",
-      "time": "11:02",
-      "resources": [
-        {
-          "type": "doc",
-          "title": "相关概念速查",
-          "color": "#00d4ff"
-        },
-        {
-          "type": "mindmap",
-          "title": "知识脉络图",
-          "color": "#7c3aed"
-        },
-        {
-          "type": "exercise",
-          "title": "配套练习",
-          "color": "#06d6a0"
-        }
-      ],
-      "suggestions": [
-        "用更简单的话解释",
-        "给我一个代码示例",
-        "顺便出 3 道练习题"
-      ]
+      "generatedAt": "2026-10-12T15:36:35.329Z",
+      "version": 1,
+      "basedOn": 0,
+      "updatedAt": "2026-10-12T15:36:35.376Z"
     }
-  ],
-  "tutoringHistory": []
+  },
+  "learnerOnboarding": {
+    "reviewer": {
+      "version": 1,
+      "status": "skipped",
+      "answers": {},
+      "updatedAt": "2026-10-29T05:37:19.736Z"
+    }
+  }
 }

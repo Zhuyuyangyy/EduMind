@@ -10,10 +10,10 @@ import {
   Map,
   BarChart3,
   Settings,
-  Sparkles,
   Library,
   Database,
 } from 'lucide-vue-next'
+import BrandMark from '@/components/brand/BrandMark.vue'
 
 const route = useRoute()
 const appStore = useAppStore()
@@ -48,9 +48,7 @@ watch(
     <header v-if="!isShellFreePage" class="topbar" role="banner">
       <div class="topbar-inner">
       <router-link to="/home" class="topbar-brand" aria-label="智学星枢首页">
-          <span class="brand-icon">
-            <Sparkles :size="18" stroke-width="1.5" />
-          </span>
+          <span class="brand-icon"><BrandMark :size="30" variant="dark" /></span>
           <span class="brand-text">智学星枢</span>
         </router-link>
 
@@ -147,9 +145,7 @@ watch(
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #00d4ff, #7c3aed);
   color: #fff;
-  box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
 }
 
 .brand-text {

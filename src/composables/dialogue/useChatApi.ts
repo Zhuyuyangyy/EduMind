@@ -7,6 +7,7 @@ import {
 } from './useAppState'
 import { avatarStatus, avatarWriteText, setAvatarNlpHandler, setAvatarAsrHandler, getAvatarInstance } from './useAvatarSdk'
 import type { ChatMessage, StudyReport, DimensionMap } from '@/types/dialogue'
+import { apiPost, createChatIdempotencyKey } from '@/lib/api'
 
 /* ───────── DeepSeek API 配置 ───────── */
 const DEEPSEEK_API_URL = '/api/chat'
@@ -51,26 +52,14 @@ interface DeepSeekResponse {
 
 /** 调用 DeepSeek Chat API */
 async function callDeepSeek(messages: { role: string; content: string }[]): Promise<string> {
-  const res = await fetch(DEEPSEEK_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  const data = await apiPost<DeepSeekResponse & { reply?: string }>(DEEPSEEK_API_URL, {
       model: DEEPSEEK_MODEL,
       messages,
       max_tokens: 1024,
       temperature: 0.7,
-    }),
+      idempotencyKey: createChatIdempotencyKey(),
   })
-
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => '')
-    throw new Error(`DeepSeek API 请求失败 (${res.status}): ${errBody}`)
-  }
-
-  const data: DeepSeekResponse = await res.json()
-  const content = (data as any).reply || data.choices?.[0]?.message?.content
+  const content = data.reply || data.choices?.[0]?.message?.content
   if (!content) throw new Error('DeepSeek 返回内容为空')
   console.log(`[DeepSeek] model=${data.model} tokens=${data.usage?.total_tokens}`)
   return content

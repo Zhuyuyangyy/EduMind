@@ -68,12 +68,32 @@ onBeforeUnmount(() => {
     <InkMouseBackground />
     <div class="welcome-starfield" aria-hidden="true" />
     <div class="home-image-layer" aria-hidden="true">
-      <img class="home-art home-art-hero" src="/homepage/agent-constellation-hero.png" alt="">
-      <img class="home-art home-art-path" src="/homepage/learning-path-repair.png" alt="">
-      <img class="home-art home-art-profile" src="/homepage/profile-evidence-orb.png" alt="">
+      <img class="home-art home-art-hero" src="/homepage/agent-constellation-hero.jpg" alt="">
+      <img class="home-art home-art-path" src="/homepage/learning-path-repair.jpg" alt="">
+      <img class="home-art home-art-profile" src="/homepage/profile-evidence-orb.jpg" alt="">
     </div>
 
     <HeroConstellation class="home-breathe-surface home-breathe-hero" />
+
+    <!-- 竞赛演示入口：五分钟完整体验学习闭环 -->
+    <section class="comp-entry">
+      <div class="comp-entry-copy">
+        <span class="comp-entry-kicker">2026 Qoder 高校创造力大赛 · StudyHack 赛道 · 公开演示</span>
+        <h2 class="comp-entry-title">五分钟，体验 AI 如何改变一个学生的学习过程</h2>
+        <p class="comp-entry-desc">
+          无需注册登录。完成 8 道知识点诊断 → 生成个人知识画像 → 获取 7 天个性化计划 →
+          向 AI 导师请教薄弱点 → 完成针对性练习，实时查看掌握度变化与计划自动调整。
+        </p>
+        <div class="comp-entry-flow">
+          <span>学习诊断</span><i>→</i><span>知识画像</span><i>→</i><span>动态计划</span><i>→</i>
+          <span>AI 辅导</span><i>→</i><span>针对性练习</span><i>→</i><span>效果反馈</span>
+        </div>
+      </div>
+      <div class="comp-entry-actions">
+        <router-link to="/diagnosis" class="comp-entry-btn primary">立即体验 →</router-link>
+        <router-link to="/knowledge-profile" class="comp-entry-btn">查看演示课程</router-link>
+      </div>
+    </section>
 
     <section class="hub-workbench home-breathe-surface home-breathe-hub">
       <aside class="hub-context-card" :style="{ '--stage-color': currentHubStage.color }">
@@ -122,7 +142,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="hub-role-visual" aria-hidden="true">
-          <img src="/homepage/agent-role-orbit-panel.png" alt="">
+          <img src="/homepage/agent-role-orbit-panel.jpg" alt="">
           <div class="hub-role-visual-copy">
             <span>COLLABORATION OUTPUT</span>
             <strong>{{ currentHubStage.output }}</strong>
@@ -1252,3 +1272,110 @@ onBeforeUnmount(() => {
 }
 
 </style>
+
+/* —— 竞赛演示入口横幅 —— */
+.comp-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 22px;
+  align-items: center;
+  padding: 26px 30px;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(900px 200px at 90% -60%, rgba(106, 184, 232, 0.16), transparent 60%),
+    var(--color-bg-card);
+  border: 1px solid rgba(106, 184, 232, 0.28);
+  box-shadow: var(--shadow-glow-cyan);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.comp-entry-kicker {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--color-accent-cyan);
+  font-weight: 600;
+}
+
+.comp-entry-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 8px 0 10px;
+  line-height: 1.3;
+}
+
+.comp-entry-desc {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--color-text-secondary);
+  max-width: 640px;
+}
+
+.comp-entry-flow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: var(--color-accent-cyan);
+  font-weight: 600;
+}
+
+.comp-entry-flow i {
+  color: var(--color-text-tertiary);
+  font-style: normal;
+}
+
+.comp-entry-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.comp-entry-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 13px 28px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font-size: 14.5px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.comp-entry-btn:hover {
+  border-color: var(--color-border-hover);
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+}
+
+.comp-entry-btn.primary {
+  background: linear-gradient(135deg, var(--color-accent-cyan), var(--color-accent-blue));
+  border-color: transparent;
+  color: #06263b;
+  box-shadow: var(--shadow-glow-cyan);
+}
+
+@media (max-width: 860px) {
+  .comp-entry {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 22px;
+  }
+
+  .comp-entry-actions {
+    flex-direction: row;
+  }
+
+  .comp-entry-title {
+    font-size: 21px;
+  }
+}

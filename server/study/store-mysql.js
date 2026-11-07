@@ -1,0 +1,540 @@
+/**
+ * 学习事件存储（P3-1 · feat/mobile-v1）——MySQL 生产模式。
+ * 事务 + 唯一约束保证：重复/并发提交不重复计分；账号越权不可见。
+ */
+import {
+  isMySqlConfigured,
+  getMySqlPool,
+  ensureMySqlSchema,
+} from '../store/mysql.js'
+import { loadExerciseBank, findExercise } from './exercise-bank.js'
+import { scoreAnswer, summarizeAttempts } from './scoring.js'
+import { ensureAnswerIdempotencyIndex } from './answer-index-migration.js'
+
+let studySchemaReady
+
+export function ensureStudySchema() {
+  if (!studySchemaReady) {
+    studySchemaReady = initializeStudySchema().catch(error => {
+      studySchemaReady = undefined
+      throw error
+    })
+  }
+  return studySchemaReady
+}
+
+async function initializeStudySchema() {
+  await ensureMySqlSchema()
+  const db = getMySqlPool()
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS study_sessions (
+      id VARCHAR(64) NOT NULL PRIMARY KEY,
+      account_id VARCHAR(191) NOT NULL,
+      topic_id VARCHAR(191) NULL,
+      phase_id VARCHAR(191) NULL,
+      timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai',
+      status VARCHAR(32) NOT NULL DEFAULT 'active',
+      exercise_ids JSON NOT NULL,
+      created_at DATETIME(3) NOT NULL,
+      completed_at DATETIME(3) NULL,
+      bank_version INT NOT NULL DEFAULT 1,
+      exercise_snapshot_json JSON NOT NULL,
+      KEY study_sessions_account (account_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `)
+  // P3.4 迁移：既有表补题目快照列（幂等）
+  for (const [column, definition] of [['bank_version', 'INT NOT NULL DEFAULT 1'], ['exercise_snapshot_json', 'JSON NOT NULL']]) {
+    try {
+      await db.query(`ALTER TABLE study_sessions ADD COLUMN ${column} ${definition}`)
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME' && !/Duplicate column/i.test(error?.message || '')) throw error
+    }
+  }
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS answer_submissions (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      session_id VARCHAR(64) NOT NULL,
+      account_id VARCHAR(191) NOT NULL,
+      exercise_id VARCHAR(191) NOT NULL,
+      exercise_version INT NOT NULL,
+      correct TINYINT(1) NOT NULL,
+      reason VARCHAR(255) NOT NULL DEFAULT '',
+      submitted_json JSON NULL,
+      idempotency_key VARCHAR(191) NOT NULL,
+      submitted_at DATETIME(3) NOT NULL,
+      UNIQUE KEY answer_submissions_idem (account_id, session_id, idempotency_key),
+      UNIQUE KEY answer_submissions_session_exercise (session_id, exercise_id),
+      KEY answer_submissions_account (account_id, submitted_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `)
+  // P3-2 迁移：既有表补 submitted_json（幂等）
+  try {
+    await db.query('ALTER TABLE answer_submissions ADD COLUMN submitted_json JSON NULL')
+  } catch (error) {
+    if (error?.code !== 'ER_DUP_FIELDNAME' && !/Duplicate column/i.test(error?.message || '')) throw error
+  }
+  await ensureAnswerIdempotencyIndex(db)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS learning_events (
+      id VARCHAR(64) NOT NULL PRIMARY KEY,
+      account_id VARCHAR(191) NOT NULL,
+      session_id VARCHAR(64) NULL,
+      type VARCHAR(64) NOT NULL,
+      ref_json JSON NOT NULL,
+      at DATETIME(3) NOT NULL,
+      KEY learning_events_account (account_id, at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS profile_revisions (
+      id VARCHAR(64) NOT NULL PRIMARY KEY,
+      account_id VARCHAR(191) NOT NULL,
+      session_id VARCHAR(64) NULL,
+      event_ids JSON NOT NULL,
+      before_json JSON NULL,
+      after_json JSON NULL,
+      reason VARCHAR(500) NOT NULL DEFAULT '',
+      source VARCHAR(16) NOT NULL DEFAULT 'rule',
+      version INT NOT NULL DEFAULT 1,
+      created_at DATETIME(3) NOT NULL,
+      attribution VARCHAR(16) NOT NULL DEFAULT 'session',
+      KEY profile_revisions_account (account_id, created_at),
+      -- P4-0：会话级唯一约束（NULL 允许多条，兼容无法归因的历史记录）
+      UNIQUE KEY profile_revisions_session (account_id, session_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `)
+  // P4-0 迁移：旧表补 session_id / attribution 列（幂等，不依赖 CREATE IF NOT EXISTS）
+  for (const [column, definition] of [
+    ['session_id', 'VARCHAR(64) NULL'],
+    ['attribution', "VARCHAR(16) NOT NULL DEFAULT 'session'"],
+  ]) {
+    try {
+      await db.query(`ALTER TABLE profile_revisions ADD COLUMN ${column} ${definition}`)
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME' && !/Duplicate column/i.test(error?.message || '')) throw error
+    }
+  }
+  // 旧表补唯一索引（已存在则忽略）
+  try {
+    await db.query('ALTER TABLE profile_revisions ADD UNIQUE KEY profile_revisions_session (account_id, session_id)')
+  } catch (error) {
+    const duplicate = error?.code === 'ER_DUP_KEYNAME' || /Duplicate key name/i.test(error?.message || '')
+    const dupEntry = error?.code === 'ER_DUP_ENTRY'
+    if (!duplicate && !dupEntry) throw error
+    // ER_DUP_ENTRY：历史数据存在同会话多条修订——保留数据，由人工核对
+    // （不做猜测性删除；唯一约束对后续写入生效）
+  }
+}
+
+function nowIso() {
+  return new Date().toISOString()
+}
+
+function newId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/** ISO 字符串 → MySQL DATETIME(3) 字面量（严格模式不接受 T/Z 分隔符） */
+/**
+ * 时间参数规范化（P4-0）：传 Date 对象给 mysql2——驱动会按连接时区
+ * 正确转换。绝不能把 ISO 字符串剥 T/Z 后直接当本地时间（UTC 墙钟会被
+ * 本地时区重新解释，读取时差一个时区偏移，曾导致「处理中」记录永远
+ * 被判超时可接管）。
+ */
+function sqlDate(value) {
+  if (value == null || value === '') return null
+  if (value instanceof Date) return value
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function publicSession(row) {
+  return {
+    id: row.id,
+    topicId: row.topic_id,
+    phaseId: row.phase_id,
+    status: row.status,
+    exerciseIds: typeof row.exercise_ids === 'string' ? JSON.parse(row.exercise_ids) : row.exercise_ids,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    completedAt: row.completed_at ? (row.completed_at instanceof Date ? row.completed_at.toISOString() : row.completed_at) : null,
+    timezone: row.timezone,
+    bankVersion: row.bank_version ?? null,
+  }
+}
+
+function stripAnswer(exercise) {
+  const { answer, explanation, ...rest } = exercise
+  return rest
+}
+
+export async function createStudySession(accountId, { topicId, topicIds, phaseId, timezone, exerciseCount } = {}) {
+  await ensureStudySchema()
+  const bank = loadExerciseBank()
+  const wanted = Array.isArray(topicIds) && topicIds.length > 0
+    ? topicIds.filter(id => typeof id === 'string')
+    : (typeof topicId === 'string' && topicId ? [topicId] : [])
+  if (wanted.length === 0) {
+    return { error: 'invalid-topic', message: '必须提供 topicId 或 topicIds' }
+  }
+  let exercises = bank.exercises.filter(item => wanted.includes(item.topicId))
+  if (exercises.length === 0) {
+    return { error: 'no-exercises', message: `题库中暂无这些主题的题目: ${wanted.join(',')}` }
+  }
+  if (Number.isInteger(exerciseCount) && exerciseCount > 0) {
+    exercises = exercises.slice(0, exerciseCount)
+  }
+
+  const session = {
+    id: newId('session'),
+    accountId,
+    topicId: topicId || null,
+    phaseId: phaseId || exercises[0]?.phaseId || null,
+    timezone: timezone || 'Asia/Shanghai',
+    status: 'active',
+    exerciseIds: exercises.map(item => item.id),
+    // P3.4：题目快照（含题库版本），历史恢复读快照
+    bankVersion: bank.version,
+    exerciseSnapshot: exercises.map(item => ({ ...item })),
+    createdAt: nowIso(),
+    completedAt: null,
+  }
+  const db = getMySqlPool()
+  await db.query(
+    `INSERT INTO study_sessions (id, account_id, topic_id, phase_id, timezone, status, exercise_ids, created_at, bank_version, exercise_snapshot_json)
+     VALUES (?, ?, ?, ?, ?, 'active', CAST(? AS JSON), ?, ?, CAST(? AS JSON))`,
+    [session.id, accountId, session.topicId, session.phaseId, session.timezone, JSON.stringify(session.exerciseIds), sqlDate(session.createdAt), session.bankVersion, JSON.stringify(session.exerciseSnapshot)],
+  )
+  await db.query(
+    `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'session-start', CAST(? AS JSON), ?)`,
+    [newId('event'), accountId, session.id, JSON.stringify({ topicId: session.topicId }), sqlDate(nowIso())],
+  )
+  return { session: publicSession({ ...session, created_at: session.createdAt, completed_at: null }), exercises: exercises.map(stripAnswer) }
+}
+
+async function loadSession(db, accountId, sessionId, forUpdate = false) {
+  const [rows] = await db.query(`SELECT * FROM study_sessions WHERE id = ?${forUpdate ? ' FOR UPDATE' : ''}`, [sessionId])
+  const row = rows[0]
+  if (!row || row.account_id !== accountId) return null
+  return row
+}
+
+export async function getStudySession(accountId, sessionId) {
+  await ensureStudySchema()
+  const db = getMySqlPool()
+  const row = await loadSession(db, accountId, sessionId)
+  if (!row) return null
+  const [attempts] = await db.query(
+    'SELECT exercise_id, exercise_version, correct, reason, submitted_json, submitted_at FROM answer_submissions WHERE session_id = ? ORDER BY id',
+    [sessionId],
+  )
+  return {
+    session: publicSession(row),
+    attempts: attempts.map(a => ({
+      exerciseId: a.exercise_id,
+      exerciseVersion: a.exercise_version,
+      correct: Boolean(a.correct),
+      reason: a.reason,
+      submitted: a.submitted_json ? (typeof a.submitted_json === 'string' ? JSON.parse(a.submitted_json) : a.submitted_json) : null,
+      submittedAt: a.submitted_at instanceof Date ? a.submitted_at.toISOString() : a.submitted_at,
+    })),
+    // P3.4：题目快照（旧会话无快照列数据时回退当前题库，由调用方标注）
+    snapshot: row.exercise_snapshot_json
+      ? (typeof row.exercise_snapshot_json === 'string' ? JSON.parse(row.exercise_snapshot_json) : row.exercise_snapshot_json)
+      : null,
+    bankVersion: row.bank_version ?? null,
+  }
+}
+
+export async function recordAnswer(accountId, sessionId, { exerciseId, submitted, idempotencyKey } = {}) {
+  await ensureStudySchema()
+  const db = getMySqlPool()
+
+  if (typeof idempotencyKey !== 'string' || idempotencyKey.trim().length < 8) {
+    return { ok: false, code: 'invalid-idempotency-key', message: '缺少合法的幂等键（>=8 字符）' }
+  }
+
+  const connection = await db.getConnection()
+  try {
+    await connection.beginTransaction()
+
+    const row = await loadSession(connection, accountId, sessionId, true)
+    if (!row) {
+      await connection.rollback()
+      return { ok: false, code: 'session-not-found', message: '会话不存在或不属于当前账号' }
+    }
+    if (row.status !== 'active') {
+      await connection.rollback()
+      return { ok: false, code: 'session-closed', message: '会话已结束，不能继续作答' }
+    }
+
+    // 幂等 1：幂等键已存在 → 返回首次结果
+    const [byKey] = await connection.query(
+      'SELECT exercise_id, correct, reason FROM answer_submissions WHERE account_id = ? AND session_id = ? AND idempotency_key = ?',
+      [accountId, sessionId, idempotencyKey],
+    )
+    if (byKey[0] && byKey[0].exercise_id !== exerciseId) {
+      await connection.rollback()
+      return { ok: false, code: 'idempotency-conflict', message: '幂等键已用于本会话的其他题目' }
+    }
+    if (byKey[0]) {
+      await connection.commit()
+      return { ok: true, correct: Boolean(byKey[0].correct), reason: byKey[0].reason, duplicate: true, ...(await progressOf(connection, sessionId)) }
+    }
+
+    const exercise = findExercise(exerciseId)
+    if (!exercise) {
+      await connection.rollback()
+      return { ok: false, code: 'invalid-exercise', message: `题目不存在: ${exerciseId}` }
+    }
+    // P3.4：判分优先用会话快照的题目（题库升级不改变本会话的对错含义）
+    const snapshot = row.exercise_snapshot_json
+      ? (typeof row.exercise_snapshot_json === 'string' ? JSON.parse(row.exercise_snapshot_json) : row.exercise_snapshot_json)
+      : null
+    const scoringExercise = Array.isArray(snapshot) ? (snapshot.find(item => item.id === exerciseId) || exercise) : exercise
+    const exerciseIds = typeof row.exercise_ids === 'string' ? JSON.parse(row.exercise_ids) : row.exercise_ids
+    if (!exerciseIds.includes(exerciseId)) {
+      await connection.rollback()
+      return { ok: false, code: 'exercise-not-in-session', message: '该题目不属于本会话' }
+    }
+
+    // 幂等 2：同会话同题已评分 → 不重复插入（唯一约束兜底）
+    const [byExercise] = await connection.query(
+      'SELECT correct, reason FROM answer_submissions WHERE session_id = ? AND exercise_id = ?',
+      [sessionId, exerciseId],
+    )
+    if (byExercise[0]) {
+      await connection.query(
+        `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'answer-duplicate', CAST(? AS JSON), ?)`,
+        [newId('event'), accountId, sessionId, JSON.stringify({ exerciseId }), sqlDate(nowIso())],
+      )
+      await connection.commit()
+      return { ok: true, correct: Boolean(byExercise[0].correct), reason: byExercise[0].reason, duplicate: true, ...(await progressOf(connection, sessionId)) }
+    }
+
+    // 服务端确定性判分
+    const { correct, reason } = scoreAnswer(scoringExercise, submitted)
+    await connection.query(
+      `INSERT INTO answer_submissions (session_id, account_id, exercise_id, exercise_version, correct, reason, submitted_json, idempotency_key, submitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?)`,
+      [sessionId, accountId, exerciseId, scoringExercise.version, correct ? 1 : 0, reason, JSON.stringify(submitted ?? null), idempotencyKey, sqlDate(nowIso())],
+    )
+    await connection.query(
+      `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'answer-submit', CAST(? AS JSON), ?)`,
+      [newId('event'), accountId, sessionId, JSON.stringify({ exerciseId, exerciseVersion: scoringExercise.version, correct }), sqlDate(nowIso())],
+    )
+    await connection.commit()
+    return { ok: true, correct, reason, duplicate: false, ...(await progressOf(db, sessionId)) }
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    // 唯一约束冲突（极端并发双写）→ 按重复提交返回已有结果
+    if (error?.code === 'ER_DUP_ENTRY') {
+      const existing = await db.query('SELECT exercise_id, correct, reason FROM answer_submissions WHERE account_id = ? AND session_id = ? AND exercise_id = ?', [accountId, sessionId, exerciseId])
+      if (existing[0]?.[0]) {
+        return { ok: true, correct: Boolean(existing[0][0].correct), reason: existing[0][0].reason, duplicate: true, ...(await progressOf(db, sessionId)) }
+      }
+    }
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+async function progressOf(db, sessionId) {
+  const [rows] = await db.query(
+    `SELECT COUNT(*) AS answered, SUM(correct) AS correct FROM answer_submissions WHERE session_id = ?`,
+    [sessionId],
+  )
+  const [sessionRows] = await db.query('SELECT exercise_ids FROM study_sessions WHERE id = ?', [sessionId])
+  const exerciseIds = sessionRows[0] ? (typeof sessionRows[0].exercise_ids === 'string' ? JSON.parse(sessionRows[0].exercise_ids) : sessionRows[0].exercise_ids) : []
+  return {
+    progress: {
+      answered: Number(rows[0]?.answered || 0),
+      total: exerciseIds.length,
+      correct: Number(rows[0]?.correct || 0),
+    },
+  }
+}
+
+export async function completeStudySession(accountId, sessionId) {
+  await ensureStudySchema()
+  const db = getMySqlPool()
+  const connection = await db.getConnection()
+  try {
+    await connection.beginTransaction()
+    const row = await loadSession(connection, accountId, sessionId, true)
+    if (!row) {
+      await connection.rollback()
+      return { ok: false, code: 'session-not-found', message: '会话不存在或不属于当前账号' }
+    }
+    const [attempts] = await connection.query('SELECT correct FROM answer_submissions WHERE account_id = ? AND session_id = ? ORDER BY id', [accountId, sessionId])
+    const assessment = summarizeAttempts(attempts.map(a => ({ correct: Boolean(a.correct) })))
+    if (row.status === 'completed') {
+      await connection.commit()
+      return { ok: true, duplicate: true, assessment }
+    }
+    if (attempts.length === 0) {
+      await connection.rollback()
+      return { ok: false, code: 'no-answers', message: '尚未提交任何作答，不能完成练习' }
+    }
+    const completedAt = sqlDate(nowIso())
+    await connection.query(`UPDATE study_sessions SET status = 'completed', completed_at = ? WHERE id = ? AND account_id = ? AND status = 'active'`, [completedAt, sessionId, accountId])
+    await connection.query(
+      `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'session-complete', CAST(? AS JSON), ?)`,
+      [newId('event'), accountId, sessionId, JSON.stringify(assessment), completedAt],
+    )
+    await connection.commit()
+    return { ok: true, duplicate: false, assessment }
+  } catch (error) {
+    await connection.rollback().catch(() => {})
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+export async function getStudyStats(accountId) {
+  await ensureStudySchema()
+  const db = getMySqlPool()
+  const [sessionRows] = await db.query(
+    `SELECT id, timezone, completed_at FROM study_sessions WHERE account_id = ? AND status = 'completed'`,
+    [accountId],
+  )
+  const [attemptRows] = await db.query(
+    `SELECT a.correct FROM answer_submissions a
+     JOIN study_sessions s ON s.id = a.session_id
+     WHERE a.account_id = ? AND s.status = 'completed'`,
+    [accountId],
+  )
+  const { naturalDay, computeStreak } = await import('./store.js')
+  const daySet = new Set()
+  let accountTimezone = 'Asia/Shanghai'
+  for (const row of sessionRows) {
+    const at = row.completed_at instanceof Date ? row.completed_at.toISOString() : row.completed_at
+    if (at) daySet.add(naturalDay(at, row.timezone))
+    accountTimezone = row.timezone || accountTimezone
+  }
+  return {
+    completedSessions: sessionRows.length,
+    totalAnswers: attemptRows.length,
+    correctAnswers: attemptRows.filter(a => Boolean(a.correct)).length,
+    studyDays: daySet.size,
+    streakDays: computeStreak(daySet, accountTimezone),
+  }
+}
+
+/**
+ * 保存画像修订（P4-0：幂等 + 会话级唯一约束）。
+ * 同一 (accountId, sessionId) 重复插入时靠 UNIQUE 约束拦截并返回
+ * 已有记录（ER_DUP_ENTRY → 查回返回），不产生第二条修订。
+ */
+export async function saveProfileRevision(accountId, revision) {
+  await ensureStudySchema()
+  const db = getMySqlPool()
+  const sessionId = revision.sessionId || null
+  const record = {
+    id: newId('revision'),
+    accountId,
+    sessionId,
+    eventIds: Array.isArray(revision.eventIds) ? revision.eventIds : [],
+    before: revision.before ?? null,
+    after: revision.after ?? null,
+    reason: revision.reason || '',
+    source: revision.source === 'model' ? 'model' : 'rule',
+    version: Number.isInteger(revision.version) ? revision.version : 1,
+    attribution: sessionId ? 'session' : 'unattributed',
+    createdAt: nowIso(),
+  }
+  try {
+    await db.query(
+      `INSERT INTO profile_revisions (id, account_id, session_id, event_ids, before_json, after_json, reason, source, version, created_at, attribution)
+       VALUES (?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), CAST(? AS JSON), ?, ?, ?, ?, ?)`,
+      [
+        record.id, accountId, sessionId,
+        JSON.stringify(record.eventIds),
+        JSON.stringify(record.before),
+        JSON.stringify(record.after),
+        record.reason, record.source, record.version, sqlDate(record.createdAt), record.attribution,
+      ],
+    )
+  } catch (error) {
+    const isDuplicate = error?.code === 'ER_DUP_ENTRY' || error?.code === 'ER_DUP_KEY'
+    if (!isDuplicate || !sessionId) throw error
+    // 同会话修订已存在 → 幂等返回已有记录
+    const existing = await findRevisionBySession(accountId, sessionId)
+    if (existing) return existing
+    throw error
+  }
+  await db.query(
+    `INSERT INTO learning_events (id, account_id, session_id, type, ref_json, at) VALUES (?, ?, ?, 'profile-revision', CAST(? AS JSON), ?)`,
+    [newId('event'), accountId, sessionId, JSON.stringify({ revisionId: record.id, source: record.source }), sqlDate(nowIso())],
+  )
+  return record
+}
+
+/** 按会话查修订（P4-0：O(1) 判断，替代扫描） */
+export async function findRevisionBySession(accountId, sessionId) {
+  await ensureStudySchema()
+  const db = getMySqlPool()
+  const [rows] = await db.query(
+    'SELECT * FROM profile_revisions WHERE account_id = ? AND session_id = ? ORDER BY created_at LIMIT 1',
+    [accountId, sessionId],
+  )
+  const row = rows[0]
+  if (!row) return null
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    sessionId: row.session_id,
+    eventIds: typeof row.event_ids === 'string' ? JSON.parse(row.event_ids) : row.event_ids,
+    before: row.before_json ? (typeof row.before_json === 'string' ? JSON.parse(row.before_json) : row.before_json) : null,
+    after: row.after_json ? (typeof row.after_json === 'string' ? JSON.parse(row.after_json) : row.after_json) : null,
+    reason: row.reason,
+    source: row.source,
+    version: row.version,
+    attribution: row.attribution || 'unattributed',
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  }
+}
+
+export async function hasRevisionForSession(accountId, sessionId) {
+  return Boolean(await findRevisionBySession(accountId, sessionId))
+}
+
+export async function listProfileRevisions(accountId, limit = 20) {
+  await ensureStudySchema()
+  const db = getMySqlPool()
+  const [rows] = await db.query(
+    'SELECT * FROM profile_revisions WHERE account_id = ? ORDER BY created_at DESC LIMIT ?',
+    [accountId, limit],
+  )
+  return rows.map(row => ({
+    id: row.id,
+    accountId: row.account_id,
+    sessionId: row.session_id ?? null,
+    eventIds: typeof row.event_ids === 'string' ? JSON.parse(row.event_ids) : row.event_ids,
+    before: row.before_json ? (typeof row.before_json === 'string' ? JSON.parse(row.before_json) : row.before_json) : null,
+    after: row.after_json ? (typeof row.after_json === 'string' ? JSON.parse(row.after_json) : row.after_json) : null,
+    reason: row.reason,
+    source: row.source,
+    version: row.version,
+    attribution: row.attribution || 'unattributed',
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  }))
+}
+
+export async function listLearningEvents(accountId, limit = 50) {
+  await ensureStudySchema()
+  const db = getMySqlPool()
+  const [rows] = await db.query(
+    'SELECT * FROM learning_events WHERE account_id = ? ORDER BY at DESC LIMIT ?',
+    [accountId, limit],
+  )
+  return rows.map(row => ({
+    id: row.id,
+    accountId: row.account_id,
+    sessionId: row.session_id,
+    type: row.type,
+    ref: typeof row.ref_json === 'string' ? JSON.parse(row.ref_json) : row.ref_json,
+    at: row.at instanceof Date ? row.at.toISOString() : row.at,
+  }))
+}

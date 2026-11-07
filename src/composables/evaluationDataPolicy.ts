@@ -1,0 +1,49 @@
+export type EvaluationLoadState = 'idle' | 'loading' | 'real' | 'demo' | 'no-data' | 'unavailable' | 'error'
+
+export interface EvaluationPolicyInput {
+  ok: boolean
+  status?: number
+  code?: string
+  dataSource?: string
+  simulated?: boolean
+  hasData?: boolean
+  dashboard?: unknown
+  stats?: unknown
+  demoEnabled?: boolean
+}
+
+export function hasEvaluationEvidence(input: { dashboard?: unknown; stats?: unknown }): boolean {
+  const dashboard = input.dashboard && typeof input.dashboard === 'object'
+    ? input.dashboard as Record<string, unknown>
+    : null
+  const hasDashboardEvidence = Boolean(dashboard && [
+    dashboard.flow,
+    dashboard.profileMetrics,
+    dashboard.weaknesses,
+    dashboard.evidenceRounds,
+  ].some((value) => Array.isArray(value) && value.length > 0))
+  const hasStatsEvidence = Array.isArray(input.stats) && input.stats.some((stat) => {
+    if (!stat || typeof stat !== 'object') return false
+    const record = stat as Record<string, unknown>
+    return Boolean(String(record.label ?? '').trim() || String(record.value ?? '').trim())
+  })
+  return hasDashboardEvidence || hasStatsEvidence
+}
+
+/**
+ * Classify the source before any value is allowed into the evaluation view.
+ * Demo fixtures are opt-in; a 503 from the server is never treated as data.
+ */
+export function classifyEvaluationResponse(input: EvaluationPolicyInput): Exclude<EvaluationLoadState, 'idle' | 'loading'> {
+  if (input.status === 503 || input.code === 'demo-data-disabled') return 'unavailable'
+  if (!input.ok) return 'error'
+  if (input.dataSource === 'demo-fixture') return input.demoEnabled ? 'demo' : 'unavailable'
+  if (input.dataSource !== 'real' || input.simulated === true) return 'no-data'
+  if (!(input.hasData ?? hasEvaluationEvidence(input))) return 'no-data'
+  return 'real'
+}
+
+export function isEvaluationDemoEnabled(): boolean {
+  const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
+  return String(env?.VITE_EDUMIND_DEMO_MODE || '').trim().toLowerCase() === 'true'
+}

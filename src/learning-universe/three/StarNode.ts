@@ -51,7 +51,7 @@ const planetMaterialMap: Record<string, PlanetMaterialConfig> = {
   },
   c_ml: {
     surface: '/assets/textures/premium/earth-daymap-4k.jpg',
-    normal: '/assets/textures/premium/earth-normal-2k.png',
+    normal: '/assets/textures/premium/earth-normal-2k.jpg',
     roughnessMap: '/assets/textures/premium/earth-roughness-2k.jpg',
     roughness: 1,
     metalness: 0.02,

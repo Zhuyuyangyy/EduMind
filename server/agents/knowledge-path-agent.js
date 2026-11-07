@@ -104,7 +104,19 @@ function fallbackKnowledgePath(profile) {
     domainTemplates[0].topics[0].importance = 1.0
   }
 
-  return { phases: domainTemplates }
+  // 与 normalizeOutput 保持同一契约：每个 topic 必须有完整字段
+  // （P2-2A：客户端按契约消费，缺失字段会被判定为异常数据）
+  return {
+    phases: domainTemplates.map(phase => ({
+      ...phase,
+      topics: (phase.topics || []).map(topic => ({
+        ...topic,
+        mastery: typeof topic.mastery === 'number' ? Math.max(0, Math.min(1, topic.mastery)) : 0.3,
+        importance: typeof topic.importance === 'number' ? Math.max(0, Math.min(1, topic.importance)) : 0.5,
+        recommended: !!topic.recommended,
+      })),
+    })),
+  }
 }
 
 export async function runKnowledgePathAgent(profile) {

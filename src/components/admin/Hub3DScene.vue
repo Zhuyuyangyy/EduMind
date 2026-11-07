@@ -23,12 +23,12 @@ let flowTubes: THREE.Mesh[] = []
 let agentNodes: THREE.Sprite[] = []
 
 const agentConfigs = [
-  { name: '学习诊断智能体', img: '/bigscreen-hub/agent-1.png', pos: { x: -5.2, y: 2.6 } },
-  { name: '知识图谱智能体', img: '/bigscreen-hub/agent-2.png', pos: { x: 5.2, y: 2.6 } },
-  { name: '资源推荐智能体', img: '/bigscreen-hub/agent-3.png', pos: { x: -6.6, y: 0 } },
-  { name: '任务调度智能体', img: '/bigscreen-hub/agent-4.png', pos: { x: 6.6, y: 0 } },
-  { name: '反向评估智能体', img: '/bigscreen-hub/agent-5.png', pos: { x: -5.2, y: -2.6 } },
-  { name: '画像生成智能体', img: '/bigscreen-hub/agent-6.png', pos: { x: 5.2, y: -2.6 } },
+  { name: '学习诊断智能体', img: '/bigscreen-hub/agent-1.jpg', pos: { x: -5.2, y: 2.6 } },
+  { name: '知识图谱智能体', img: '/bigscreen-hub/agent-2.jpg', pos: { x: 5.2, y: 2.6 } },
+  { name: '资源推荐智能体', img: '/bigscreen-hub/agent-3.jpg', pos: { x: -6.6, y: 0 } },
+  { name: '任务调度智能体', img: '/bigscreen-hub/agent-4.jpg', pos: { x: 6.6, y: 0 } },
+  { name: '反向评估智能体', img: '/bigscreen-hub/agent-5.jpg', pos: { x: -5.2, y: -2.6 } },
+  { name: '画像生成智能体', img: '/bigscreen-hub/agent-6.jpg', pos: { x: 5.2, y: -2.6 } },
 ]
 
 const FLOW_COLOR = 0x35c7ff

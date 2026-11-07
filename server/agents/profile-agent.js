@@ -95,12 +95,12 @@ function fallbackProfileAnalysis(answers) {
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
 
   const radarPoints = [
-    { dimension: '知识基础', score: clamp((answers.knowledgeBase || 50) + (levelBoost[answers.level] || 0), 0, 100) },
-    { dimension: '学习速度', score: clamp((answers.learningSpeed || 50) + 2, 0, 100) },
-    { dimension: '逻辑思维', score: clamp(answers.logicalThinking || 50, 0, 100) },
-    { dimension: '创造力', score: clamp(answers.creativity || 50, 0, 100) },
-    { dimension: '专注力', score: clamp(answers.focus || 50, 0, 100) },
-    { dimension: '自律力', score: clamp(answers.selfDiscipline || 50, 0, 100) },
+    { dimension: '知识基础', score: clamp((answers.knowledgeBase ?? 50) + (levelBoost[answers.level] || 0), 0, 100) },
+    { dimension: '学习速度', score: clamp((answers.learningSpeed ?? 50) + 2, 0, 100) },
+    { dimension: '逻辑思维', score: clamp(answers.logicalThinking ?? 50, 0, 100) },
+    { dimension: '创造力', score: clamp(answers.creativity ?? 50, 0, 100) },
+    { dimension: '专注力', score: clamp(answers.focus ?? 50, 0, 100) },
+    { dimension: '自律力', score: clamp(answers.selfDiscipline ?? 50, 0, 100) },
   ]
 
   const totalScore = Math.round(radarPoints.reduce((s, d) => s + d.score, 0) / radarPoints.length)

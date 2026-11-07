@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { createExperimentSession, withSessionAuth } from './api-session.mjs'
 
 const baseUrl = process.argv[2] || 'http://localhost:8788'
 const outputDir = path.resolve(process.argv[3] || '../../artifacts/learning-cycles')
@@ -45,7 +46,7 @@ function profileOf(values, weaknesses) {
 async function post(urlPath, body) {
   const response = await fetch(baseUrl + urlPath, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: withSessionAuth(session, { 'content-type': 'application/json' }),
     body: JSON.stringify(body),
   })
   const data = await response.json()
@@ -53,8 +54,16 @@ async function post(urlPath, body) {
   return data
 }
 
+const session = await createExperimentSession(baseUrl)
+
 const results = []
 for (const item of cases) {
+  // P3-0：画像基线必须经服务端正规通道保存（learning-cycles/update 不再接受
+  // 客户端 profile）。实验账号独立，先建档再跑闭环。
+  await post('/api/profile/save', {
+    ...item.profile,
+    source: 'experiment-baseline',
+  })
   const initialPathResult = await post('/api/agents/path-replan', {
     profile: item.profile,
     evaluation: {},

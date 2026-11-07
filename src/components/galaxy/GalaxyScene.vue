@@ -102,7 +102,7 @@ function applyTextures(allPhases: { color: string }[]) {
   if (!scene.value || !galaxyEntities.star || !galaxyEntities.particles) return
 
   // Star surface
-  textureLoader.load('/planet/star_surface.png',
+  textureLoader.load('/planet/star_surface.jpg',
     (tex) => {
       const mat = galaxyEntities.star!.mesh.material as THREE.MeshStandardMaterial
       mat.map = tex

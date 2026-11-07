@@ -1,0 +1,87 @@
+<template>
+  <section class="workspace-page atlas-page">
+    <div class="workspace-heading"><div><p class="workspace-eyebrow">YOUR KNOWLEDGE SPACE</p><h1>从原文出发，慢慢理解。</h1><p>资料、原文与笔记，逐渐连成自己的知识结构。</p></div></div>
+    <nav class="workspace-segments" aria-label="知识库视图"><button v-for="item in tabs" :key="item.id" :aria-current="tab === item.id ? 'page' : undefined" @click="tab = item.id">{{ item.label }}</button><RouterLink to="/atlas">知识网络</RouterLink><RouterLink to="/review">复习</RouterLink></nav>
+    <VaultImporter @imported="load" />
+    <div v-if="error" class="m-error" role="alert">{{ error }}<button class="m-btn m-btn--ghost m-btn--sm" @click="load">重新读取</button></div>
+    <div v-if="loading" class="m-skeleton m-skeleton--block" />
+    <template v-else-if="workspace">
+      <template v-if="tab === 'library'">
+        <div class="atlas-toolbar"><input v-model="search" class="m-input" aria-label="搜索资料" placeholder="搜索名称、标签或原文…" /><button class="m-btn m-btn--primary m-btn--sm" @click="importOpen = !importOpen">{{ importOpen ? '收起' : '导入' }}</button></div>
+        <form v-if="importOpen" class="m-card workspace-form" @submit.prevent="importMaterial">
+          <h2>添加学习资料</h2>
+          <label class="m-field"><span>资料名称</span><input v-model="title" class="m-input" maxlength="160" required /></label>
+          <label class="m-field"><span>选择文件（PDF、图片、TXT、Markdown，最大 5 MB）</span><input ref="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,.md,application/pdf,image/png,image/jpeg,text/plain" @change="pickFile" /></label>
+          <label class="m-field"><span>{{ file?.type.startsWith('image/') ? '图片文字转录（选填）' : '或粘贴正文 / 网页链接' }}</span><textarea v-model="content" class="m-textarea" rows="4" maxlength="120000" :required="!file" placeholder="粘贴你的讲义、笔记或资料正文" /></label>
+          <label class="m-field"><span>标签（逗号分隔）</span><input v-model="tags" class="m-input" maxlength="200" placeholder="例如：高数，期末" /></label>
+          <label class="workspace-checkbox"><input v-model="consent" type="checkbox" required /><span>保存到我的私有学习工作区。<small>PDF 保存提取的文字与页码，不保留原文件；图片保留原图，当前未启用 OCR。只有明确选择资料执行 AI 任务时才会发送给模型服务。</small></span></label>
+          <button class="m-btn m-btn--primary" type="submit" :disabled="busy">{{ busy ? '正在上传并解析…' : '保存并建立来源' }}</button>
+        </form>
+        <div class="workspace-section-head"><h2>我的资料</h2><span>{{ filtered.length }} 份</span></div>
+        <div v-if="!filtered.length" class="workspace-empty"><MobileIcon name="book" :size="30" /><h3>{{ search ? '没有找到相关资料' : '把第一份讲义放进来' }}</h3><p>{{ search ? '试试资料名称或原文中的关键词。' : '导入后可以查看原文、定位来源、提问或整理复习包。' }}</p><button v-if="!search" class="m-btn m-btn--ghost m-btn--sm" @click="importOpen = true">添加资料</button></div>
+        <button v-for="material in filtered" :key="material.id" class="atlas-file m-card" :class="{ selected: selected?.id === material.id }" @click="selectedId = material.id; questionResult = null"><span class="atlas-file__icon"><MobileIcon :name="material.kind === 'image' ? 'cloud' : 'book'" :size="22" /></span><span><strong>{{ material.title }}</strong><small>{{ material.kind.toUpperCase() }} · {{ material.status === 'ready' ? `${material.sections.length} 段原文` : material.status === 'failed' ? '解析失败，可补充文本' : '等待补充文字' }} · {{ dateLabel(material.updatedAt) }}</small><span class="atlas-tags"><i v-for="tag in material.tags" :key="tag">{{ tag }}</i></span></span><MobileIcon name="chevronRight" :size="16" /></button>
+        <article v-if="selected" class="m-card atlas-detail" id="source-detail">
+          <div class="workspace-row"><h2>{{ selected.title }}</h2><button class="workspace-text-action" @click="deleteConfirm = !deleteConfirm">删除</button></div>
+          <p class="workspace-caption">{{ selected.message || '原文摘录可按段落定位。' }}</p>
+          <div v-if="deleteConfirm" class="workspace-confirm"><p>将删除这份资料、关联笔记和任务产物。此操作无法在 App 内撤销。</p><div class="workspace-actions"><button class="m-btn m-btn--danger m-btn--sm" :disabled="busy" @click="removeMaterial">确认删除</button><button class="m-btn m-btn--ghost m-btn--sm" @click="deleteConfirm = false">保留资料</button></div></div>
+          <img v-if="selected.dataUrl" :src="selected.dataUrl" :alt="selected.title" class="atlas-image" />
+          <details class="workspace-details" :open="!selected.sections.length"><summary>查看原文与来源（{{ selected.sections.length }} 段）</summary><div class="atlas-original"><p v-for="section in selected.sections" :id="`source-${section.id}`" :key="section.id"><small>{{ section.page ? `第 ${section.page} 页 · ` : '' }}段落 {{ section.paragraph }}</small>{{ section.text }}</p></div></details>
+          <form v-if="!selected.sections.length" class="workspace-form" @submit.prevent="saveTranscript"><label class="m-field"><span>补充原文转录</span><textarea v-model="transcript" class="m-textarea" rows="4" maxlength="120000" required /></label><button class="m-btn m-btn--ghost m-btn--sm" :disabled="busy">保存转录</button></form>
+          <form class="workspace-form" @submit.prevent="ask"><label class="m-field"><span>在这份资料里找依据</span><input v-model="question" class="m-input" maxlength="1200" required placeholder="输入知识点或问题关键词" /></label><button class="m-btn m-btn--primary m-btn--sm" :disabled="asking || !selected.sections.length">{{ asking ? '正在检索…' : '检索原文' }}</button></form>
+          <div v-if="questionResult" class="atlas-answer" aria-live="polite"><p>{{ questionResult.answer }}</p><button v-for="citation in questionResult.citations" :key="citation.id" class="atlas-citation" @click="locate(citation)"><b>{{ citation.title }} · {{ citation.page ? `第 ${citation.page} 页 · ` : '' }}段落 {{ citation.paragraph }}</b><span>{{ citation.text }}</span><small>查看原文位置 →</small></button></div>
+          <div class="workspace-actions"><RouterLink :to="{ path: '/agent', query: { material: selected.id, kind: 'materials' } }" class="m-btn m-btn--ghost m-btn--sm">让星枢整理复习包</RouterLink><button class="m-btn m-btn--ghost m-btn--sm" @click="tab = 'notes'; noteMaterialId = selected.id">写一条笔记</button></div>
+        </article>
+      </template>
+      <template v-else-if="tab === 'notes'">
+        <form class="m-card workspace-form" @submit.prevent="saveNote"><h2>{{ noteId ? '编辑笔记' : '留下自己的理解' }}</h2><label class="m-field"><span>标题</span><input v-model="noteTitle" class="m-input" maxlength="160" required /></label><label class="m-field"><span>关联来源</span><select v-model="noteMaterialId" class="m-input"><option value="">独立笔记</option><option v-for="m in workspace.materials" :key="m.id" :value="m.id">{{ m.title }}</option></select></label><label class="m-field"><span>内容（支持 Markdown 文本）</span><textarea v-model="noteContent" class="m-textarea" rows="5" maxlength="30000" required /></label><button class="m-btn m-btn--primary" :disabled="busy">保存笔记</button></form>
+        <div class="workspace-section-head"><h2>我的笔记</h2><span>{{ workspace.notes.length }} 条</span></div>
+        <article v-for="note in workspace.notes" :key="note.id" class="m-card atlas-note"><h3>{{ note.title }}</h3><pre>{{ note.content }}</pre><div class="workspace-actions"><button class="workspace-text-action" @click="noteId = note.id; noteTitle = note.title; noteContent = note.content; noteMaterialId = note.materialId || ''">编辑</button><button class="workspace-text-action" @click="downloadText(`${note.title}.md`, note.content)">导出 Markdown</button><button class="workspace-text-action" @click="noteDeleteId = note.id">删除</button></div><div v-if="noteDeleteId === note.id" class="workspace-confirm"><p>确认删除这条笔记？</p><button class="m-btn m-btn--danger m-btn--sm" @click="removeNote(note.id)">确认删除笔记</button><button class="workspace-text-action" @click="noteDeleteId = ''">取消</button></div></article>
+        <p v-if="!workspace.notes.length" class="workspace-caption">笔记为空。写下自己的理解，或在星枢任务产物中选择“保存到笔记”。</p>
+      </template>
+      <template v-else>
+        <div class="m-card atlas-graph"><span class="workspace-eyebrow">KNOWLEDGE CONSTELLATION</span><h2>沿着路径，点亮理解。</h2><p class="workspace-caption">连线表示已保存的阶段顺序；不将路径估计冒充掌握证据。</p><ol v-if="path?.phases.length"><li v-for="(phase, index) in path.phases" :key="phase.id"><span class="atlas-node">{{ index + 1 }}</span><div><h3>{{ phase.name }}</h3><RouterLink v-for="topic in phase.topics" :key="topic.id" :to="{ path: '/tutor', query: { topic: topic.id, name: topic.name } }"><span>{{ topic.name }}</span><small>查看讲解与练习 →</small></RouterLink></div></li></ol><div v-else class="workspace-empty"><MobileIcon name="path" :size="32" /><h3>你的知识路径，等待开始</h3><p>确认学习起点后，生成阶段与知识点。</p><RouterLink to="/diagnose" class="m-btn m-btn--ghost m-btn--sm">建立学习起点</RouterLink></div></div>
+      </template>
+    </template>
+  </section>
+</template>
+<script setup lang="ts">
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
+import { apiPost } from '@/lib/api'
+import MobileIcon from '@/mobile/components/MobileIcon.vue'
+import VaultImporter from '@/mobile/components/VaultImporter.vue'
+import { changeWorkspace, dateLabel, downloadText, loadPath, loadWorkspace, type Citation, type Workspace } from '@/mobile/data/workspace'
+import type { KnowledgePath } from '@/mobile/data/types'
+const route = useRoute(), tabs = [{ id: 'library', label: '知识库' }, { id: 'notes', label: '笔记' }]
+const workspace = ref<Workspace | null>(null), path = ref<KnowledgePath | null>(null), tab = ref('library'), search = ref(''), loading = ref(true), error = ref(''), busy = ref(false), asking = ref(false), importOpen = ref(false), consent = ref(false), title = ref(''), content = ref(''), tags = ref(''), file = ref<File | null>(null), fileInput = ref<HTMLInputElement | null>(null), selectedId = ref(''), deleteConfirm = ref(false), question = ref(''), transcript = ref(''), questionResult = ref<{ answer: string; citations: Citation[] } | null>(null), noteId = ref(''), noteTitle = ref(''), noteContent = ref(''), noteMaterialId = ref(''), noteDeleteId = ref('')
+const selected = computed(() => workspace.value?.materials.find(m => m.id === selectedId.value) || null)
+const filtered = computed(() => workspace.value?.materials.filter(m => `${m.title} ${m.tags.join(' ')} ${m.sections.map(s => s.text).join(' ')}`.toLowerCase().includes(search.value.toLowerCase())).slice().reverse() || [])
+async function load() { try { const [data, knowledgePath] = await Promise.all([loadWorkspace(), loadPath()]); workspace.value = data; path.value = knowledgePath } catch (e) { error.value = e instanceof Error ? e.message : '读取失败' } finally { loading.value = false } }
+onMounted(async () => { await load(); if (route.query.view === 'graph') tab.value = 'graph'; if (typeof route.query.material === 'string') selectedId.value = route.query.material })
+function pickFile(event: Event) { file.value = (event.target as HTMLInputElement).files?.[0] || null; if (file.value) title.value ||= file.value.name }
+async function importMaterial() {
+  busy.value = true; error.value = ''
+  try {
+    let kind = /^https?:\/\//.test(content.value.trim()) ? 'link' : 'text', data = '', bodyContent = content.value
+    if (file.value) {
+      if (file.value.size > 5 * 1024 * 1024) throw new Error('文件最大 5 MB。')
+      if (/\.pdf$/i.test(file.value.name)) kind = 'pdf'
+      else if (/\.(png|jpe?g)$/i.test(file.value.name)) kind = 'image'
+      else if (/\.(txt|md)$/i.test(file.value.name)) bodyContent = await file.value.text()
+      else throw new Error('暂不支持此文件格式。')
+      if (kind === 'pdf' || kind === 'image') data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = reject; reader.readAsDataURL(file.value!) })
+    }
+    const result = await changeWorkspace<{ result: { id: string } }>('materials', { title: title.value, kind, data, content: bodyContent, tags: tags.value })
+    await load(); selectedId.value = result.result.id; importOpen.value = false; title.value = ''; content.value = ''; tags.value = ''; file.value = null; consent.value = false
+  } catch (e) { error.value = e instanceof Error ? e.message : '导入失败，可重试' } finally { busy.value = false }
+}
+async function ask() { if (!selected.value) return; asking.value = true; error.value = ''; try { questionResult.value = await apiPost('/api/workspace/ask', { question: question.value, materialIds: [selected.value.id] }) } catch (e) { error.value = e instanceof Error ? e.message : '检索失败' } finally { asking.value = false } }
+async function locate(citation: Citation) { selectedId.value = citation.materialId; await nextTick(); const details = document.querySelector<HTMLDetailsElement>('.atlas-detail details'); if (details) details.open = true; await nextTick(); document.getElementById(`source-${citation.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }
+async function removeMaterial() { if (!selected.value) return; busy.value = true; try { await changeWorkspace(`materials/${selected.value.id}`, { action: 'delete' }); selectedId.value = ''; questionResult.value = null; deleteConfirm.value = false; await load() } catch (e) { error.value = e instanceof Error ? e.message : '删除失败' } finally { busy.value = false } }
+async function saveTranscript() { busy.value = true; try { await changeWorkspace(`materials/${selectedId.value}`, { content: transcript.value }); transcript.value = ''; await load() } catch (e) { error.value = e instanceof Error ? e.message : '保存失败' } finally { busy.value = false } }
+async function saveNote() { busy.value = true; try { await changeWorkspace('notes', { id: noteId.value || undefined, title: noteTitle.value, content: noteContent.value, materialId: noteMaterialId.value || null }); noteId.value = ''; noteTitle.value = ''; noteContent.value = ''; await load() } catch (e) { error.value = e instanceof Error ? e.message : '保存失败' } finally { busy.value = false } }
+async function removeNote(id: string) { try { await changeWorkspace('notes', { id, action: 'delete' }); noteDeleteId.value = ''; await load() } catch (e) { error.value = e instanceof Error ? e.message : '删除失败' } }
+</script>
+<style scoped>
+.atlas-toolbar { display: flex; gap: 10px; margin-bottom: 18px; }.atlas-toolbar input { min-width: 0; }.atlas-toolbar button { flex: none; }.atlas-file { display: flex; align-items: center; gap: 12px; width: 100%; border: 1px solid var(--m-border); color: var(--m-text); text-align: left; font: inherit; margin-top: 10px; padding: 16px; cursor: pointer; }.atlas-file.selected { border-color: var(--m-primary); }.atlas-file > span:nth-child(2) { min-width: 0; flex: 1; }.atlas-file strong { display: block; font-size: 15px; line-height: 1.6; }.atlas-file small { display: block; font-size: 12px; color: var(--m-text-faint); margin-top: 4px; }.atlas-file__icon { display: grid; place-items: center; width: 40px; height: 44px; border-radius: 12px; background: var(--m-primary-soft); color: var(--m-primary); flex: none; }.atlas-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }.atlas-tags i { font-size: 11px; font-style: normal; background: var(--m-surface-2); border-radius: 6px; padding: 2px 6px; color: var(--m-text-dim); }.atlas-detail { margin-top: 20px; }.atlas-detail h2 { font-size: 18px; margin: 0; }.atlas-image { width: 100%; max-height: 350px; object-fit: contain; border-radius: 14px; }.atlas-original { max-height: 360px; overflow: auto; }.atlas-original p { font-size: 15px; line-height: 1.9; white-space: pre-wrap; scroll-margin-top: 100px; }.atlas-original small { display: block; color: var(--m-primary); font-size: 12px; margin-bottom: 6px; }.atlas-original p:target { background: var(--m-primary-soft); }.atlas-answer { font-size: 14px; line-height: 1.8; }.atlas-citation { display: grid; gap: 8px; width: 100%; padding: 14px; margin-bottom: 12px; border: 1px solid var(--m-primary-border); border-radius: 14px; background: var(--m-primary-soft); color: var(--m-text-dim); text-align: left; font: inherit; font-size: 14px; }.atlas-citation b,.atlas-citation small { color: var(--m-primary); font-size: 12px; }.atlas-note { margin-top: 14px; }.atlas-note pre { font: inherit; font-size: 14px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }.atlas-graph > h2 { font-size: 24px; }.atlas-graph ol { list-style: none; padding: 0; margin: 24px 0 0; }.atlas-graph li { display: flex; gap: 18px; position: relative; padding-bottom: 30px; }.atlas-graph li:not(:last-child)::before { content: ''; position: absolute; left: 19px; top: 40px; bottom: 0; width: 1px; background: var(--m-primary-border); }.atlas-node { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 50%; border: 1px solid var(--m-primary); background: var(--m-primary-soft); color: var(--m-primary); box-shadow: 0 0 24px rgba(77,216,240,.1); }.atlas-graph li > div { min-width: 0; flex: 1; }.atlas-graph h3 { margin: 7px 0 16px; font-size: 17px; }.atlas-graph li a { display: grid; gap: 5px; padding: 13px; margin-top: 8px; border: 1px solid var(--m-border); border-radius: 12px; color: var(--m-text); text-decoration: none; font-size: 14px; }.atlas-graph a small { color: var(--m-primary); font-size: 12px; }
+</style>

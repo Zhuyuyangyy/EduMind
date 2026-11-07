@@ -14,6 +14,8 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
+  /* 固定顶栏（--header-height）不遮挡滚动定位与锚点跳转的内容 */
+  scroll-padding-top: calc(var(--header-height) + 12px);
 }
 
 body {

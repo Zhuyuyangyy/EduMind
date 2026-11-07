@@ -19,6 +19,41 @@ const router = createRouter({
       name: 'welcome',
       component: () => import('@/views/Welcome.vue'),
     },
+    // —— 竞赛演示闭环（无登录公网演示） ——
+    {
+      path: '/diagnosis',
+      name: 'diagnosis',
+      component: () => import('@/views/DiagnosisQuiz.vue'),
+      meta: { title: '学习诊断' },
+    },
+    {
+      path: '/knowledge-profile',
+      name: 'knowledge-profile',
+      component: () => import('@/views/KnowledgeProfile.vue'),
+      meta: { title: '知识画像' },
+    },
+    {
+      path: '/plan',
+      name: 'plan',
+      component: () => import('@/views/LearningPlan.vue'),
+      meta: { title: '学习计划' },
+    },
+    {
+      path: '/practice/:kpId',
+      name: 'practice',
+      component: () => import('@/views/TargetedPractice.vue'),
+      meta: { title: '针对性练习' },
+    },
+    {
+      path: '/practice',
+      redirect: '/practice/py-basics',
+    },
+    {
+      path: '/report',
+      name: 'report',
+      component: () => import('@/views/LearningReport.vue'),
+      meta: { title: '学习报告' },
+    },
     {
       path: '/admin',
       name: 'admin-dashboard',
@@ -92,6 +127,11 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const session = getAuthSession()
+
+  // 演示模式：已登录（含种子会话）时根路径直达首页
+  if (to.path === '/' && session) {
+    return session.role === 'admin' ? '/admin' : '/home'
+  }
 
   if (to.meta.public) {
     if (!session) return true

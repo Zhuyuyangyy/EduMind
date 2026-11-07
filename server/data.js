@@ -7,7 +7,7 @@ import { getProfileResult as getMySqlProfileResult, saveProfileResult as saveMyS
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const contentDir = path.join(__dirname, 'content')
-const storePath = path.join(__dirname, 'store.json')
+const storePath = process.env.ZHIXUE_CHAT_STORE_FILE || path.join(__dirname, 'store.json')
 
 function readJsonFile(filename) {
   const filePath = path.join(contentDir, filename)
@@ -20,6 +20,19 @@ function today() {
 
 function nowTime() {
   return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+/**
+ * 消息 ID 生成（P4-2B-3a）。旧实现用 Date.now()/Date.now()+1，高频
+ * 连续写入停在同一毫秒时 ID 必然碰撞（50 次连续交互实测复现）。
+ * 进程内单调计数器：唯一且保序；重启后从当前时间重新起步（时间戳
+ * 量级远大于进程内计数，不会与历史 ID 碰撞）。
+ */
+let chatIdCounter = 0
+function nextChatId() {
+  const now = Date.now()
+  chatIdCounter = now > chatIdCounter ? now : chatIdCounter + 1
+  return chatIdCounter
 }
 
 function defaultStore() {
@@ -60,7 +73,11 @@ export function getRecommendedResources() {
 }
 
 export function getLearningPathPayload() {
-  return readJsonFile('learning-path.json')
+  return {
+    ...readJsonFile('learning-path.json'),
+    dataSource: 'demo-fixture',
+    simulated: true,
+  }
 }
 
 export function getEvaluationPayload() {
@@ -68,6 +85,8 @@ export function getEvaluationPayload() {
   return {
     ...payload,
     generatedAt: today(),
+    dataSource: 'demo-fixture',
+    simulated: true,
   }
 }
 
@@ -83,65 +102,94 @@ export async function saveProfileResult(profileResult, accountId = 'default') {
   return saveMySqlProfileResult(accountId, profileResult)
 }
 
-export function getLatestKnowledgePath() {
-  return readStore().knowledgePathResult
+/**
+ * 知识路径按账号隔离（P0 数据隔离 · feat/mobile-v1）。
+ * 新格式存于 store.json 的 knowledgePathByAccount（账号 -> 路径对象）；
+ * 旧格式的单份全局 knowledgePathResult 按 default 账号迁移读取，历史数据不丢。
+ */
+function readKnowledgePathMap(store) {
+  const map = store.knowledgePathByAccount
+  if (map && typeof map === 'object' && !Array.isArray(map)) return map
+  return store.knowledgePathResult ? { default: store.knowledgePathResult } : {}
 }
 
-export function saveKnowledgePathResult(result) {
+export function getLatestKnowledgePath(accountId = 'default') {
+  return readKnowledgePathMap(readStore())[accountId] || null
+}
+
+export function saveKnowledgePathResult(accountId = 'default', result) {
   const store = readStore()
-  store.knowledgePathResult = result
+  const map = readKnowledgePathMap(store)
+  map[accountId] = result
+  store.knowledgePathByAccount = map
   writeStore(store)
 }
 
-export function getChatHistory() {
-  return readStore().chatHistory
+/**
+ * 聊天 / 辅导历史按账号隔离（P0 认证改造 · feat/mobile-v1）。
+ * store.json 中 chatHistory / tutoringHistory 由「全局数组」改为「账号 -> 数组」映射；
+ * 旧格式（数组）按 default 账号读取，保证历史数据不丢。
+ */
+function readHistoryMap(store, key) {
+  const value = store[key]
+  if (Array.isArray(value)) return { default: value }
+  if (value && typeof value === 'object') return value
+  return {}
 }
 
-export function saveChatHistoryEntry(userMessage, reply, multimodalContents) {
+const HISTORY_LIMITS = { chatHistory: 30, tutoringHistory: 20 }
+
+function writeHistoryEntry(store, key, accountId, entry) {
+  const map = readHistoryMap(store, key)
+  const existing = Array.isArray(map[accountId]) ? map[accountId] : []
+  map[accountId] = keepLast([...existing, entry], HISTORY_LIMITS[key])
+  store[key] = map
+}
+
+export function getChatHistory(accountId = 'default') {
+  return readHistoryMap(readStore(), 'chatHistory')[accountId] || []
+}
+
+export function saveChatHistoryEntry(accountId = 'default', userMessage, reply, multimodalContents, idempotencyKey) {
   const store = readStore()
   const timestamp = nowTime()
-  const historyItems = [
-    ...store.chatHistory,
-    {
-      id: Date.now(),
-      role: 'user',
-      content: userMessage,
-      time: timestamp,
-      multimodalContents: multimodalContents || [],
-    },
-    {
-      id: Date.now() + 1,
-      role: 'assistant',
-      content: reply.content,
-      time: timestamp,
-      resources: reply.resources ?? [],
-      suggestions: reply.suggestions ?? [],
-    },
-  ]
-  store.chatHistory = keepLast(historyItems, 30)
+  writeHistoryEntry(store, 'chatHistory', accountId, {
+    id: nextChatId(),
+    role: 'user',
+    content: userMessage,
+    time: timestamp,
+    multimodalContents: multimodalContents || [],
+    // P4-2B-3a：幂等键仅落在 user 条目（重试识别用；旧记录无此字段）
+    ...(idempotencyKey ? { clientMessageId: String(idempotencyKey) } : {}),
+  })
+  writeHistoryEntry(store, 'chatHistory', accountId, {
+    id: nextChatId(),
+    role: 'assistant',
+    content: reply.content,
+    time: timestamp,
+    resources: reply.resources ?? [],
+    suggestions: reply.suggestions ?? [],
+  })
   writeStore(store)
 }
 
-export function getTutoringHistory() {
-  return readStore().tutoringHistory
+export function getTutoringHistory(accountId = 'default') {
+  return readHistoryMap(readStore(), 'tutoringHistory')[accountId] || []
 }
 
-export function saveTutoringHistoryEntry({ question, answer, mode, scenario, multimodalContents }) {
+export function saveTutoringHistoryEntry(accountId = 'default', { question, answer, mode, scenario, multimodalContents, fallbackAgents }) {
   const store = readStore()
-  store.tutoringHistory = keepLast(
-    [
-      ...store.tutoringHistory,
-      {
-        q: question,
-        a: answer,
-        time: nowTime(),
-        mode,
-        scenario: scenario || 'preview',
-        multimodalContents: multimodalContents || [],
-      },
-    ],
-    20,
-  )
+  writeHistoryEntry(store, 'tutoringHistory', accountId, {
+    q: question,
+    a: answer,
+    time: nowTime(),
+    mode,
+    scenario: scenario || 'preview',
+    multimodalContents: multimodalContents || [],
+    // P2-2A：如实记录本次回答是否走了降级（空数组 = 真实模型）。
+    // 旧记录没有此字段，客户端按“来源未记录”处理。
+    ...(Array.isArray(fallbackAgents) ? { fallbackAgents } : {}),
+  })
   writeStore(store)
 }
 
@@ -173,6 +221,8 @@ export async function buildChatReplyAsync(message, multimodalContents) {
             { type: 'exercise', title: '配套练习', color: '#06d6a0' },
           ],
           suggestions: ['用更简单的话解释', '给我一个代码示例', '顺便出 3 道练习题'],
+          // 供证据追踪如实记录：本次回复来自真实 LLM，未走降级
+          fallbackUsed: false,
         }
       }
     } catch (err) {
@@ -180,7 +230,7 @@ export async function buildChatReplyAsync(message, multimodalContents) {
     }
   }
 
-  return buildChatReply(message, multimodalContents)
+  return { ...buildChatReply(message, multimodalContents), fallbackUsed: true }
 }
 
 export function buildChatReply(message, multimodalContents) {
@@ -270,6 +320,8 @@ function clamp(value, min, max) {
 
 export function getAgentWorkflow() {
   return {
+    dataSource: 'demo-fixture',
+    simulated: true,
     workflowId: 'wf-demo-001',
     startTime: '2026-05-28T14:32:00',
     endTime: '2026-05-28T14:32:25',
