@@ -35,7 +35,9 @@
     "test:mobile-product-v1": "node scripts/mobile-product-v1-e2e.mjs",
     "test:evaluation-browser": "node scripts/evaluation-browser-smoke.mjs",
     "verify:mysql": "node scripts/verify-mysql.mjs",
-    "postinstall": "node scripts/patch-secure-storage.mjs"
+    "postinstall": "node scripts/patch-secure-storage.mjs",
+    "test:logic": "node --test astripath/tests/*.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "^7.1.6",

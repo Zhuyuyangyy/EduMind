@@ -5,8 +5,8 @@
 ## 一、任务书 §8.3 最终验收
 
 - [x] 构建通过（`npm run build`：vue-tsc 0 错误 + Vite 产物 690KB）
-- [x] 核心功能测试通过（44 单元测试，`evidence/test_results/astripath-unit-tests.txt`）
-- [x] 端到端测试通过（11 E2E，`evidence/test_results/astripath-e2e-tests.txt`）
+- [x] 核心功能测试通过（44 逻辑单元测试 + 原工程 278 项回归，`evidence/test_results/astripath-unit-tests.txt`）
+- [x] 端到端测试通过（10 E2E + 线上 12 项验收，`evidence/test_results/astripath-e2e-tests.txt`）
 - [x] 桌面端检查完成（1440px 全流程截图 + 线上验收）
 - [x] 手机端检查完成（375px E2E + 截图，无横向溢出）
 - [x] 公网链接可访问（https://astripath-k78u5s6qgf1.qoder.zone，线上 11/11 验收）
@@ -42,7 +42,7 @@
 | 交付物 | 位置 |
 |---|---|
 | 竞赛应用源码 | `astripath/src/` |
-| 单元测试与 E2E | `astripath/tests/` |
+| 逻辑单元测试 | `astripath/tests/`（E2E 在仓库根 `tests/e2e/`） |
 | 审计报告 | `astripath/docs/AUDIT_REPORT.md` |
 | 项目概览/架构/用户指南 | `astripath/docs/PROJECT_OVERVIEW.md`、`ARCHITECTURE.md`、`USER_GUIDE.md` |
 | 测试报告 | `astripath/docs/TEST_REPORT.md` |

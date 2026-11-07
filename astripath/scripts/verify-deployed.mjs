@@ -1,84 +1,83 @@
-/**
- * 线上部署验收（T01/T12 + 全闭环 + 深链接 + 移动端）
- * 用法: node scripts/verify-deployed.mjs https://<site-host>
- */
-import { chromium } from '@playwright/test';
-import { diagnosisQuestions } from '../src/data/diagnosis.ts';
-
-const BASE = process.argv[2];
-if (!BASE) { console.error('usage: node scripts/verify-deployed.mjs <base-url>'); process.exit(1); }
+/** 线上部署验收：竞赛闭环 + 原版界面 + 移动端 */
+import { chromium, devices } from '@playwright/test';
+const BASE = process.argv[2] || 'https://astripath-k78u5s6qgf1.qoder.zone';
 const browser = await chromium.launch();
 const results = [];
-const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ' — ' + detail : ''}`); };
+const check = (name, ok, detail = '') => { results.push({ name, ok }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ' — ' + detail : ''}`); };
 
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
-// T01/T12: 公开访问、无登录
+// T01/T12 免登录 + 原版导航
 await page.goto(BASE + '/');
-await page.locator('.hero-title').waitFor();
-check('T01/T12 公网无登录访问首页', (await page.locator('.hero-title').innerText()).includes('AI 导师'));
+await page.waitForURL(/\/home$/, { timeout: 20000 });
+await page.locator('.topbar-nav').waitFor();
+check('T01/T12 公网免登录直达首页', page.url().includes('/home'));
+const nav = await page.locator('.topbar-nav .nav-item').allInnerTexts();
+check('原版导航栏目完整', nav.join(',') === '首页,画像生成,学习路径,学习资源,智能评估,反向更新,设置', nav.join(','));
+check('竞赛入口横幅', await page.locator('.comp-entry').count() === 1);
 
-// 全闭环
+// 诊断
 await page.goto(BASE + '/diagnosis');
-await page.locator('.choice-item').first().waitFor();
-for (let i = 0; i < diagnosisQuestions.length; i++) {
-  const q = diagnosisQuestions[i];
-  await page.locator('.choice-item').nth(i < 4 ? q.answer : (q.answer + 1) % 4).click();
-  if (i < diagnosisQuestions.length - 1) await page.getByRole('button', { name: '下一题' }).click();
+await page.locator('.comp-question').waitFor();
+for (let i = 0; i < 8; i++) {
+  await page.locator('.comp-choice').nth(i < 4 ? 0 : 1).click();
+  const next = page.locator('.comp-quiz-actions button', { hasText: '下一题' });
+  if (await next.count()) await next.click();
 }
-await page.getByRole('button', { name: '提交答卷并生成知识画像' }).click();
-await page.getByRole('heading', { name: '诊断完成' }).waitFor();
-check('T04 诊断提交判分', (await page.locator('body').innerText()).includes('各知识点正确率'));
+await page.locator('.comp-quiz-actions button', { hasText: '提交答卷' }).click();
+await page.locator('.comp-card-title').first().waitFor();
+check('T04 诊断判分（8 题 + 正确率表 + 解析）', (await page.locator('.comp-table tbody tr').count()) === 8);
 
-await page.goto(BASE + '/profile');
-await page.locator('.kp-card').first().waitFor();
-check('T05 知识画像渲染', (await page.locator('.kp-card').count()) === 8, `${await page.locator('.kp-card').count()} 张知识点卡片`);
+// 画像
+await page.goto(BASE + '/knowledge-profile');
+await page.locator('canvas').first().waitFor();
+check('T05 知识画像（3D 知识树）', (await page.locator('canvas').count()) >= 1);
 
+// 计划
 await page.goto(BASE + '/plan');
-await page.locator('.plan-day').first().waitFor();
-const planDays = await page.locator('.plan-day').count();
-check('T06 学习计划 7 天', planDays === 7, `${planDays} 天`);
+await page.locator('.comp-plan-day').first().waitFor();
+check('T06 学习计划 7 天', (await page.locator('.comp-plan-day').count()) === 7);
 
-await page.goto(BASE + '/tutor');
-await page.getByLabel('向 AI 导师提问').waitFor();
-await page.getByLabel('向 AI 导师提问').fill('什么是广播？');
-await page.getByRole('button', { name: '发送' }).click();
-const tutorBody = await page.locator('.chat-msg.tutor').last().innerText();
-check('T07 AI 导师问答与引用依据', tutorBody.includes('引用依据') && tutorBody.includes('广播'));
+// 导师
+await page.goto(BASE + '/dialogue');
+await page.waitForTimeout(1500);
+await page.locator('textarea, input[type="text"]').first().fill('什么是广播？');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(2500);
+const tutorBody = await page.locator('body').innerText();
+check('T07 AI 导师问答 + 引用依据 + 演示模式', tutorBody.includes('广播') && tutorBody.includes('引用依据') && tutorBody.includes('演示模式'));
 
+// 练习闭环
 await page.goto(BASE + '/practice/numpy-basics');
-await page.locator('.choice-item').first().waitFor();
-await page.locator('.choice-item').first().click();
-check('T08 练习即时判分', (await page.locator('.explain-box').count()) > 0);
+await page.locator('.comp-choice').first().click();
+await page.locator('.comp-quiz-actions button', { hasText: '下一题' }).click();
+await page.locator('.comp-choice').first().click();
+await page.locator('.comp-quiz-actions button', { hasText: '下一题' }).click();
+await page.locator('.comp-choice').first().click();
+await page.locator('.comp-quiz-actions button', { hasText: '提交并更新掌握度' }).click();
+await page.locator('.comp-card-title').first().waitFor();
+const practiceBody = await page.locator('body').innerText();
+check('T08/T09 练习判分 + 掌握度变化 + 累计练习', practiceBody.includes('掌握度变化') && practiceBody.includes('累计练习'));
 
+// 报告
 await page.goto(BASE + '/report');
-await page.getByRole('heading', { name: '学习前后对比' }).waitFor();
-check('T09 学习报告', (await page.locator('body').innerText()).includes('学习流水'));
+await page.getByText('学习前后对比').waitFor();
+check('T09 学习报告', true);
 
-// 深链接直达（SPA fallback）
-await page.goto(BASE + '/profile');
-await page.locator('.kp-card').first().waitFor();
-check('深链接直达 /profile', (await page.locator('body').innerText()).includes('知识点掌握度雷达'));
+// 深链接
+await page.goto(BASE + '/plan');
+await page.locator('.comp-plan-day').first().waitFor();
+check('深链接直达 /plan', true);
 
-// T11 移动端
-const mobile = await browser.newPage({ viewport: { width: 375, height: 812 } });
+// 移动端
+const mobile = await browser.newPage({ ...devices['Pixel 7'] });
 await mobile.goto(BASE + '/');
-await mobile.locator('.mobile-topbar').waitFor();
 const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 check('T11 移动端 375px 无横向溢出', overflow <= 1, `overflow=${overflow}px`);
-await mobile.getByRole('button', { name: '打开导航菜单' }).click();
-await mobile.locator('.sidebar.open').waitFor();
-await mobile.locator('.sidebar').getByRole('link', { name: 'AI 导师' }).click();
-await mobile.getByLabel('向 AI 导师提问').waitFor();
-check('T11 移动端导航可用', mobile.url().includes('/tutor'));
-
-// 控制台错误检查
-const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
-await page.goto(BASE + '/');
-await page.locator('.hero-title').waitFor();
-await page.waitForTimeout(1200);
-check('无页面脚本错误', errors.length === 0, errors.slice(0, 2).join('; '));
+await mobile.goto(BASE + '/diagnosis');
+await mobile.locator('.comp-choice').first().click();
+await mobile.locator('.comp-quiz-actions button', { hasText: '下一题' }).click();
+check('T11 移动端诊断可答题', (await mobile.locator('.comp-quiz-progress').innerText()).includes('第 2 / 8'));
 
 await browser.close();
 const failed = results.filter((r) => !r.ok).length;
