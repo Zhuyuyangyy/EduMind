@@ -88,7 +88,8 @@ const rangeBadge = (kpId: string) => {
       <section class="comp-card">
         <div class="comp-card-title"><span class="dot"></span>知识图谱 · 先修关系与掌握度</div>
         <p class="comp-stat-extra" style="margin-bottom: 12px">
-          节点大小与颜色反映掌握度；拖动旋转，点击节点查看详情。先修关系自底向上。
+          节点大小与颜色反映掌握度；拖动旋转，点击节点查看详情。连线表示先修关系（箭头由先修指向后续）：
+          绿色实线 = 先修掌握度 ≥ 60% 已达标，灰色虚线 = 先修尚未达标。
         </p>
         <ThreeKnowledgeTree :knowledge-points="treePoints" :height="460" :fill="true" />
       </section>

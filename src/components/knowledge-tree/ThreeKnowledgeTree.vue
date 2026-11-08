@@ -13,10 +13,12 @@ import {
 import { applyEzTreeAtmosphere, preloadEzTreeAssets } from './EzTreeEnvironment'
 
 interface KnowledgePoint {
+  id?: string
   name: string
   status?: 'none' | 'weak' | 'beginner' | 'basic' | 'proficient' | 'mastered'
   progress?: number
   course?: string
+  prerequisiteIds?: string[]
   labelBadge?: string
   labelTone?: 'danger' | 'warning' | 'info' | 'success'
 }
@@ -1396,9 +1398,13 @@ function addGraphMarkers() {
   })
 
   const maxPoints = 42
+  const knowledgeAnchors = new Map<string, { position: THREE.Vector3; point: KnowledgePoint }>()
   displayPoints.value.slice(0, maxPoints).forEach((point, index) => {
     const angle = index * 2.399
     const badge = labelBadgeForPoint(point)
+    const prereqNames = (point.prerequisiteIds ?? [])
+      .map(id => displayPoints.value.find(p => (p.id ?? p.name) === id)?.name)
+      .filter((name): name is string => Boolean(name))
     const marker: GraphMarker = {
       id: `knowledge-${index}-${point.name}`,
       type: 'knowledge',
@@ -1410,18 +1416,93 @@ function addGraphMarkers() {
       description: `果实状态：${markerStatusLabel(point.status)}。`,
       items: [
         `掌握度: ${point.progress ?? 0}%`,
+        ...(prereqNames.length ? [`先修: ${prereqNames.join('、')}`] : []),
         `建议: ${point.status === 'weak' ? '安排补弱练习' : point.status === 'mastered' ? '进入迁移应用' : '继续当前路径'}`,
       ],
     }
 
     const isSolid = point.status === 'mastered' || point.status === 'proficient'
+    const position = leafAnchor(index + 31, angle)
+    knowledgeAnchors.set(point.id ?? point.name, { position, point })
     treeRoot!.add(createAppleMarker(
       marker,
-      leafAnchor(index + 31, angle),
+      position,
       isSolid ? 0.18 : 0.20,
       statusColor(point.status),
     ))
   })
+
+  addPrerequisiteEdges(knowledgeAnchors)
+}
+
+/** 与 astripath/src/logic/plan.ts 的 PREREQ_READY 保持一致 */
+const PREREQ_READY = 60
+
+function addPrerequisiteEdges(anchors: Map<string, { position: THREE.Vector3; point: KnowledgePoint }>) {
+  if (!treeRoot) return
+  anchors.forEach(({ position, point }) => {
+    for (const prereqId of point.prerequisiteIds ?? []) {
+      const prereq = anchors.get(prereqId)
+      if (!prereq || prereq.position.equals(position)) continue
+      const ready = prereq.point.status !== 'none' && (prereq.point.progress ?? 0) >= PREREQ_READY
+      treeRoot!.add(createPrerequisiteEdge(prereq.position, position, ready))
+    }
+  })
+}
+
+function createPrerequisiteEdge(from: THREE.Vector3, to: THREE.Vector3, ready: boolean) {
+  const group = new THREE.Group()
+  group.name = ready ? 'prereq-edge-ready' : 'prereq-edge-blocked'
+
+  // 弧线向树冠外侧鼓起，避免直线穿过树干
+  const mid = from.clone().add(to).multiplyScalar(0.5)
+  const outward = new THREE.Vector3(mid.x, 0, mid.z)
+  if (outward.lengthSq() < 0.01) outward.set(0.6, 0, 0.6)
+  outward.normalize().multiplyScalar(0.55)
+  mid.add(outward)
+  mid.y += 0.25
+  const curve = new THREE.QuadraticBezierCurve3(from, mid, to)
+
+  // 管线几何保证线宽可见；depthTest 关闭使连线不被树叶遮挡
+  const color = ready ? 0x16a34a : 0x94a3b8
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: ready ? 0.92 : 0.85,
+    depthTest: false,
+    depthWrite: false,
+  })
+  const radius = 0.022
+  if (ready) {
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 28, radius, 6), material)
+    tube.renderOrder = 5
+    group.add(tube)
+  } else {
+    const length = curve.getLength()
+    const dash = 0.16
+    const gap = 0.11
+    for (let s = 0; s < length; s += dash + gap) {
+      const t0 = s / length
+      const t1 = Math.min((s + dash) / length, 1)
+      const segment = new THREE.LineCurve3(curve.getPoint(t0), curve.getPoint(t1))
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(segment, 1, radius, 6), material)
+      tube.renderOrder = 5
+      group.add(tube)
+    }
+  }
+
+  const arrowTip = curve.getPoint(0.86)
+  const tangent = curve.getTangent(0.86).normalize()
+  const arrow = new THREE.Mesh(
+    new THREE.ConeGeometry(0.07, 0.2, 10),
+    material,
+  )
+  arrow.renderOrder = 5
+  arrow.position.copy(arrowTip)
+  arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent)
+  group.add(arrow)
+
+  return group
 }
 
 async function rebuildTree() {

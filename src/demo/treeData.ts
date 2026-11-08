@@ -24,8 +24,8 @@ const STATUS_LABEL: Record<MasteryRange, string> = {
 
 export { STATUS_LABEL }
 
-/** 演示知识点 → 知识树节点 */
-export function toTreePoints(): KnowledgePoint[] {
+/** 演示知识点 → 知识树节点（progress/course 为 3D 树组件契约字段） */
+export function toTreePoints(): (KnowledgePoint & { progress: number; course: string })[] {
   const state = getDemoState()
   return demoCourse.knowledgePoints.map((kp) => {
     const kpState = state.kpStates[kp.id]
@@ -56,16 +56,19 @@ export function toTreePoints(): KnowledgePoint[] {
       name: kp.name,
       module: kp.category,
       unit: kp.category,
+      course: kp.category,
       mastery,
+      progress: mastery,
       previousMastery: lastChange ? lastChange.before : 0,
       confidence: tested ? 0.9 : 0,
       weight: 1,
       status: masteryRange(mastery, tested),
       recentChange: lastChange ? lastChange.after - lastChange.before : 0,
       agentEvidence: evidence,
-      evidenceCount: kpState.diagnosis?.total ?? 0 + kpState.practiceCount,
+      evidenceCount: (kpState.diagnosis?.total ?? 0) + kpState.practiceCount,
       prerequisiteIds: kp.prerequisites,
-      relatedIds: []
+      relatedIds: [],
+      lastEvaluatedAt: kpState.lastResult?.at ?? ''
     }
   })
 }

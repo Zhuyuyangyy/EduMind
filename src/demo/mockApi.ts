@@ -231,7 +231,7 @@ function buildKnowledgePath() {
       })
     }
   })
-  return { result: { dataSource: 'demo-fixture', phases, generatedAt: NOW(), ...path } }
+  return { result: { ...path, dataSource: 'demo-fixture', phases, generatedAt: NOW() } }
 }
 
 function domainTopics(domainId: string): string[] {
