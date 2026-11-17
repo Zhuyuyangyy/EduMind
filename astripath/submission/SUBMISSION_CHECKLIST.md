@@ -28,6 +28,7 @@
 - [x] AI 生成内容标识保留（演示模式标注 + 引用依据 + 掌握度演示评估值声明）
 - [x] Qoder 使用证据完整（`docs/QODER_USAGE.md` + evidence/ 目录 + 帖子内嵌截图）
 - [x] 作品介绍帖子完成并已发布（`submission/FORUM_POST.md` → https://tianchi.aliyun.com/forum/post/1095688）
+- [x] 知识宇宙星球模型完整（2026-11-17 补回 15 个被裁剪的模型 + 注册 meshopt 解码器，线上 24/24 加载、无占位光球；dist 44MB；星图截图已重拍并替换进帖子）
 
 ## 三、提交前人工待办
 
