@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import type { Galaxy, Course } from '../types'
 import { useUniverseStore } from '../stores/universeStore'
@@ -28,8 +29,9 @@ export function usePlanetLoader(
   parentGroup: THREE.Group,
 ) {
   const gltfLoader = new GLTFLoader()
+  gltfLoader.setMeshoptDecoder(MeshoptDecoder)
   const planetMeshes = new Map<number, THREE.Object3D>()
-  const planetAssetVersion = '20260611'
+  const planetAssetVersion = '20261117'
 
   async function loadAllPlanets(
     galaxies: Galaxy[],
