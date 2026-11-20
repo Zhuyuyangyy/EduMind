@@ -60,7 +60,7 @@ Python 基础与数据类型 (py-basics)
 
 ## 6. 技术栈
 
-Vue 3.5 + Vue Router 4 + Pinia 2 + TypeScript 5.4 + Vite 6 + Three.js/PixiJS/ECharts；演示模式无后端依赖，数据存 localStorage。测试：node:test（44 逻辑单测 + 278 原工程回归）+ Playwright（10 E2E + 12 线上验收）。
+Vue 3.5 + Vue Router 4 + Pinia 2 + TypeScript 5.4 + Vite 6 + Three.js/PixiJS/ECharts；演示模式无后端依赖，数据存 localStorage。测试：node:test（44 逻辑单测 + 281 原工程全量回归：222 过 / 59 跳 / 0 失败）+ Playwright（12 E2E：10 桌面 + 2 移动）+ 12 线上验收。
 
 ## 7. 与正式产品的关系
 

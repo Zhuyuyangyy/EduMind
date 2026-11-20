@@ -1,7 +1,7 @@
 # Qoder 使用记录 · QODER_USAGE
 
 > 本文件如实记录 2026 Qoder 高校创造力大赛参赛作品中 Qoder 的实际参与方式、任务清单与证据。
-> 本项目全部工程实现由 Qoder Agent 在竞赛分支上完成；人工参与仅限任务书制定、方向决策、最终审核与提交操作。
+> 本次竞赛版的工程改造、演示数据编写、核心逻辑实现、自动化测试及 Qoder Sites 部署由 Qoder Agent 执行。团队负责原版产品积累、赛题需求拆解、产品方向决策、算法方案评审、功能验收与最终提交。
 
 ## 1. 总体分工
 
@@ -13,7 +13,7 @@
 | 竞赛架构设计与实现 | **Qoder** | 演示模式（免登录/API 模拟/状态层）、5 个闭环视图、资源裁剪压缩 |
 | 演示数据编写 | **Qoder** | 课程、诊断题、练习题库、导师知识库 |
 | 核心逻辑开发 | **Qoder** | 判分/掌握度/计划/导师检索/状态归约（移植自正式工程规则） |
-| 测试（单测 + E2E） | **Qoder** | 44 逻辑单测 + 10 E2E + 原工程 278 项回归 + 线上 12 项验收 |
+| 测试（单测 + E2E） | **Qoder** | 44 逻辑单测 + 12 E2E（10 桌面 + 2 移动）+ 原工程全量回归 281 项（222 过 / 59 跳 / 0 失败）+ 线上 12 项验收 |
 | 测试问题修复 | **Qoder** | 见下方「发现并修复的问题」（8 个，含 2 个真实 UX 缺陷） |
 | Qoder Sites 部署 | **Qoder** | 准备/发布/公开访问/线上验收 |
 | 文档与参赛材料 | **Qoder** | README/各类文档/参赛帖子草稿 |
@@ -36,7 +36,7 @@
 | 工程审计报告 | `astripath/docs/AUDIT_REPORT.md` |
 | 原工程测试基线实跑记录 | `astripath/evidence/test_results/edumind-baseline-test-run.txt` |
 | 竞赛逻辑单测实跑记录（44/44） | `astripath/evidence/test_results/astripath-unit-tests.txt` |
-| 竞赛 E2E 实跑记录（10/10） | `astripath/evidence/test_results/astripath-e2e-tests.txt` |
+| 竞赛 E2E 实跑记录（12/12） | `astripath/evidence/test_results/astripath-e2e-tests.txt` |
 | 部署记录（prepare/publish/公开访问） | `astripath/evidence/deployment/qoder-sites-deployment.txt` |
 | 线上验收记录（12/12） | `astripath/evidence/deployment/deployed-acceptance.txt` |
 | 全流程截图（桌面 + 移动端） | `astripath/screenshots/` |
@@ -64,4 +64,5 @@
 - AI 导师为**演示模式**（预置课程知识库检索），不是实时大模型调用；原版 DeepSeek RAG 链路因竞赛版无后端、无 API Key 未接入，这是任务书允许的降级路径（已明示）。
 - 掌握度为演示评估值，非真实学习能力测量（已明示）。
 - AgentHub iframe 的 3D 模型经 meshopt 压缩（21.8MB→2MB）并打解码器补丁以满足部署体积限制；其 three.js 运行时来自 CDN（原版设计如此）。
+- 智能体口径：后端 `server/agents/` 为 7 个领域智能体 + 1 个编排器（orchestrator）；前端「编排枢纽」主链按 6 大模块展示，AgentHub 界面按模块×子智能体展示 12 张卡片。三者是同一架构的不同视图层级，非矛盾计数。
 - 本记录不夸大 Qoder 能力：Qoder 完成了工程实现、测试与部署；未参与的是比赛报名、人工方向决策与平台提交动作。

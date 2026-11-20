@@ -18,9 +18,9 @@
 
 ## 二、任务书 §8.3 最终验收
 
-- [x] 构建通过（`npm run build`：vue-tsc 0 错误；产物约 39MB，资源裁剪压缩后低于 50MB 限额）
-- [x] 核心功能测试通过（44 逻辑单元测试 + 原工程 278 项回归，`evidence/test_results/astripath-unit-tests.txt`）
-- [x] 端到端测试通过（10 E2E + 线上 12 项验收，`evidence/test_results/astripath-e2e-tests.txt`）
+- [x] 构建通过（`npm run build`：vue-tsc 0 错误；产物约 44MB，低于 Qoder Sites 50MB 限额）
+- [x] 核心功能测试通过（44 逻辑单元测试 + 原工程全量回归 281 项：222 过 / 59 跳 / 0 失败，`evidence/test_results/astripath-unit-tests.txt` + `edumind-full-regression-2026-11-18.txt`）
+- [x] 端到端测试通过（12 E2E：10 桌面 + 2 移动 + 线上 12 项验收，`evidence/test_results/astripath-e2e-tests.txt`）
 - [x] 桌面端检查完成（1440px 全流程截图 + 线上验收）
 - [x] 手机端检查完成（375px E2E + 截图，无横向溢出）
 - [x] 无需登录即可体验（T01/T12 通过）
@@ -38,12 +38,13 @@
 4. ~~发布帖子到天池赛题页论坛~~（已完成：https://tianchi.aliyun.com/forum/post/1095688）。
 5. 发布后重新打开公网链接做一次最终冒烟（首页 → 立即体验 → 提交诊断）。
 6. ~~确认竞赛分支已推送 GitHub~~（已完成：2026-11-08 推送至 origin，远端 HEAD 08f9843）。
+7. 替换帖子中 9 张「灰罩 / 3D 未渲染」问题截图（2026-11-17 已重拍完毕，见 `screenshots/`；上传替换与重新过审进行中，需天池登录态）。
 
 ## 四、可选加分项
 
 - [ ] 学生权益：https://university.aliyun.com/action/qoder 学生认证领 Qoder CN 一个月免费
-- [ ] 社交传播奖：小红书/抖音/X 发布分享，带【2026 Qoder 高校创造力大赛】并 @qoder 官方账号（限 1000 名），链接填入帖子「分享链接」节
-- [ ] 决赛路演准备：若进初筛（12/7 前公布），准备 5 分钟直播演示脚本（建议路径：诊断→画像→导师→练习 75→83→报告）
+- [ ] 社交传播奖：文案已备好（`submission/SOCIAL_SHARE.md`，小红书/抖音/X 三版 + 回填模板），待发布并把链接回填帖子「分享链接」节（限 1000 名）
+- [ ] 决赛路演：PPT 已改造完成（`submission/【智学星枢团队+智学星枢】决赛路演_Qoder版.pptx`，28 页、10 张线上实拍、逐页演讲备注，5 分钟主线 + 备用页）；若进初筛（12/7 前公布）按备注排练一遍
 
 ## 五、仓库与分支
 
@@ -62,6 +63,8 @@
 | 测试报告 | `astripath/docs/TEST_REPORT.md` |
 | Qoder 使用记录 | `astripath/docs/QODER_USAGE.md` |
 | 测试/部署证据 | `astripath/evidence/`（线上验收 12/12 已刷新） |
-| 截图（全部为当前线上版本实拍） | `astripath/screenshots/`（首页、横幅、中枢、星图、反向更新、知识树、评估、诊断×2、计划、导师、练习结果、报告、知识星座、移动端×4） |
+| 截图（全部为当前线上版本实拍） | `astripath/screenshots/`（首页、横幅、中枢、星图、反向更新、知识树、评估、诊断×2、计划、导师、练习结果、报告、知识星座、移动端×4、路演裁切 deck-×10） |
 | 参赛帖子与清单 | `astripath/submission/` |
-| 截图重拍脚本 | `astripath/scripts/retake-screenshots.mjs` |
+| 决赛路演 PPT（副本，原件未动） | `astripath/submission/【智学星枢团队+智学星枢】决赛路演_Qoder版.pptx` |
+| 社交传播文案 | `astripath/submission/SOCIAL_SHARE.md` |
+| 截图重拍脚本 | `astripath/scripts/retake-screenshots.mjs`、`retake-deck-crops.mjs`、`retake-two-crops.mjs` |

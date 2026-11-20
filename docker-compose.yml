@@ -29,6 +29,9 @@ services:
       LLM_API_URL: ${LLM_API_URL:?set LLM_API_URL in .env}
       LLM_API_KEY: ${LLM_API_KEY:?set LLM_API_KEY in .env}
       LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      AVATAR_API_KEY: ${AVATAR_API_KEY:-}
+      AVATAR_API_SECRET: ${AVATAR_API_SECRET:-}
+      AVATAR_SERVER_URL: ${AVATAR_SERVER_URL:-wss://avatar.cn-huadong-1.xf-yun.com/v1/interact}
       MYSQL_HOST: db
       MYSQL_PORT: 3306
       MYSQL_DATABASE: ${MYSQL_DATABASE:-edumind}

@@ -1,13 +1,10 @@
 import { ref, shallowRef } from 'vue'
 
-const API_INFO = {
-  // Long-lived avatar credentials must never be shipped to the browser.
-  // Keep the feature disabled until the backend can issue a short-lived session.
-  serverUrl: '',
-  appId: '',
-  apiKey: '',
-  apiSecret: '',
-  sceneId: '',
+// Non-secret identifiers only. The long-lived apiKey/apiSecret live server-side
+// (.env); each activation fetches a short-lived signedUrl from /api/avatar/session.
+const AVATAR_SCENE = {
+  appId: 'ad6db357',
+  sceneId: '381400631807709184',
 }
 
 const PREFERRED_AVATAR_ID = '110117005'
@@ -47,11 +44,17 @@ async function getSdkModule(): Promise<any> {
 
 function getMissingApiInfoFields() {
   return [
-    ['APPID', API_INFO.appId],
-    ['APIKey', API_INFO.apiKey],
-    ['APISecret', API_INFO.apiSecret],
-    ['接口服务ID', API_INFO.sceneId],
+    ['APPID', AVATAR_SCENE.appId],
+    ['接口服务ID', AVATAR_SCENE.sceneId],
   ].filter(([, value]) => !value).map(([label]) => label)
+}
+
+async function fetchAvatarSession(): Promise<{ signedUrl: string; serverUrl: string }> {
+  const res = await fetch('/api/avatar/session')
+  if (!res.ok) throw new Error('虚拟人服务不可用：后端未配置或会话签发失败')
+  const data = await res.json()
+  if (!data?.signedUrl || !data?.serverUrl) throw new Error('虚拟人会话缺少 signedUrl')
+  return data
 }
 
 function isAvatarAuthError(error: any) {
@@ -69,13 +72,20 @@ export async function initAvatar(wrapperEl: HTMLElement): Promise<boolean> {
       throw new Error(`缺少虚拟人配置：${missingFields.join('、')}`)
     }
 
+    const session = await fetchAvatarSession()
+
     const sdkModule = await getSdkModule()
     const AvatarPlatform = sdkModule.default || sdkModule
 
     const instance = new AvatarPlatform({ useInlinePlayer: true })
     sdkRef.value = instance
 
-    instance.setApiInfo(API_INFO)
+    instance.setApiInfo({
+      serverUrl: session.serverUrl,
+      appId: AVATAR_SCENE.appId,
+      sceneId: AVATAR_SCENE.sceneId,
+      signedUrl: session.signedUrl,
+    })
     instance.setGlobalParams(createGlobalConfig(PREFERRED_AVATAR_ID))
 
     instance.removeAllListeners()

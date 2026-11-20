@@ -275,7 +275,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import { Tv, X, Mic, MessageSquare, Volume1, SlidersHorizontal, PersonStanding, AudioLines, Wifi } from 'lucide-vue-next'
 import {
   isAiSidebarOpen, isVirtualMuted, isAiSpeaking,
@@ -394,6 +394,9 @@ function handleViewReport() {
   if (canUnlockReport.value) { activeMenu.value = 'portrait-report'; showReport.value = true }
   else handleQuickSandboxDeduce()
 }
+
+// 收起仅隐藏不卸载，需主动断开以释放并发路数与计时配额
+watch(isAiSidebarOpen, (open) => { if (!open) avatarStop() })
 
 onUnmounted(() => { avatarDestroy() })
 </script>

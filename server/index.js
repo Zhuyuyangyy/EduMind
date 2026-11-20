@@ -30,6 +30,7 @@ import {
 } from './agents/orchestrator.js'
 import { getTraces, getTraceSummary, buildTrace, recordTrace, runWithAccount } from './evidence/recorder.js'
 import { isLlmAvailable, getLlmConfig } from './llm/provider.js'
+import { buildAvatarSessionPayload } from './avatar-session.js'
 import { getKnowledgeBaseStats, searchKnowledgeBase } from './knowledge-base/vector-store.js'
 import { getAccountSettings, getLatestLearningCycle, getLearningCycleHistory, getStorageBackend, isMySqlConfigured, saveAccountSettings, saveLearningCycle } from './store/mysql.js'
 import { summarizeLearningHistory } from './learner-memory.js'
@@ -332,6 +333,21 @@ const server = http.createServer(async (req, res) => {
         productionStorageReady: storageReady,
         ...(storageReady ? {} : { code: 'production-storage-not-configured' }),
       })
+      return
+    }
+
+    // 虚拟人短时效会话：仅返回 signedUrl，长期 Key/Secret 留在服务端
+    if (req.method === 'GET' && pathname === '/api/avatar/session') {
+      const payload = buildAvatarSessionPayload()
+      if (!payload) {
+        sendJson(res, 503, {
+          error: 'Service Unavailable',
+          code: 'avatar-not-configured',
+          message: '虚拟人服务未配置（服务端 AVATAR_API_KEY / AVATAR_API_SECRET）。',
+        })
+        return
+      }
+      sendJson(res, 200, payload)
       return
     }
 

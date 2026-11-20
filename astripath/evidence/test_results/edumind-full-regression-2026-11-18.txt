@@ -1,0 +1,298 @@
+
+> personalized-learning-platform@1.0.0 test
+> node --test --test-concurrency=4
+
+✔ 诊断基线：正确率映射到 0-75，满分诊断记 75 而非 100 (0.9139ms)
+✔ 诊断基线状态包含可解释的变化记录 (0.6605ms)
+✔ 状态分档：未测试/需加强/学习中/已掌握 (0.1083ms)
+✔ 证据量门槛：单次练习少于 2 题不调整掌握度 (0.2055ms)
+✔ 稳定区间：正确率 [40%, 80%) 时掌握度不变 (0.1536ms)
+✔ 高正确率提升掌握度，且不超过单次上限 (0.185ms)
+✔ 低正确率降低掌握度，且不低于 0 (0.1969ms)
+✔ 掌握度钳制在 100：达到上限后良好表现不再提升 (0.1861ms)
+✔ 证据必留痕：未调整掌握度的会话也计入练习计数、最近测试与流水 (0.8396ms)
+✔ 总体掌握度：仅统计有证据的知识点，无证据返回 null (0.3066ms)
+✔ 计划固定 7 天：5 个学习日 + 综合项目 + 综合测评 (13.2992ms)
+✔ 薄弱优先：薄弱知识点在先修链允许的最早时间出现，不被无关知识点挤占 (2.0471ms)
+✔ 先修约束：后续知识点不会出现在先修之前 (0.3655ms)
+✔ 链连续性：薄弱知识点的先修连续安排，而非被无关知识点插队 (0.3567ms)
+✔ 每个任务都有可解释的推荐理由，且引用先修状态 (0.4294ms)
+✔ 确定性：相同输入产生相同计划 (0.3816ms)
+✔ 未测试知识点参与计划但不标记为薄弱 (0.4205ms)
+✔ 计划变化摘要：检测任务调整 (0.5286ms)
+✔ 计划进度与下一个未完成任务 (0.4236ms)
+✔ 选择题：正确下标判对 (1.9107ms)
+✔ 选择题：错误下标判错 (0.5229ms)
+✔ 选择题：非整数/负数下标判不合法 (0.3489ms)
+✔ 题库答案配置异常时判错并说明原因 (0.1535ms)
+✔ scoreAnswer 按题目分派，未知题型一律判错 (0.1847ms)
+✔ 会话汇总：正确率计算与空会话处理 (0.8063ms)
+✔ 诊断题库完整性：8 题、每题 4 个选项、答案下标合法、知识点覆盖 8 个 (0.2704ms)
+✔ 初始状态：全部知识点未测试 (0.9724ms)
+✔ 提交诊断：判分、建立基线、记录事件 (2.9233ms)
+✔ 提交诊断：漏答按未作答判错 (0.5686ms)
+✔ 提交练习：判分并更新该知识点掌握度，其他知识点不受影响 (0.8008ms)
+✔ 闭环：练习后计划随新画像重新生成 (10.4447ms)
+✔ 计划任务完成状态切换与事件记录 (0.3504ms)
+✔ 对话追加与截断（保留 50 条） (0.9344ms)
+✔ 持久化：保存后加载可还原，损坏数据安全降级 (1.3327ms)
+✔ 反序列化：补齐缺失知识点，过滤越界字段 (0.5443ms)
+✔ 重置：恢复初始演示状态 (0.5069ms)
+✔ 存储不可用时保存失败但不抛出 (0.3675ms)
+✔ 分词：中文二元滑窗 + 英文数字词 (2.6051ms)
+✔ 命中知识库：返回讲解、示例、引用依据与相关练习 (0.8997ms)
+✔ 薄弱知识点相关问题命中对应课程卡片 (0.5794ms)
+✔ 未命中：明确降级并列出可问范围，不编造答案 (0.3043ms)
+✔ 空输入与客套话的处理 (0.1689ms)
+✔ 推荐问题：针对薄弱知识点生成且非空 (0.1931ms)
+✔ 覆盖范围包含全部 8 个知识点 (0.1288ms)
+✔ Cookie 认证的写操作缺少 CSRF Token 被拒（403） (406.5018ms)
+✔ 携带匹配的 CSRF Token 放行；不匹配则 403 (465.5605ms)
+✔ Bearer 认证不受 CSRF 拦截（原生端无浏览器自动携带面） (356.4583ms)
+✔ GET 请求不需要 CSRF Token (364.8926ms)
+✔ 退出登录（Cookie 认证）同样受 CSRF 保护 (377.2083ms)
+✔ CORS 预检许可 X-CSRF-Token（跨源部署下 Cookie 写请求不被浏览器拦截） (448.9762ms)
+﹣ 生产模式：正式身份被删除后旧会话立即失效 (0.9846ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），P4-1B 生产会话边界未实测
+﹣ 生产模式：角色降级不递增凭据版本也立即生效 (0.1077ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），P4-1B 生产会话边界未实测
+✔ 演示模式：无正式身份的演示账号不受生产规则影响 (703.4217ms)
+✔ token 绑定 origin：当前 origin 不匹配时不可取用（不泄露给新服务） (0.6835ms)
+✔ origin 切换判定：有绑定且目标不同 → 必须解绑重登 (0.2174ms)
+✔ 解绑后本地无凭据残留 (0.1292ms)
+✔ 相对路径与绝对地址的 origin 归一 (0.2065ms)
+✔ 生产可信主机白名单：任意 HTTPS 不再视为可信 (0.3076ms)
+✔ A1 生产 Web 跨源：拒绝存储 Bearer，不写 localStorage (2.3483ms)
+✔ A1 生产 Web 同源：Cookie 模式，本地零 token (0.2385ms)
+✔ A1 开发跨源桥接保留可用（origin 绑定） (0.1929ms)
+✔ A1 桥接 migrate() 不清除活动 token（刷新/冷启动恢复登录） (0.1228ms)
+✔ A1 同源 Cookie 模式 migrate() 仍清理遗留明文 token (0.9225ms)
+✔ A2 原生：切换 A→B 后旧 token 不外发、绑定被清除 (0.3591ms)
+✔ A2 原生：origin 不匹配时安全存储中的 token 也不外发 (0.1419ms)
+✔ A3 竞态：退出发生在凭据读取期间 → 防护读取返回 null (0.1879ms)
+✔ B-0 A→B→默认(A) 全序列：B 的 token 被清除，切回 A 不自动恢复 (0.3439ms)
+✔ B-0 单例重选：origin 变化后按新环境重新选择适配器 (0.52ms)
+﹣ production 模式拒绝演示账号与默认密码 (0.6564ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），生产身份契约未实测
+﹣ production 模式提供正式身份存储后可登录，role 以服务端记录为准 (0.2139ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），生产身份契约未实测
+✔ demo 模式演示账号仍可登录（竞赛回归不受影响） (482.4484ms)
+﹣ P4-1B：A 登录 → 停止 A → B 启动后会话仍有效（重启恢复） (0.8432ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），P4-1B 会话持久化未实测
+﹣ P4-1B：双进程共享认证状态，B 退出后 A 立即 401 (0.146ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），P4-1B 会话持久化未实测
+﹣ P4-1B：禁用账号后会话立即失效 (0.1128ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），P4-1B 会话持久化未实测
+﹣ P4-1B：数据库不可达时 fail-closed（401，不放行不崩溃） (0.2403ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），P4-1B 会话持久化未实测
+[auth] 安全存储插件不可用，开发模式使用非安全回退存储 token（生产构建将拒绝）
+✔ Web 存储不持有 Bearer token（Cookie 承载会话） (0.7275ms)
+✔ Web 从 Cookie 读 CSRF Token (0.1701ms)
+✔ 原生安全存储：token 按 origin 绑定，不匹配不外发 (0.264ms)
+✔ 遗留明文 token 被迁移清理（Web 与原生） (0.1574ms)
+✔ 生产构建拒绝非安全回退 (0.7179ms)
+✔ 开发模式回退可用但 origin 绑定仍然生效 (1.0035ms)
+✔ Cookie 值解析（编码/空值/无匹配） (1.598ms)
+✔ 未登录访问业务接口返回 401 (411.7197ms)
+✔ 错误密码返回 401，不签发会话 (358.6258ms)
+✔ 登录签发 HttpOnly Cookie，/api/auth/session 可校验、乱码 token 拒绝 (380.9378ms)
+✔ Capacitor 场景：Bearer token 可访问业务接口 (473.8749ms)
+✔ accountId 由服务端会话推导：客户端伪造 accountId 无效 (387.4136ms)
+✔ 聊天历史按账号隔离：两个账号互相看不到对方记录 (497.0445ms)
+✔ CORS 白名单：不在名单中的 Origin 不获得跨域许可 (477.8314ms)
+✔ 登出后会话立即失效 (597.6457ms)
+✔ 证据追踪按账号隔离：两个账号互相看不到对方的 trace (627.1219ms)
+✔ 历史 trace（无 accountId 字段）对登录用户不可见 (383.228ms)
+✔ 协作演示数据重置接口要求管理员角色 (486.8549ms)
+✔ 知识路径按账号隔离 (501.9083ms)
+✔ 交错并发产生 trace 时严格归属各自账号（非压测，交错发起） (446.4664ms)
+✔ 协作看板只聚合当前账号的真实活动（元数据也不跨账号） (420.7628ms)
+✔ CORS：白名单 Origin 预检放行（含 Authorization），陌生 Origin 被拒绝 (462.4184ms)
+✔ 跨 Origin 场景：Bearer Token 可完成业务请求（Cookie 不可依赖） (359.1707ms)
+✔ signedUrl matches the iFlytek host/date/request-line HMAC-SHA256 scheme (2.5199ms)
+✔ session payload exposes only signedUrl and serverUrl, never the secret (1.7423ms)
+✔ unconfigured avatar yields no session so the client stays on standby (0.2152ms)
+✔ /api/chat accepts dialogue messages payload and returns dialogue shape (435.2079ms)
+﹣ B-5 #1 知识路径跨实例可见：A 生成，B 立即读到 (0.7946ms) # 未配置 MySQL 环境，双实例门禁未实测
+﹣ B-5 #2 聊天跨实例可见：A 写问答，B 读到完整两条 (0.1883ms) # 未配置 MySQL 环境，双实例门禁未实测
+﹣ B-5 #3 导师历史跨实例可见：A 提问，B 读到完整元数据 (0.11ms) # 未配置 MySQL 环境，双实例门禁未实测
+﹣ B-5 #4 跨账号零泄漏：A 实例写 reviewer，B 实例用 student 读不到 (0.1163ms) # 未配置 MySQL 环境，双实例门禁未实测
+﹣ B-5 #5 并发练习 CAS：两个会话的路径更新都保留 (0.1997ms) # 未配置 MySQL 环境，双实例门禁未实测
+﹣ B-5 #6 反馈重放幂等：B 实例重放 A 的会话不重复更新 (0.1279ms) # 未配置 MySQL 环境，双实例门禁未实测
+﹣ B-5 #7 幂等键跨实例并发：A/B 同键同时请求只保存一次 (0.1112ms) # 未配置 MySQL 环境，双实例门禁未实测
+﹣ B-5 #8 故障恢复：关闭 A 后 B 仍按契约读到全部数据与会话状态 (0.1036ms) # 未配置 MySQL 环境，双实例门禁未实测
+﹣ B-5 #9 MySQL 故障 fail-closed：坏库实例明确失败，不静默转 JSON (0.126ms) # 未配置 MySQL 环境，故障门禁未实测
+﹣ B-5 #10 迁移数据跨实例一致：B-4 导入后 A/B 两个真实进程 HTTP 读取一致 (0.1233ms) # 未配置 MySQL 环境，迁移一致性门禁未实测
+✔ 证据边界：客户端伪造的 profile 被忽略，基线只能来自服务端 (447.2815ms)
+✔ 证据边界：无画像时拒绝更新（不创造基线） (486.8186ms)
+✔ 证据边界：演示闭环记录带未核验标记且可读取 (612.6824ms)
+✔ 证据边界：空 body 演示更新不崩溃且不写真实画像 (594.6667ms)
+✔ trace summary aggregates per-agent results and fallback counts (19.0444ms)
+﹣ MySQL 聊天死锁：部分写入回滚后有限重试，消息仍只落一对 (1.1107ms) # 未配置 MySQL：聊天事务死锁回滚和有限重试未实测
+﹣ MySQL 聊天死锁：持续失败最多三次事务，明确报错且不残留用户行 (0.2425ms) # 未配置 MySQL：聊天事务死锁回滚和有限重试未实测
+﹣ B-3b 并发：两进程同账号同幂等键 → 只写一次、双方一致成功 (0.529ms) # 未配置 MySQL 环境，并发幂等门禁未实测
+﹣ B-3b 冲突：同幂等键不同内容 → 明确报冲突（不静默返回首次结果） (0.1001ms) # 未配置 MySQL 环境，同键冲突门禁未实测
+✔ B-3b HTTP：同键不同内容 → 409（statusCode 映射），同键同内容 → 幂等重试 (676.201ms)
+✔ B-3 JSON：聊天交互 round-trip，用户消息与助手回复成对且保序 (38.7378ms)
+✔ B-3 JSON：账号隔离——不同账号历史互不串台 (10.9674ms)
+✔ B-3 JSON：展示契约——聊天最近 30、辅导最近 20 且保序 (190.0916ms)
+✔ B-3 JSON：重启后顺序与内容不变（重读文件） (10.8569ms)
+✔ B-3 JSON：来源三态区分——未知来源不得被补写为模型生成 (11.4666ms)
+✔ B-3 JSON：多模态体积上限——超限明确拒绝 (4.4003ms)
+﹣ B-3 MySQL：A 进程写聊天交互，B 进程按原顺序读到 (0.1752ms) # 未配置 MySQL 环境，跨进程历史门禁未实测
+﹣ B-3 MySQL：原子写入——助手行失败时用户消息不得残留 (0.1532ms) # 未配置 MySQL 环境，原子写入门禁未实测
+﹣ B-3 MySQL：并发交互——顺序稳定且 ID 唯一 (0.3118ms) # 未配置 MySQL 环境，并发排序门禁未实测
+﹣ B-3 MySQL：辅导历史跨进程读取与来源三态 (0.4341ms) # 未配置 MySQL 环境，辅导历史门禁未实测
+✔ 0.4 多模态上限按 UTF-8 字节计：中文字符串长度低于阈值但字节超限 → 拒绝 (68.3286ms)
+✔ 0.1 JSON 高频连续写入：同毫秒多次交互的消息 ID 不碰撞 (157.8032ms)
+✔ 0.2 追踪写入失败（故障注入）：聊天仍返回 200 且历史已落库 (650.441ms)
+✔ 0.2 聊天幂等键：同一键重复请求不得产生重复记录（JSON 模式） (590.6766ms)
+﹣ 0.2 MySQL：幂等键唯一约束——同键第二次写入被拒且不落库 (0.1495ms) # 未配置 MySQL 环境，幂等约束门禁未实测
+﹣ 0.2 MySQL：追踪失败时聊天 200 且历史落库 (0.0544ms) # 未配置 MySQL 环境，MySQL 追踪失败门禁未实测
+✔ 聊天与辅导历史按账号隔离 (33.6634ms)
+✔ 旧格式全局历史数据迁移为 default 账号可见 (10.0782ms)
+✔ 知识路径按账号隔离且旧格式迁移为 default (10.1055ms)
+✔ 协作看板聚合不泄露 trace 中的用户内容 (9.2838ms)
+✔ hybrid retrieval exposes weighted component scores and routes BFS evidence (2.4405ms)
+✔ retrieval modes support ablation and mark unrelated questions out of knowledge base (2.1128ms)
+✔ 复审回归：prepare 后版本被改，旧对象不得以新 expectedVersion 落库 (16.2363ms)
+✔ 复审回归：nextPath.version 必须严格等于 expectedVersion+1 (5.6662ms)
+✔ 复审回归：已有路径时重新生成不得把版本归一化回 1 (9.5263ms)
+﹣ 复审回归 MySQL：错配拒绝与重新生成版本语义走真实库 (0.1521ms) # 未配置 MySQL 环境，复审回归未实测
+﹣ 双进程交错：prepare 后版本被改 → 旧对象被拒、双方更新都保留 (0.4782ms) # 未配置 MySQL 环境，双进程交错门禁未实测
+✔ B-2 归因：preparePathUpdate 使用传入的 exerciseResolver（题库快照） (14.734ms)
+✔ B-2 CAS：过期 expectedVersion 的提交被拒（冲突可检测） (23.4846ms)
+✔ B-2 CAS：冲突后基于最新路径重算再提交成功（不丢失更新） (16.725ms)
+✔ B-2 幂等：同一 sessionId 重复提交路径不产生第二条账本记录 (9.2613ms)
+﹣ B-2 MySQL：路径读写与 CAS 走 knowledge_paths 表 (0.1448ms) # 未配置 MySQL 环境，MySQL 路径门禁未实测
+✔ learner memory summarizes recent evidence for downstream agents (1.3491ms)
+✔ welcome intake validates completed choices without generating ability scores (1.5291ms)
+✔ welcome preferences persist per server account and never overwrite an existing profile (600.6434ms)
+﹣ MySQL welcome records round trip independently for two accounts (0.2675ms) # MySQL environment not configured
+✔ 契约：JSON 存储形态归一后字段集完整 (1.2226ms)
+✔ 契约：MySQL 存储形态归一后字段集一致 (0.9721ms)
+✔ 契约：两种形态归一后键集合完全相同 (0.4621ms)
+✔ 契约：null / 非对象输入安全返回 null (0.1922ms)
+✔ 契约：API 往返（JSON 存储模式） (437.6276ms)
+✔ profile write-back changes only the evidenced dimension and stays bounded (3.9988ms)
+✔ profile write-back supports evidence-backed improvement (0.4695ms)
+✔ 账号数据：画像与知识路径按账号隔离，空账号返回 null (447.8306ms)
+✔ 账号数据：辅导历史按账号隔离，新记录携带降级元数据 (411.5797ms)
+✔ 账号数据：静态演示端点不是账号数据（有响应但无账号隔离语义） (361.6383ms)
+✔ 账号数据：学习闭环 null 行为（无闭环时返回 null 而非伪造） (458.2903ms)
+﹣ A1 dry-run 严格只读：空目标库上无任何 DDL / 数据写入 (0.7059ms) # 未配置 MySQL
+﹣ A2 覆盖保护：旧来源画像/设置不得覆盖较新目标记录 (0.0931ms) # 未配置 MySQL
+﹣ A3 跨文件同账号同旧 ID：两个来源文件的记录都导入（不误判重复） (0.063ms) # 未配置 MySQL
+﹣ A4 来源变化：账本存在但 record_digest 变化 → 显式冲突且隔离，不静默跳过 (0.0476ms) # 未配置 MySQL
+﹣ A5 导入前核对来源 SHA：与 dry-run/backup 时不一致 → 明确阻断 (0.0583ms) # 未配置 MySQL
+﹣ A6 全局数组默认不导入：仅进隔离清单，不写入任何账号表 (0.0847ms) # 未配置 MySQL
+﹣ A7 CLI 报告脱敏：dry-run 输出不含聊天/辅导原文 (0.0587ms) # 未配置 MySQL
+﹣ A8 verify 反向故障：删除已导入消息 → verify 必须失败 (0.0415ms) # 未配置 MySQL
+﹣ A8 verify 反向故障：篡改已导入消息内容 → verify 必须失败 (0.0733ms) # 未配置 MySQL
+﹣ A8 verify：来源三态失真（fallbackAgents 被补写）→ 必须失败 (0.1552ms) # 未配置 MySQL
+﹣ A8 verify：应导入但未导入（空目标）→ 必须失败 (0.0561ms) # 未配置 MySQL
+﹣ B-4 dry-run：严格只读，输出账号分布/数量/结构变体/冲突预测/隔离清单 (0.5695ms) # 未配置 MySQL 环境，dry-run 门禁未实测
+﹣ B-4 import：首次导入各类别落库，二次导入零重复 (0.0979ms) # 未配置 MySQL 环境，导入幂等门禁未实测
+﹣ B-4 import：目标已有更高版本路径 → 跳过保护（不覆盖） (0.0581ms) # 未配置 MySQL 环境，版本冲突门禁未实测
+﹣ B-4 import：来源 JSON 损坏 → 明确阻断，不退化为空数据继续 (0.0508ms) # 未配置 MySQL 环境，损坏阻断门禁未实测
+﹣ B-4 import：中途中断后重跑接续，无重复无丢失 (0.0691ms) # 未配置 MySQL 环境，中断恢复门禁未实测
+﹣ B-4 verify：源与目标逐项对账（数量/归属/顺序/三态/摘要） (0.0446ms) # 未配置 MySQL 环境，verify 门禁未实测
+﹣ B-4 import：数据库断开 → 明确失败，不静默转写 JSON (0.0774ms) # 未配置 MySQL 环境，fail-closed 门禁未实测
+✔ LLM timeout and invalid JSON both return the declared fallback shape (793.0246ms)
+[patch-secure-storage] 版本断言失败: 插件主版本为 8.0.1，预期 7.x（Capacitor 7 兼容线）——补丁未经该版本验证，拒绝静默应用
+[patch-secure-storage] 已移除插件内 AGP classpath 硬编码（改用根工程 AGP）（插件 7.1.6 → 根工程 AGP 8.7.2）
+[patch-secure-storage] 插件内无 AGP classpath 硬编码（已是修补后状态）（版本 7.1.6）
+[patch-secure-storage] 插件未安装，跳过（Android 构建未启用安全存储）
+✔ D 正常路径：检测到 8.13.0 classpath → 移除并报告 patched (1.6977ms)
+✔ D 幂等：已是修补后状态 → already-patched（成功，非失败） (0.1812ms)
+✔ D 漂移：上游改版本号 → mismatch（旧版此处静默成功） (0.1738ms)
+✔ D 漂移：buildscript 块写法变化导致模式不匹配 → mismatch (0.1229ms)
+✔ D 版本断言：非 7.x 主版本拒绝 (6.2346ms)
+✔ D 端到端：runPatch 成功打补丁且可重复执行（幂等） (10.2756ms)
+✔ D 插件缺失：跳过且不失败 (0.9378ms)
+﹣ production users cannot read fixed demo evaluation/path/workflow payloads (0.5164ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），生产演示数据边界未实测
+✔ zero self-assessment remains zero in rule analysis (1.0473ms)
+✔ questionnaire needs and provenance persist per account across a new login (468.7841ms)
+✔ EvaluationAgent does not consume candidates already marked out of knowledge base (1.7556ms)
+✔ resource generation rejects malformed input before the agent/fallback branch (418.4089ms)
+✔ 注册接口创建正式学生账号，重复账号和管理员角色请求被拒绝 (495.6731ms)
+✔ 生产模式强制要求共享 MySQL：旧 JSON 豁免变量不再生效，健康检查明确失败 (342.4183ms)
+✔ 生产模式会话和 CSRF Cookie 强制带 Secure (0.4288ms)
+✔ prompt injection detector distinguishes learning questions from override attempts (2.3597ms)
+✔ TutorAgent refuses prompt injection without exposing internal configuration (1.0511ms)
+✔ profile persistence falls back to JSON when MySQL is not configured (178.4816ms)
+✔ 题库升级不改变历史会话的题目与判分（快照隔离） (762.9778ms)
+✔ 时区连续学习天数：陈旧记录不得显示为当前连续 (22.3477ms)
+✔ P3-1 完整闭环：3 题练习 → 服务端判分 → 完成 → 持久化 (606.1128ms)
+✔ P3-1 幂等：重复提交（同键/异键）不重复计分 (392.706ms)
+✔ P3-1 拒绝：零题完成、非法题目、缺失幂等键 (376.766ms)
+✔ P3-1 账号隔离：跨账号会话访问与作答一律 404 (375.173ms)
+✔ P3-1 判分确定性：错题判错、统计只认完成事件 (405.1391ms)
+✔ P3-1 客户端无法自报正确率（服务端判分是唯一事实源） (365.8539ms)
+✔ 复现：同一 session 重复 feedback 不得重复修改画像 (701.1431ms)
+✔ 复现：同一 session 并发 feedback 最多一次有效修订 (472.3874ms)
+✔ 复现：画像派生字段一致（totalScore/radarPoints 跟随 dimensions） (441.153ms)
+✔ 复现：单维度证据不足（仅 1 题）不得调整该维度 (462.1102ms)
+﹣ MySQL：并发 claim 单飞（仅一个 claimed，其余 completed/in-progress） (0.5901ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），MySQL 并发接管未实测
+﹣ MySQL：CAS 接管与 fencing（旧执行器不得提交） (0.1027ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），MySQL 并发接管未实测
+﹣ MySQL：恢复字段完整持久化（profileAfterValues/pendingRevision/partial） (0.059ms) # 未配置 MySQL 环境（MYSQL_URL / MYSQL_HOST+USER+DATABASE），MySQL 并发接管未实测
+✔ P3-2 证据不足：2 题练习完成但不更新画像 (662.0881ms)
+✔ P3-2 充分证据：全对 → 有界 +4 更新并写修订账本 (453.6052ms)
+✔ P3-2 稳定区间：正确率 50% 不更新画像 (430.5703ms)
+✔ P3-2 负向有界：全错 → -4 且不低于 0 (443.7585ms)
+✔ P3-2 LLM 隔离：无模型配置时成绩不变、反馈降级为规则 (441.6332ms)
+✔ P3-2 路径版本：知识点 ID 稳定、版本递增、可追踪旧版 (469.6812ms)
+✔ P3-2 边界：未完成会话不生成反馈；跨账号 404 (429.591ms)
+✔ 崩溃窗口 A：画像已写、步骤未标记 → 重启后不重复应用 (916.7191ms)
+✔ 崩溃窗口 B：画像已写、修订未写 → 重启后补齐账本且不重复改画像 (845.0468ms)
+✔ 崩溃窗口 C：路径已写、步骤未标记 → 重启后版本不重复递增 (741.2022ms)
+✔ 恢复完整性：三次连续重启后状态稳定（无重复写入） (1003.6894ms)
+✔ 修订写后、步骤未标记 → 重启后不重复写入修订 (803.2089ms)
+﹣ MySQL 索引：正确结构跨进程重复初始化不执行任何删建 (0.3786ms) # 未配置 MySQL：索引迁移和双进程初始化未实测
+﹣ MySQL 索引：两个进程并发迁移旧全局索引只替换一次，历史数据不丢 (0.0778ms) # 未配置 MySQL：索引迁移和双进程初始化未实测
+﹣ MySQL 索引：缺失索引并发初始化只补建一次 (0.0584ms) # 未配置 MySQL：索引迁移和双进程初始化未实测
+﹣ MySQL 索引：意外结构明确失败，保留原索引和历史数据 (0.0626ms) # 未配置 MySQL：索引迁移和双进程初始化未实测
+✔ active 会话状态接口不泄露标准答案（递归检查整个响应） (406.8838ms)
+✔ active 会话 /questions 接口同样不泄露（回归保护） (369.0989ms)
+✔ completed 会话经授权后可通过结果接口获得答案 (541.3654ms)
+✔ 账号 B 读不到 A 的会话（含 active/completed） (357.7974ms)
+✔ server\test-server.mjs (56.1071ms)
+✔ B-6 默认脱敏：追踪不落原始问题/回答文本（最小化） (3.5791ms)
+✔ B-6 调试开关：ZHIXUE_TRACE_KEEP_CONTENT=1 时保留原文 (2.6549ms)
+✔ B-6 账号隔离：A 的 trace 对 B 不可见 (5.0366ms)
+✔ B-6 每账号上限：单账号超限滚动删除最旧，不挤占其他账号 (294.0793ms)
+✔ B-6 保留期限：超过保留期的记录被清理 (6.9699ms)
+✔ B-6 审计补强：evidence / agentResults evidence / riskFlags 默认脱敏 (5.2512ms)
+✔ B-6 审计补强：超期记录被物理删除（不仅是查询过滤） (4.9957ms)
+✔ B-6 审计补强：生产模式下 KEEP_CONTENT 开关被禁用（仍脱敏） (4.1889ms)
+✔ TutorAgent defaults to first-level scaffolding instead of a complete answer (2.863ms)
+✔ TutorAgent exposes a worked explanation only at level five (1.0458ms)
+✔ workspace authentication, goal validation, memory switches and account ownership (465.4763ms)
+✔ private text/PDF sources retain original citations and reject spoofed files and foreign sources (597.6784ms)
+✔ agent requires explicit confirmation, returns traceable rule artifact, supports cancellation and deletion propagation (411.3755ms)
+✔ focus timing is server authoritative and wrong reviews cannot be forged (1450.8331ms)
+✔ wrong-question reviews come from completed scored sessions and persist user-chosen cause and interval (418.6298ms)
+﹣ MySQL workspace row mutations are isolated and serialize concurrent updates (0.1165ms) # MySQL not configured
+✔ relative JSON imports used by the admin screen exist in a clean checkout (4.4483ms)
+✔ evaluation UI policy keeps a 503 unavailable and never substitutes a fixture (1.414ms)
+✔ evaluation UI policy distinguishes network failure, empty data and real data (0.2491ms)
+✔ evaluation UI policy rejects missing, unknown and simulated sources as real evidence (0.1319ms)
+✔ evaluation UI policy requires effective evidence instead of truthy empty containers (0.1861ms)
+✔ evaluation UI policy requires explicit demo mode for fixture data (0.1058ms)
+✔ Evaluation view exposes unavailable/no-data states and has no silent mock fallback (0.7039ms)
+✔ 注册 409 解释已注册并引导登录，不能建议等待重试 (1.6382ms)
+✔ 注册字段错误返回具体可修正规则 (0.3999ms)
+✔ 非注册冲突不误报账号已存在，登录 401 语义保持 (0.2907ms)
+✔ 面板只允许白名单类型与固定 Schema，不能携带可执行代码 (0.8507ms)
+✔ 每日标语稳定，刷新偏移可恢复；上海日期边界准确 (0.4431ms)
+✔ 真实完成奖励按证据 ID 去重，刷新与反复勾选不重复领 (0.546ms)
+✔ 无效时间、提前结束与缺失计划时长不发专注奖励 (0.1582ms)
+✔ 喂养不透支，经验和阶段恢复；账号与来源隔离 (1.2264ms)
+✔ 损坏本机配置安全回退，禁止原型键并限制格式 (0.7555ms)
+✔ 浅色外观升级保留学习与宠物配置，新版主动选择的深色刷新后保留 (0.2811ms)
+✔ 计时统计按真实结束日聚合，目标归属保留且不生成虚构时间 (0.2127ms)
+✔ Markdown 保留原文、标题、标签、Frontmatter、目录及双向关系 (2.9343ms)
+✔ 同名歧义不虚构链接；越界路径拒绝；MDX 按纯文本保留 (1.4082ms)
+✔ standalone mindmap route and top navigation entry are removed (3.7964ms)
+✔ client source contains no known exposed avatar credentials or personal profile data (4.1053ms)
+✔ document title uses the 智学星枢 brand and does not claim unsupported availability (1.8091ms)
+ℹ tests 281
+ℹ suites 0
+ℹ pass 222
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 59
+ℹ todo 0
+ℹ duration_ms 17145.9521

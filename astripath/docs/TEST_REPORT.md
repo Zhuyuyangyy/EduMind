@@ -9,12 +9,12 @@
 | 测试层 | 命令 | 结果 |
 |---|---|---|
 | 生产构建 | `npm run build` | 通过（dist 39MB，低于 Qoder Sites 50MB 限额） |
-| 原工程测试套件 | `npm test` | **278 项，0 失败**（演示模式改动未破坏原功能） |
+| 原工程测试套件 | `npm test` | **281 项：222 过 / 59 跳 / 0 失败**（59 跳为需 MySQL 的生产环境用例；演示模式改动未破坏原功能） |
 | 竞赛逻辑单测 | `npm run test:logic` | **44 / 44 通过** |
-| 竞赛闭环 E2E | `npm run test:e2e` | **10 / 10 通过**（桌面 1440 + 移动 375） |
+| 竞赛闭环 E2E | `npm run test:e2e` | **12 / 12 通过**（10 桌面 1440 + 2 移动 375） |
 | 线上部署验收 | `node astripath/scripts/verify-deployed.mjs <url>` | **12 / 12 通过** |
 
-证据文件：`evidence/test_results/astripath-unit-tests.txt`、`evidence/test_results/astripath-e2e-tests.txt`、`evidence/deployment/deployed-acceptance.txt`。
+证据文件：`evidence/test_results/astripath-unit-tests.txt`、`evidence/test_results/astripath-e2e-tests.txt`、`evidence/test_results/edumind-full-regression-2026-11-18.txt`（281 项全量回归）、`evidence/deployment/deployed-acceptance.txt`。
 
 ## 2. 功能验收（任务书 §8.1）
 

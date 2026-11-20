@@ -16,6 +16,8 @@ test('client source contains no known exposed avatar credentials or personal pro
 
   assert.doesNotMatch(source, /46d88496fc86492253ba9355584dde23/)
   assert.doesNotMatch(source, /OTMwYTQ3ZjQ5ZTI5ODdhZGNjNjIwOTA2/)
+  assert.doesNotMatch(source, /a63891deb63ea1cc23cb9d309ad48ba8/)
+  assert.doesNotMatch(source, /M2VmZWJkZDgyOWI1MzAyZmM3MDI4MmMz/)
   assert.doesNotMatch(source, /liuhongwei4138@gmail\.com/)
   assert.doesNotMatch(source, /清华大学/)
 })

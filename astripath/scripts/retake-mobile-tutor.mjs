@@ -1,0 +1,23 @@
+import { chromium, devices } from '@playwright/test';
+const BASE = process.argv[2] || 'https://astripath-k78u5s6qgf1.qoder.zone';
+const OUT = new URL('../screenshots/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const browser = await chromium.launch({ channel: 'chrome' });
+const mobile = await browser.newPage({ ...devices['Pixel 7'] });
+await mobile.goto(BASE + '/dialogue');
+await mobile.waitForTimeout(2500);
+const hide = mobile.locator('[title="隐藏互动舱"]');
+if (await hide.count()) await hide.click();
+await mobile.locator('textarea, input[type="text"]').first().fill('什么是广播？');
+await mobile.keyboard.press('Enter');
+await mobile.waitForTimeout(3000);
+await mobile.setViewportSize({ width: 412, height: 2400 });
+await mobile.waitForTimeout(2000);
+await mobile.evaluate(() => {
+  const msgs = [...document.querySelectorAll('.whitespace-pre-line')];
+  const q = msgs.find((el) => el.textContent.includes('什么是广播'));
+  if (q) q.scrollIntoView({ block: 'start' });
+});
+await mobile.waitForTimeout(800);
+await mobile.screenshot({ path: OUT + 'mobile-tutor.png' });
+console.log('OK mobile-tutor.png');
+await browser.close();

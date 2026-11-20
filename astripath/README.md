@@ -57,9 +57,9 @@ EduMind/（本仓库 = 原版工程 + 竞赛演示模式）
 npm install
 npm run dev          # 本地开发（自动进入演示模式，免登录）
 npm run build        # 生产构建 -> dist/（约 39MB）
-npm test             # 原工程测试套件（278 项）
+npm test             # 原工程测试套件（281 项：222 过 / 59 跳 / 0 失败）
 npm run test:logic   # 竞赛闭环逻辑单测（44 项，astripath/tests）
-npm run test:e2e     # 竞赛闭环 E2E（10 项，需先 build 并启动 vite preview :4174）
+npm run test:e2e     # 竞赛闭环 E2E（12 项：10 桌面 + 2 移动，需先 build 并启动 vite preview）
 ```
 
 ## 关键设计决策
